@@ -22,6 +22,18 @@ android {
         }
     }
 
+    signingConfigs {
+        // Release signing from environment variables (CI) or local keystore
+        if (System.getenv("SIGNING_KEY_ALIAS") != null) {
+            create("release") {
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+                storeFile = file(System.getenv("SIGNING_STORE_FILE") ?: "release.keystore")
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -30,6 +42,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Use release signing if available, otherwise use debug signing
+            signingConfig = try {
+                signingConfigs.getByName("release")
+            } catch (e: Exception) {
+                signingConfigs.getByName("debug")
+            }
         }
         debug {
             isDebuggable = true
