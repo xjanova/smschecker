@@ -110,6 +110,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build, lint]
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: android-app
@@ -137,28 +139,32 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build release APK
-        id: build_release
         run: |
-          set -eo pipefail
-          ./gradlew assembleRelease --stacktrace 2>&1 | tee release-build.log
+          ./gradlew assembleRelease --stacktrace 2>&1 | tee release-build.log; echo "GRADLE_EXIT=$?" >> $GITHUB_ENV
         env:
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
 
-      - name: Save error log on failure
-        if: failure()
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-build-log-${{ github.sha }}
+          path: android-app/release-build.log
+          retention-days: 7
+
+      - name: Fail if build failed
+        if: env.GRADLE_EXIT != '0'
         run: |
-          cd ..
-          cp android-app/release-build.log ci-release-error.log 2>/dev/null || echo "No build log found" > ci-release-error.log
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add ci-release-error.log
-          git commit -m "ci: Release APK error log [skip ci]" || true
-          git push || true
+          echo "::error::Release build failed with exit code $GRADLE_EXIT"
+          echo "## Release Build Error (last 80 lines)" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -80 release-build.log >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          exit 1
 
       - name: Upload release APK
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: release-apk-${{ github.sha }}
