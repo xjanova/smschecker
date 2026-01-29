@@ -1,0 +1,71 @@
+# ========================================
+# Android
+# ========================================
+android-app/.gradle/
+android-app/build/
+android-app/app/build/
+android-app/local.properties
+android-app/.idea/
+android-app/*.iml
+android-app/app/*.iml
+android-app/captures/
+android-app/.externalNativeBuild/
+android-app/.cxx/
+android-app/app/release/
+android-app/app/debug/
+*.apk
+*.aab
+*.dex
+*.class
+*.jar
+*.aar
+
+# ========================================
+# Laravel / PHP
+# ========================================
+laravel-plugin/vendor/
+laravel-plugin/.phpunit.result.cache
+laravel-plugin/.php-cs-fixer.cache
+*.log
+
+# ========================================
+# IDE
+# ========================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ========================================
+# Environment & Secrets
+# ========================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.keystore
+*.jks
+
+# ========================================
+# Dependencies
+# ========================================
+node_modules/
+vendor/
+
+# ========================================
+# Build artifacts
+# ========================================
+dist/
+out/
+*.min.js
+*.min.css
+
+# ========================================
+# Claude
+# ========================================
+.claude/
