@@ -61,7 +61,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results
+          name: test-results-${{ github.sha }}
           path: android-app/app/build/reports/tests/
           retention-days: 7
 
@@ -101,7 +101,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: lint-report
+          name: lint-report-${{ github.sha }}
           path: android-app/app/build/reports/lint-results*.html
           retention-days: 7
 
@@ -137,13 +137,28 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build release APK
-        run: ./gradlew assembleRelease --stacktrace
+        id: build_release
+        run: |
+          set -eo pipefail
+          ./gradlew assembleRelease --stacktrace 2>&1 | tee release-build.log
         env:
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
 
+      - name: Save error log on failure
+        if: failure()
+        run: |
+          cd ..
+          cp android-app/release-build.log ci-release-error.log 2>/dev/null || echo "No build log found" > ci-release-error.log
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ci-release-error.log
+          git commit -m "ci: Release APK error log [skip ci]" || true
+          git push || true
+
       - name: Upload release APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: release-apk-${{ github.sha }}
