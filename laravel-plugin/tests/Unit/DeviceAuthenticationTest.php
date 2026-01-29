@@ -50,8 +50,9 @@ class DeviceAuthenticationTest extends TestCase
      */
     public function test_device_id_format(): void
     {
-        $uuid = substr(str_replace('-', '', (string) \Illuminate\Support\Str::uuid()), 0, 8);
-        $deviceId = 'SMSCHK-' . strtoupper($uuid);
+        // Use plain PHP random hex instead of Laravel's Str::uuid() for unit test isolation
+        $hex = strtoupper(bin2hex(random_bytes(4)));
+        $deviceId = 'SMSCHK-' . $hex;
 
         $this->assertStringStartsWith('SMSCHK-', $deviceId);
         $this->assertMatchesRegularExpression('/^SMSCHK-[A-F0-9]{8}$/', $deviceId);

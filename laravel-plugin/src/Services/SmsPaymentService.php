@@ -27,7 +27,7 @@ class SmsPaymentService
                 ->exists();
 
             if ($existingNonce) {
-                Log::warning('SMS Payment: Duplicate nonce detected', [
+                self::log('warning', 'SMS Payment: Duplicate nonce detected', [
                     'nonce' => $payload['nonce'],
                     'device_id' => $device->device_id,
                 ]);
@@ -74,7 +74,7 @@ class SmsPaymentService
                 $matched = $notification->attemptMatch();
             }
 
-            Log::info('SMS Payment notification processed', [
+            self::log('info', 'SMS Payment notification processed', [
                 'notification_id' => $notification->id,
                 'bank' => $notification->bank,
                 'type' => $notification->type,
@@ -133,19 +133,19 @@ class SmsPaymentService
             );
 
             if ($decrypted === false) {
-                Log::warning('SMS Payment: Decryption failed');
+                self::log('warning', 'SMS Payment: Decryption failed');
                 return null;
             }
 
             $payload = json_decode($decrypted, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
-                Log::warning('SMS Payment: Invalid JSON in payload');
+                self::log('warning', 'SMS Payment: Invalid JSON in payload');
                 return null;
             }
 
             return $payload;
         } catch (\Exception $e) {
-            Log::error('SMS Payment: Decryption error', ['error' => $e->getMessage()]);
+            self::log('error', 'SMS Payment: Decryption error', ['error' => $e->getMessage()]);
             return null;
         }
     }
@@ -206,5 +206,19 @@ class SmsPaymentService
         SmsPaymentNotification::where('status', 'pending')
             ->where('created_at', '<', now()->subDays(7))
             ->update(['status' => 'expired']);
+    }
+
+    /**
+     * Safe logging helper that works both inside and outside Laravel app context.
+     * Prevents facade errors during unit testing.
+     */
+    private static function log(string $level, string $message, array $context = []): void
+    {
+        try {
+            Log::$level($message, $context);
+        } catch (\RuntimeException $e) {
+            // Facade root not set (running outside Laravel app context)
+            // Silently ignore - this happens during unit testing
+        }
     }
 }

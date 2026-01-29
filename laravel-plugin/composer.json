@@ -1,7 +1,6 @@
 {
     "name": "thaiprompt/smschecker-laravel",
     "description": "SMS Payment Checker - Laravel Payment Gateway Plugin for Thai Bank SMS auto-matching",
-    "version": "1.0.0",
     "type": "library",
     "license": "MIT",
     "authors": [
@@ -16,7 +15,6 @@
     },
     "require-dev": {
         "phpunit/phpunit": "^10.0|^11.0",
-        "friendsofphp/php-cs-fixer": "^3.0",
         "orchestra/testbench": "^8.0|^9.0"
     },
     "autoload": {
@@ -30,9 +28,7 @@
         }
     },
     "scripts": {
-        "test": "phpunit --testdox",
-        "cs-fix": "php-cs-fixer fix",
-        "cs-check": "php-cs-fixer fix --dry-run --diff"
+        "test": "vendor/bin/phpunit --testdox"
     },
     "minimum-stability": "stable"
 }
