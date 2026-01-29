@@ -18,6 +18,7 @@ jobs:
     defaults:
       run:
         working-directory: android-app
+        shell: bash
 
     steps:
       - name: Checkout code
@@ -33,8 +34,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install SDK components
-        run: |
-          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -46,14 +46,34 @@ jobs:
         run: chmod +x gradlew
 
       - name: Compile project
-        run: ./gradlew compileDebugKotlin --stacktrace 2>&1 | tee build-output.log
+        run: |
+          set -eo pipefail
+          ./gradlew compileDebugKotlin --stacktrace 2>&1 | tee compile-output.log
+          echo "### Compile: SUCCESS" >> $GITHUB_STEP_SUMMARY
+
+      - name: Show compile errors on failure
+        if: failure()
+        run: |
+          echo "### Compile FAILED" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -100 compile-output.log >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "No log found" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Run unit tests
-        if: success()
-        run: ./gradlew testDebugUnitTest --stacktrace 2>&1 | tee test-output.log
+        run: |
+          set -eo pipefail
+          ./gradlew testDebugUnitTest --stacktrace 2>&1 | tee test-output.log
+          echo "### Tests: SUCCESS" >> $GITHUB_STEP_SUMMARY
+
+      - name: Show test errors on failure
+        if: failure()
+        run: |
+          echo "### Test FAILED" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -100 test-output.log >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "No test log found" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Build debug APK
-        if: success()
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload debug APK
@@ -70,7 +90,7 @@ jobs:
         with:
           name: build-logs
           path: |
-            android-app/build-output.log
+            android-app/compile-output.log
             android-app/test-output.log
           retention-days: 7
 
@@ -88,6 +108,7 @@ jobs:
     defaults:
       run:
         working-directory: android-app
+        shell: bash
 
     steps:
       - name: Checkout code
@@ -103,8 +124,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install SDK components
-        run: |
-          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -113,22 +133,26 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run Android Lint
-        run: ./gradlew lintDebug --stacktrace 2>&1 | tee lint-output.log
+        run: |
+          set -eo pipefail
+          ./gradlew lintDebug --stacktrace 2>&1 | tee lint-output.log
 
-      - name: Upload lint logs
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: lint-logs
-          path: android-app/lint-output.log
-          retention-days: 7
+      - name: Show lint errors on failure
+        if: failure()
+        run: |
+          echo "### Lint FAILED" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -100 lint-output.log >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "No log" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload lint report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: lint-report
-          path: android-app/app/build/reports/lint-results*.html
+          path: |
+            android-app/lint-output.log
+            android-app/app/build/reports/lint-results*.html
           retention-days: 7
 
   release-apk:
@@ -154,8 +178,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install SDK components
-        run: |
-          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
