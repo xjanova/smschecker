@@ -137,33 +137,15 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build release APK
-        run: ./gradlew assembleRelease --stacktrace 2>&1 | tee build-output.log || echo "BUILD_FAILED=true" >> $GITHUB_ENV
+        run: ./gradlew assembleRelease --stacktrace
         env:
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
 
-      - name: Capture error log on failure
-        if: env.BUILD_FAILED == 'true'
-        run: |
-          echo "## Release APK Build Error" > $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          tail -100 build-output.log >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          # Also commit the log so it can be read publicly
-          cd ..
-          cp android-app/build-output.log ci-release-error.log
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add ci-release-error.log
-          git commit -m "ci: Release APK build error log [skip ci]"
-          git push
-          exit 1
-
       - name: Upload release APK
         uses: actions/upload-artifact@v4
-        if: env.BUILD_FAILED != 'true'
         with:
           name: release-apk-${{ github.sha }}
-          path: android-app/app/build/outputs/apk/release/*.apk
+          path: android-app/app/build/outputs/apk/release/
           retention-days: 30
