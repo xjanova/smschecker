@@ -18,6 +18,7 @@ android-app/app/debug/
 *.dex
 *.class
 *.jar
+!android-app/gradle/wrapper/gradle-wrapper.jar
 *.aar
 
 # ========================================
