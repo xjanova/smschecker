@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher icon background -->
+    <color name="ic_launcher_background">#121212</color>
+    <!-- Gold accent for branding -->
+    <color name="gold_primary">#D4AF37</color>
+</resources>
