@@ -21,6 +21,9 @@
     <!-- Vibrate for notifications -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Hardware features: telephony not required (app works on tablets too) -->
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+
     <application
         android:name=".SmsCheckerApp"
         android:allowBackup="false"
