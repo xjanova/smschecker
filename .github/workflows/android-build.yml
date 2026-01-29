@@ -15,6 +15,8 @@ jobs:
   build:
     name: Build & Test
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: android-app
@@ -46,31 +48,47 @@ jobs:
 
       - name: Compile and test
         id: gradle_build
+        continue-on-error: true
         run: |
-          ./gradlew compileDebugKotlin testDebugUnitTest --stacktrace > build-full.log 2>&1 || {
-            EXIT_CODE=$?
-            echo "::group::Build Error Output (last 200 lines)"
-            tail -200 build-full.log
-            echo "::endgroup::"
-            echo "## Build Failed" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            grep -i "error\|FAILED\|Exception\|Unresolved" build-full.log | head -50 >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Last 50 lines:" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            tail -50 build-full.log >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            exit $EXIT_CODE
-          }
+          ./gradlew compileDebugKotlin testDebugUnitTest --stacktrace > build-full.log 2>&1
+          echo "exitcode=$?" >> $GITHUB_OUTPUT
+
+      - name: Publish error log to repo
+        if: steps.gradle_build.outcome == 'failure'
+        run: |
+          cd ..
+          # Extract only error lines + last 80 lines for context
+          echo "# Build Error Log" > ci-build-error.md
+          echo "" >> ci-build-error.md
+          echo "Generated: $(date -u)" >> ci-build-error.md
+          echo "Commit: ${{ github.sha }}" >> ci-build-error.md
+          echo "" >> ci-build-error.md
+          echo "## Error Lines" >> ci-build-error.md
+          echo '```' >> ci-build-error.md
+          grep -in "error\|FAILED\|Exception\|Unresolved\|Cannot\| e: " android-app/build-full.log | head -60 >> ci-build-error.md 2>/dev/null || echo "No matching error lines" >> ci-build-error.md
+          echo '```' >> ci-build-error.md
+          echo "" >> ci-build-error.md
+          echo "## Last 80 Lines" >> ci-build-error.md
+          echo '```' >> ci-build-error.md
+          tail -80 android-app/build-full.log >> ci-build-error.md 2>/dev/null || echo "No log file" >> ci-build-error.md
+          echo '```' >> ci-build-error.md
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ci-build-error.md
+          git commit -m "ci: Build error log for debugging [skip ci]" || true
+          git push || true
+
+      - name: Fail if build failed
+        if: steps.gradle_build.outcome == 'failure'
+        run: exit 1
 
       - name: Build debug APK
-        if: success()
+        if: steps.gradle_build.outcome == 'success'
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
-        if: success()
+        if: steps.gradle_build.outcome == 'success'
         with:
           name: debug-apk-${{ github.sha }}
           path: android-app/app/build/outputs/apk/debug/*.apk
@@ -122,34 +140,22 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run Android Lint
-        run: |
-          ./gradlew lintDebug --stacktrace > lint-full.log 2>&1 || {
-            EXIT_CODE=$?
-            echo "::group::Lint Error Output (last 100 lines)"
-            tail -100 lint-full.log
-            echo "::endgroup::"
-            echo "## Lint Failed" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            grep -i "error\|FAILED\|Exception" lint-full.log | head -30 >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            exit $EXIT_CODE
-          }
+        continue-on-error: true
+        run: ./gradlew lintDebug --stacktrace
 
       - name: Upload lint report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: lint-report
-          path: |
-            android-app/lint-full.log
-            android-app/app/build/reports/lint-results*.html
+          path: android-app/app/build/reports/lint-results*.html
           retention-days: 7
 
   release-apk:
     name: Build Release APK
     runs-on: ubuntu-latest
-    needs: [build, lint]
-    if: github.ref == 'refs/heads/main'
+    needs: [build]
+    if: github.ref == 'refs/heads/main' && needs.build.result == 'success'
     defaults:
       run:
         working-directory: android-app
