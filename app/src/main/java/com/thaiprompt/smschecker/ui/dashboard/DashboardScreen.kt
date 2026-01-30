@@ -81,13 +81,13 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                             } else {
                                 Icon(
                                     Icons.Default.Refresh,
-                                    contentDescription = "Refresh",
+                                    contentDescription = "\u0E23\u0E35\u0E40\u0E1F\u0E23\u0E0A",
                                     tint = AppColors.GoldAccent
                                 )
                             }
                         }
                         Text(
-                            if (state.isMonitoring) "Active" else "Paused",
+                            if (state.isMonitoring) "\u0E17\u0E33\u0E07\u0E32\u0E19" else "\u0E2B\u0E22\u0E38\u0E14",
                             style = MaterialTheme.typography.bodySmall,
                             color = if (state.isMonitoring) AppColors.CreditGreen else AppColors.DebitRed
                         )
@@ -118,7 +118,7 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
             ) {
                 SummaryCard(
                     modifier = Modifier.weight(1f),
-                    title = "Income Today",
+                    title = "\u0E23\u0E32\u0E22\u0E23\u0E31\u0E1A\u0E27\u0E31\u0E19\u0E19\u0E35\u0E49",
                     amount = state.todayCredit,
                     icon = Icons.Default.TrendingUp,
                     color = AppColors.CreditGreen,
@@ -131,7 +131,7 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                 )
                 SummaryCard(
                     modifier = Modifier.weight(1f),
-                    title = "Expense Today",
+                    title = "\u0E23\u0E32\u0E22\u0E08\u0E48\u0E32\u0E22\u0E27\u0E31\u0E19\u0E19\u0E35\u0E49",
                     amount = state.todayDebit,
                     icon = Icons.Default.TrendingDown,
                     color = AppColors.DebitRed,
@@ -178,13 +178,14 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                "Sync Status",
+                                "\u0E2A\u0E16\u0E32\u0E19\u0E30\u0E01\u0E32\u0E23\u0E0B\u0E34\u0E07\u0E04\u0E4C",
                                 style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
+                                color = Color.White
                             )
                             Text(
-                                if (state.unsyncedCount > 0) "${state.unsyncedCount} pending"
-                                else "All synced",
+                                if (state.unsyncedCount > 0) "${state.unsyncedCount} \u0E23\u0E2D\u0E14\u0E33\u0E40\u0E19\u0E34\u0E19\u0E01\u0E32\u0E23"
+                                else "\u0E0B\u0E34\u0E07\u0E04\u0E4C\u0E04\u0E23\u0E1A\u0E41\u0E25\u0E49\u0E27",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -201,7 +202,7 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                         ) {
                             Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Sync")
+                            Text("\u0E0B\u0E34\u0E07\u0E04\u0E4C")
                         }
                     }
                 }
@@ -214,7 +215,7 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
             item {
                 GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
                     Text(
-                        "Server Status",
+                        "\u0E2A\u0E16\u0E32\u0E19\u0E30\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Medium,
                         color = AppColors.GoldAccent
@@ -238,11 +239,12 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     health.serverName,
-                                    style = MaterialTheme.typography.bodySmall
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White
                                 )
                             }
                             Text(
-                                if (health.isReachable) "${health.latencyMs}ms" else "Offline",
+                                if (health.isReachable) "${health.latencyMs}ms" else "\u0E2D\u0E2D\u0E1F\u0E44\u0E25\u0E19\u0E4C",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (health.isReachable) AppColors.CreditGreen else AppColors.DebitRed,
                                 fontSize = 11.sp
@@ -267,7 +269,7 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
         item { Spacer(modifier = Modifier.height(16.dp)) }
         item {
             SectionTitle(
-                "Recent Transactions",
+                "\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23\u0E25\u0E48\u0E32\u0E2A\u0E38\u0E14",
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
         }
@@ -291,12 +293,12 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            "No transactions yet",
+                            "\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E21\u0E35\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23",
                             style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = Color.White
                         )
                         Text(
-                            "Bank SMS will appear here automatically",
+                            "SMS \u0E18\u0E19\u0E32\u0E04\u0E32\u0E23\u0E08\u0E30\u0E41\u0E2A\u0E14\u0E07\u0E17\u0E35\u0E48\u0E19\u0E35\u0E48\u0E2D\u0E31\u0E15\u0E42\u0E19\u0E21\u0E31\u0E15\u0E34",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
@@ -331,7 +333,7 @@ private fun OrderApprovalSummaryCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "Order Approvals",
+                "\u0E2D\u0E19\u0E38\u0E21\u0E31\u0E15\u0E34\u0E2D\u0E2D\u0E40\u0E14\u0E2D\u0E23\u0E4C",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = AppColors.GoldAccent
@@ -341,7 +343,7 @@ private fun OrderApprovalSummaryCard(
                     containerColor = AppColors.WarningOrange,
                     contentColor = Color.White
                 ) {
-                    Text("$pendingCount pending")
+                    Text("$pendingCount \u0E23\u0E2D\u0E14\u0E33\u0E40\u0E19\u0E34\u0E19\u0E01\u0E32\u0E23")
                 }
             }
         }
@@ -365,17 +367,17 @@ private fun OrderApprovalSummaryCard(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                ChartLegendItem(label = "Auto Approved", count = stats.autoApproved, color = AppColors.CreditGreen)
-                ChartLegendItem(label = "Manually Approved", count = stats.manuallyApproved, color = AppColors.GoldAccent)
-                ChartLegendItem(label = "Pending Review", count = stats.pendingReview, color = AppColors.WarningOrange)
-                ChartLegendItem(label = "Rejected", count = stats.rejected, color = AppColors.DebitRed)
+                ChartLegendItem(label = "\u0E2D\u0E19\u0E38\u0E21\u0E31\u0E15\u0E34\u0E2D\u0E31\u0E15\u0E42\u0E19\u0E21\u0E31\u0E15\u0E34", count = stats.autoApproved, color = AppColors.CreditGreen)
+                ChartLegendItem(label = "\u0E2D\u0E19\u0E38\u0E21\u0E31\u0E15\u0E34\u0E14\u0E49\u0E27\u0E22\u0E15\u0E19\u0E40\u0E2D\u0E07", count = stats.manuallyApproved, color = AppColors.GoldAccent)
+                ChartLegendItem(label = "\u0E23\u0E2D\u0E15\u0E23\u0E27\u0E08\u0E2A\u0E2D\u0E1A", count = stats.pendingReview, color = AppColors.WarningOrange)
+                ChartLegendItem(label = "\u0E1B\u0E0F\u0E34\u0E40\u0E2A\u0E18", count = stats.rejected, color = AppColors.DebitRed)
             }
         }
 
         if (stats.dailyBreakdown.isNotEmpty()) {
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                "Last 7 Days",
+                "7 \u0E27\u0E31\u0E19\u0E17\u0E35\u0E48\u0E1C\u0E48\u0E32\u0E19\u0E21\u0E32",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -475,7 +477,8 @@ fun TransactionItem(
                     Text(
                         transaction.bank,
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White
                     )
                     Text(
                         dateFormat.format(Date(transaction.timestamp)),
@@ -510,7 +513,7 @@ fun TransactionItem(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        if (transaction.isSynced) "Synced" else "Pending",
+                        if (transaction.isSynced) "\u0E0B\u0E34\u0E07\u0E04\u0E4C\u0E41\u0E25\u0E49\u0E27" else "\u0E23\u0E2D\u0E14\u0E33\u0E40\u0E19\u0E34\u0E19\u0E01\u0E32\u0E23",
                         style = MaterialTheme.typography.bodySmall,
                         fontSize = 10.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant

@@ -37,8 +37,30 @@ import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(
+    onNavigateToQrScanner: () -> Unit = {},
+    qrServerName: String? = null,
+    qrServerUrl: String? = null,
+    qrApiKey: String? = null,
+    qrSecretKey: String? = null,
+    onQrResultConsumed: () -> Unit = {},
+    viewModel: SettingsViewModel = hiltViewModel()
+) {
     val state by viewModel.state.collectAsState()
+
+    // Handle QR scan result
+    LaunchedEffect(qrServerName, qrServerUrl, qrApiKey, qrSecretKey) {
+        if (qrServerName != null && qrServerUrl != null && qrApiKey != null && qrSecretKey != null) {
+            viewModel.addServer(
+                name = qrServerName,
+                url = qrServerUrl,
+                apiKey = qrApiKey,
+                secretKey = qrSecretKey,
+                isDefault = true
+            )
+            onQrResultConsumed()
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -50,13 +72,13 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         item {
             GradientHeader {
                 Text(
-                    "Settings",
+                    "\u0E15\u0E31\u0E49\u0E07\u0E04\u0E48\u0E32",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
                 Text(
-                    "Configuration & Preferences",
+                    "\u0E01\u0E32\u0E23\u0E01\u0E33\u0E2B\u0E19\u0E14\u0E04\u0E48\u0E32\u0E41\u0E25\u0E30\u0E01\u0E32\u0E23\u0E15\u0E31\u0E49\u0E07\u0E04\u0E48\u0E32",
                     style = MaterialTheme.typography.bodySmall,
                     color = AppColors.GoldAccent
                 )
@@ -86,7 +108,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
-                            "Device Information",
+                            "\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E2D\u0E38\u0E1B\u0E01\u0E23\u0E13\u0E4C",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = AppColors.GoldAccent
@@ -133,12 +155,14 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                "SMS Monitoring",
+                                "\u0E15\u0E34\u0E14\u0E15\u0E32\u0E21 SMS",
                                 style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
+                                color = Color.White
                             )
                             Text(
-                                if (state.isMonitoring) "Active - listening for bank SMS" else "Paused",
+                                if (state.isMonitoring) "\u0E17\u0E33\u0E07\u0E32\u0E19\u0E2D\u0E22\u0E39\u0E48 - \u0E23\u0E2D\u0E23\u0E31\u0E1A SMS \u0E18\u0E19\u0E32\u0E04\u0E32\u0E23"
+                                else "\u0E2B\u0E22\u0E38\u0E14\u0E0A\u0E31\u0E48\u0E27\u0E04\u0E23\u0E32\u0E27",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -167,7 +191,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "Approval Mode",
+                        "\u0E42\u0E2B\u0E21\u0E14\u0E2D\u0E19\u0E38\u0E21\u0E31\u0E15\u0E34",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = AppColors.GoldAccent
@@ -188,7 +212,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                "${state.offlineQueueCount} queued",
+                                "${state.offlineQueueCount} \u0E23\u0E2D\u0E04\u0E34\u0E27",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = AppColors.WarningOrange,
                                 fontSize = 11.sp
@@ -233,7 +257,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                 color = if (isSelected) AppColors.GoldAccent
-                                    else MaterialTheme.colorScheme.onSurface
+                                    else Color.White
                             )
                             Text(
                                 mode.description,
@@ -258,18 +282,34 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SectionTitle("Server Connections", showDivider = false)
-                FilledTonalButton(
-                    onClick = { viewModel.showAddServerDialog() },
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = AppColors.GoldAccent.copy(alpha = 0.2f),
-                        contentColor = AppColors.GoldAccent
-                    ),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Add Server", fontSize = 12.sp)
+                SectionTitle("\u0E40\u0E0A\u0E37\u0E48\u0E2D\u0E21\u0E15\u0E48\u0E2D\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C", showDivider = false)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // QR Code Scanner button
+                    FilledTonalButton(
+                        onClick = onNavigateToQrScanner,
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = AppColors.GoldAccent.copy(alpha = 0.2f),
+                            contentColor = AppColors.GoldAccent
+                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("\u0E2A\u0E41\u0E01\u0E19 QR", fontSize = 12.sp)
+                    }
+                    // Manual add button
+                    FilledTonalButton(
+                        onClick = { viewModel.showAddServerDialog() },
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = AppColors.GoldAccent.copy(alpha = 0.2f),
+                            contentColor = AppColors.GoldAccent
+                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("\u0E40\u0E1E\u0E34\u0E48\u0E21\u0E40\u0E2D\u0E07", fontSize = 12.sp)
+                    }
                 }
             }
         }
@@ -301,12 +341,29 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                             )
                         }
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text("No servers configured", style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            "Add a Laravel server to sync transactions",
+                            "\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E21\u0E35\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color.White
+                        )
+                        Text(
+                            "\u0E40\u0E1E\u0E34\u0E48\u0E21\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C\u0E40\u0E1E\u0E37\u0E48\u0E2D\u0E0B\u0E34\u0E07\u0E04\u0E4C\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E01\u0E32\u0E23\u0E0A\u0E33\u0E23\u0E30\u0E40\u0E07\u0E34\u0E19",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        // Quick QR scan button in empty state
+                        Button(
+                            onClick = onNavigateToQrScanner,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = AppColors.GoldAccent,
+                                contentColor = Color.Black
+                            )
+                        ) {
+                            Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("\u0E2A\u0E41\u0E01\u0E19 QR Code \u0E40\u0E1E\u0E34\u0E48\u0E21\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C")
+                        }
                     }
                 }
             }
@@ -326,7 +383,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         // Supported Banks Info
         item {
             SectionTitle(
-                "Supported Banks",
+                "\u0E18\u0E19\u0E32\u0E04\u0E32\u0E23\u0E17\u0E35\u0E48\u0E23\u0E2D\u0E07\u0E23\u0E31\u0E1A",
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
         }
@@ -336,14 +393,14 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         item {
             GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
                 val banks = listOf(
-                    "KBANK" to "Kasikorn Bank",
-                    "SCB" to "Siam Commercial Bank",
-                    "KTB" to "Krungthai Bank",
-                    "BBL" to "Bangkok Bank",
-                    "GSB" to "Government Savings Bank",
-                    "BAY" to "Bank of Ayudhya (Krungsri)",
-                    "TTB" to "TMBThanachart Bank",
-                    "PromptPay" to "PromptPay QR"
+                    "KBANK" to "\u0E18\u0E19\u0E32\u0E04\u0E32\u0E23\u0E01\u0E2A\u0E34\u0E01\u0E23\u0E44\u0E17\u0E22",
+                    "SCB" to "\u0E18\u0E19\u0E32\u0E04\u0E32\u0E23\u0E44\u0E17\u0E22\u0E1E\u0E32\u0E13\u0E34\u0E0A\u0E22\u0E4C",
+                    "KTB" to "\u0E18\u0E19\u0E32\u0E04\u0E32\u0E23\u0E01\u0E23\u0E38\u0E07\u0E44\u0E17\u0E22",
+                    "BBL" to "\u0E18\u0E19\u0E32\u0E04\u0E32\u0E23\u0E01\u0E23\u0E38\u0E07\u0E40\u0E17\u0E1E",
+                    "GSB" to "\u0E18\u0E19\u0E32\u0E04\u0E32\u0E23\u0E2D\u0E2D\u0E21\u0E2A\u0E34\u0E19",
+                    "BAY" to "\u0E18\u0E19\u0E32\u0E04\u0E32\u0E23\u0E01\u0E23\u0E38\u0E07\u0E28\u0E23\u0E35\u0E2D\u0E22\u0E38\u0E18\u0E22\u0E32",
+                    "TTB" to "\u0E18\u0E19\u0E32\u0E04\u0E32\u0E23\u0E17\u0E35\u0E17\u0E35\u0E1A\u0E35",
+                    "PromptPay" to "\u0E1E\u0E23\u0E49\u0E2D\u0E21\u0E40\u0E1E\u0E22\u0E4C"
                 )
                 banks.forEachIndexed { index, (code, name) ->
                     Row(
@@ -359,9 +416,18 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                                 size = 28.dp
                             )
                             Spacer(modifier = Modifier.width(10.dp))
-                            Text(code, fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                code,
+                                fontWeight = FontWeight.Medium,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.White
+                            )
                         }
-                        Text(name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            name,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     if (index < banks.lastIndex) {
                         Divider(
@@ -453,7 +519,8 @@ fun ServerCard(
                             Text(
                                 server.name,
                                 style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
                             )
                             if (server.isDefault) {
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -464,7 +531,7 @@ fun ServerCard(
                                         .padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Text(
-                                        "Default",
+                                        "\u0E2B\u0E25\u0E31\u0E01",
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = AppColors.GoldAccent
@@ -503,14 +570,14 @@ fun ServerCard(
                 Column {
                     if (server.lastSyncAt != null) {
                         Text(
-                            "Last sync: ${dateFormat.format(Date(server.lastSyncAt))}",
+                            "\u0E0B\u0E34\u0E07\u0E04\u0E4C\u0E25\u0E48\u0E32\u0E2A\u0E38\u0E14: ${dateFormat.format(Date(server.lastSyncAt))}",
                             style = MaterialTheme.typography.bodySmall,
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     } else {
                         Text(
-                            "Never synced",
+                            "\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E40\u0E04\u0E22\u0E0B\u0E34\u0E07\u0E04\u0E4C",
                             style = MaterialTheme.typography.bodySmall,
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -532,7 +599,11 @@ fun ServerCard(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                server.lastSyncStatus,
+                                when (server.lastSyncStatus) {
+                                    "success" -> "\u0E2A\u0E33\u0E40\u0E23\u0E47\u0E08"
+                                    "failed" -> "\u0E25\u0E49\u0E21\u0E40\u0E2B\u0E25\u0E27"
+                                    else -> server.lastSyncStatus
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 fontSize = 11.sp,
                                 color = when (server.lastSyncStatus) {
@@ -552,7 +623,7 @@ fun ServerCard(
                 ) {
                     Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Remove", fontSize = 11.sp)
+                    Text("\u0E25\u0E1A", fontSize = 11.sp)
                 }
             }
         }
@@ -561,19 +632,19 @@ fun ServerCard(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Remove Server") },
-            text = { Text("Remove \"${server.name}\" from connections? This will not delete data on the server.") },
+            title = { Text("\u0E25\u0E1A\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C") },
+            text = { Text("\u0E15\u0E49\u0E2D\u0E07\u0E01\u0E32\u0E23\u0E25\u0E1A \"${server.name}\" \u0E2D\u0E2D\u0E01\u0E08\u0E32\u0E01\u0E01\u0E32\u0E23\u0E40\u0E0A\u0E37\u0E48\u0E2D\u0E21\u0E15\u0E48\u0E2D\u0E2B\u0E23\u0E37\u0E2D\u0E44\u0E21\u0E48? \u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E1A\u0E19\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C\u0E08\u0E30\u0E44\u0E21\u0E48\u0E16\u0E39\u0E01\u0E25\u0E1A") },
             confirmButton = {
                 TextButton(onClick = {
                     onDelete()
                     showDeleteConfirm = false
                 }) {
-                    Text("Remove", color = AppColors.DebitRed)
+                    Text("\u0E25\u0E1A", color = AppColors.DebitRed)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("Cancel")
+                    Text("\u0E22\u0E01\u0E40\u0E25\u0E34\u0E01")
                 }
             }
         )
@@ -620,14 +691,14 @@ fun AddServerDialog(
                 )
 
                 Text(
-                    "Add Server Connection",
+                    "\u0E40\u0E1E\u0E34\u0E48\u0E21\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = AppColors.GoldAccent
                 )
 
                 Text(
-                    "Connect to a Laravel backend to sync payment data",
+                    "\u0E40\u0E0A\u0E37\u0E48\u0E2D\u0E21\u0E15\u0E48\u0E2D\u0E01\u0E31\u0E1A Laravel \u0E40\u0E1E\u0E37\u0E48\u0E2D\u0E0B\u0E34\u0E07\u0E04\u0E4C\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E01\u0E32\u0E23\u0E0A\u0E33\u0E23\u0E30\u0E40\u0E07\u0E34\u0E19",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -635,8 +706,8 @@ fun AddServerDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Server Name") },
-                    placeholder = { Text("e.g. Thaiprompt Main") },
+                    label = { Text("\u0E0A\u0E37\u0E48\u0E2D\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C") },
+                    placeholder = { Text("\u0E40\u0E0A\u0E48\u0E19 Thaiprompt Main") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     leadingIcon = { Icon(Icons.Default.Label, contentDescription = null) }
@@ -645,7 +716,7 @@ fun AddServerDialog(
                 OutlinedTextField(
                     value = url,
                     onValueChange = { url = it },
-                    label = { Text("Server URL") },
+                    label = { Text("URL \u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C") },
                     placeholder = { Text("https://your-domain.com") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
@@ -674,7 +745,7 @@ fun AddServerDialog(
                 OutlinedTextField(
                     value = secretKey,
                     onValueChange = { secretKey = it },
-                    label = { Text("Secret Key (for encryption)") },
+                    label = { Text("Secret Key (\u0E2A\u0E33\u0E2B\u0E23\u0E31\u0E1A\u0E40\u0E02\u0E49\u0E32\u0E23\u0E2B\u0E31\u0E2A)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     visualTransformation = if (showSecretKey) VisualTransformation.None else PasswordVisualTransformation(),
@@ -695,7 +766,11 @@ fun AddServerDialog(
                 ) {
                     Checkbox(checked = isDefault, onCheckedChange = { isDefault = it })
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Set as default server", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "\u0E15\u0E31\u0E49\u0E07\u0E40\u0E1B\u0E47\u0E19\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C\u0E2B\u0E25\u0E31\u0E01",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White
+                    )
                 }
 
                 Row(
@@ -704,7 +779,7 @@ fun AddServerDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("Cancel")
+                        Text("\u0E22\u0E01\u0E40\u0E25\u0E34\u0E01")
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
@@ -717,7 +792,7 @@ fun AddServerDialog(
                     ) {
                         Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Save")
+                        Text("\u0E1A\u0E31\u0E19\u0E17\u0E36\u0E01")
                     }
                 }
             }

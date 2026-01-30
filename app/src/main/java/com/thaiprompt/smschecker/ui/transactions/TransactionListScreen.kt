@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -25,9 +26,9 @@ import com.thaiprompt.smschecker.ui.dashboard.TransactionItem
 import com.thaiprompt.smschecker.ui.theme.AppColors
 
 enum class TransactionFilter(val label: String) {
-    ALL("All"),
-    CREDIT("Income"),
-    DEBIT("Expense")
+    ALL("\u0E17\u0E31\u0E49\u0E07\u0E2B\u0E21\u0E14"),
+    CREDIT("\u0E23\u0E32\u0E22\u0E23\u0E31\u0E1A"),
+    DEBIT("\u0E23\u0E32\u0E22\u0E08\u0E48\u0E32\u0E22")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -50,13 +51,13 @@ fun TransactionListScreen(viewModel: TransactionListViewModel = hiltViewModel())
         // Gradient Header
         GradientHeader {
             Text(
-                "Transactions",
+                "\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
-                color = androidx.compose.ui.graphics.Color.White
+                color = Color.White
             )
             Text(
-                "Payment History",
+                "\u0E1B\u0E23\u0E30\u0E27\u0E31\u0E15\u0E34\u0E01\u0E32\u0E23\u0E0A\u0E33\u0E23\u0E30\u0E40\u0E07\u0E34\u0E19",
                 style = MaterialTheme.typography.bodySmall,
                 color = AppColors.GoldAccent
             )
@@ -110,7 +111,7 @@ fun TransactionListScreen(viewModel: TransactionListViewModel = hiltViewModel())
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 StatItem(
-                    label = "Total",
+                    label = "\u0E17\u0E31\u0E49\u0E07\u0E2B\u0E21\u0E14",
                     value = "${filteredTransactions.size}",
                     icon = Icons.Default.Receipt
                 )
@@ -121,7 +122,7 @@ fun TransactionListScreen(viewModel: TransactionListViewModel = hiltViewModel())
                         .background(AppColors.GlassCardBorder)
                 )
                 StatItem(
-                    label = "Synced",
+                    label = "\u0E0B\u0E34\u0E07\u0E04\u0E4C\u0E41\u0E25\u0E49\u0E27",
                     value = "${filteredTransactions.count { it.isSynced }}",
                     icon = Icons.Default.CloudDone
                 )
@@ -132,7 +133,7 @@ fun TransactionListScreen(viewModel: TransactionListViewModel = hiltViewModel())
                         .background(AppColors.GlassCardBorder)
                 )
                 StatItem(
-                    label = "Pending",
+                    label = "\u0E23\u0E2D\u0E14\u0E33\u0E40\u0E19\u0E34\u0E19\u0E01\u0E32\u0E23",
                     value = "${filteredTransactions.count { !it.isSynced }}",
                     icon = Icons.Default.CloudOff
                 )
@@ -166,9 +167,9 @@ fun TransactionListScreen(viewModel: TransactionListViewModel = hiltViewModel())
                     }
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        "No transactions found",
+                        "\u0E44\u0E21\u0E48\u0E1E\u0E1A\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23",
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color.White
                     )
                 }
             }
@@ -211,7 +212,8 @@ fun StatItem(
         Text(
             value,
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            color = Color.White
         )
         Text(
             label,
