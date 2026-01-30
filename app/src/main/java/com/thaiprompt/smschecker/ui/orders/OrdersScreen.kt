@@ -1,0 +1,529 @@
+package com.thaiprompt.smschecker.ui.orders
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.thaiprompt.smschecker.data.model.ApprovalStatus
+import com.thaiprompt.smschecker.data.model.MatchConfidence
+import com.thaiprompt.smschecker.data.model.OrderApproval
+import com.thaiprompt.smschecker.ui.components.BankLogoCircle
+import com.thaiprompt.smschecker.ui.components.DateRangePickerDialog
+import com.thaiprompt.smschecker.ui.components.GlassCard
+import com.thaiprompt.smschecker.ui.components.GradientHeader
+import com.thaiprompt.smschecker.ui.components.premiumBackground
+import com.thaiprompt.smschecker.ui.theme.AppColors
+import java.text.SimpleDateFormat
+import java.util.*
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
+    val state by viewModel.state.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
+    var showDatePicker by remember { mutableStateOf(false) }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .premiumBackground(),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        // Gradient Header
+        item {
+            GradientHeader {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            "Orders",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            "Approval Management",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AppColors.GoldAccent
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (state.pendingCount > 0) {
+                            FilledTonalButton(
+                                onClick = { viewModel.bulkApproveAll() },
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = AppColors.CreditGreen.copy(alpha = 0.2f),
+                                    contentColor = AppColors.CreditGreen
+                                ),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Approve All", fontSize = 12.sp)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        IconButton(onClick = { viewModel.refresh() }) {
+                            if (isRefreshing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color = AppColors.GoldAccent
+                                )
+                            } else {
+                                Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = AppColors.GoldAccent)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(16.dp)) }
+
+        // Status Filter Chips
+        item {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp)
+            ) {
+                val filters = listOf<Pair<String, ApprovalStatus?>>(
+                    "All" to null,
+                    "Pending" to ApprovalStatus.PENDING_REVIEW,
+                    "Auto" to ApprovalStatus.AUTO_APPROVED,
+                    "Manual" to ApprovalStatus.MANUALLY_APPROVED,
+                    "Rejected" to ApprovalStatus.REJECTED
+                )
+                items(filters) { (label, status) ->
+                    FilterChip(
+                        selected = state.statusFilter == status,
+                        onClick = { viewModel.setStatusFilter(status) },
+                        label = { Text(label, fontSize = 12.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = AppColors.GoldAccent.copy(alpha = 0.25f),
+                            selectedLabelColor = AppColors.GoldAccent,
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            borderColor = AppColors.GlassCardBorder,
+                            selectedBorderColor = AppColors.GoldAccent.copy(alpha = 0.5f)
+                        )
+                    )
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(8.dp)) }
+
+        // Server Filter + Date Range
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (state.servers.size > 1) {
+                    LazyRow(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        item {
+                            FilterChip(
+                                selected = state.serverFilter == null,
+                                onClick = { viewModel.setServerFilter(null) },
+                                label = { Text("All Servers", fontSize = 12.sp) }
+                            )
+                        }
+                        items(state.servers) { server ->
+                            FilterChip(
+                                selected = state.serverFilter == server.id,
+                                onClick = { viewModel.setServerFilter(server.id) },
+                                label = { Text(server.name, fontSize = 12.sp) }
+                            )
+                        }
+                    }
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+
+                OutlinedButton(
+                    onClick = { showDatePicker = true },
+                    border = ButtonDefaults.outlinedButtonBorder,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        if (state.dateFrom != null) "Filtered" else "Dates",
+                        fontSize = 12.sp
+                    )
+                }
+
+                if (state.dateFrom != null) {
+                    IconButton(
+                        onClick = { viewModel.clearDateRange() },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(12.dp)) }
+
+        // Stats summary card
+        item {
+            GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    StatItem("Total", state.orders.size, MaterialTheme.colorScheme.onSurface)
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(36.dp)
+                            .background(AppColors.GlassCardBorder)
+                    )
+                    StatItem("Pending", state.pendingCount, AppColors.WarningOrange)
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(36.dp)
+                            .background(AppColors.GlassCardBorder)
+                    )
+                    StatItem("Offline", state.offlineQueueCount, AppColors.InfoBlue)
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(12.dp)) }
+
+        // Empty state
+        if (state.orders.isEmpty() && !state.isLoading) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(48.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            modifier = Modifier
+                                .size(80.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Assignment,
+                                contentDescription = null,
+                                modifier = Modifier.size(40.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            "No orders yet",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "Matched payments will appear here",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            }
+        }
+
+        // Order list
+        items(state.orders) { order ->
+            OrderCard(
+                order = order,
+                onApprove = { viewModel.approveOrder(order) },
+                onReject = { viewModel.rejectOrder(order) },
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        item { Spacer(modifier = Modifier.height(8.dp)) }
+    }
+
+    // Date picker dialog
+    if (showDatePicker) {
+        DateRangePickerDialog(
+            onDismiss = { showDatePicker = false },
+            onDateRangeSelected = { start, end ->
+                viewModel.setDateRange(start, end)
+                showDatePicker = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun StatItem(label: String, count: Int, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = count.toString(),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = color
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 11.sp
+        )
+    }
+}
+
+@Composable
+fun OrderCard(
+    order: OrderApproval,
+    onApprove: () -> Unit,
+    onReject: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val statusColor = when (order.approvalStatus) {
+        ApprovalStatus.AUTO_APPROVED, ApprovalStatus.MANUALLY_APPROVED -> AppColors.CreditGreen
+        ApprovalStatus.PENDING_REVIEW -> AppColors.WarningOrange
+        ApprovalStatus.REJECTED -> AppColors.DebitRed
+        ApprovalStatus.EXPIRED -> Color.Gray
+    }
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(1.dp, AppColors.GlassCardBorder, RoundedCornerShape(16.dp)),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            // Status color bar with gradient
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .height(IntrinsicSize.Max)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(statusColor, statusColor.copy(alpha = 0.4f))
+                        )
+                    )
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp)
+            ) {
+                // Top row: website + status
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = order.websiteName ?: "Unknown",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    StatusBadge(order.approvalStatus)
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Order number + product
+                if (order.orderNumber != null) {
+                    Text(
+                        text = "#${order.orderNumber}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppColors.GoldAccent.copy(alpha = 0.8f)
+                    )
+                }
+                if (order.productName != null) {
+                    Text(
+                        text = order.productName + (order.quantity?.let { " x$it" } ?: ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Bottom row: bank + amount + date
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (order.bank != null) {
+                            BankLogoCircle(bankCode = order.bank, size = 28.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text(
+                            text = formatAmount(order.amount),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = AppColors.CreditGreen
+                        )
+                    }
+                    Text(
+                        text = formatDate(order.createdAt),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp
+                    )
+                }
+
+                // Ambiguous warning
+                if (order.confidence == MatchConfidence.AMBIGUOUS) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(AppColors.WarningOrange.copy(alpha = 0.1f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = AppColors.WarningOrange
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "Ambiguous Match",
+                            fontSize = 10.sp,
+                            color = AppColors.WarningOrange,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                // Offline queue indicator
+                if (order.pendingAction != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(AppColors.InfoBlue)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            "Queued: ${order.pendingAction.name}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 10.sp,
+                            color = AppColors.InfoBlue
+                        )
+                    }
+                }
+
+                // Action buttons for pending orders
+                if (order.approvalStatus == ApprovalStatus.PENDING_REVIEW && order.pendingAction == null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedButton(
+                            onClick = onReject,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.DebitRed),
+                            border = ButtonDefaults.outlinedButtonBorder,
+                            modifier = Modifier.height(34.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)
+                        ) {
+                            Text("Reject", fontSize = 12.sp)
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = onApprove,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = AppColors.CreditGreen
+                            ),
+                            modifier = Modifier.height(34.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Approve", fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusBadge(status: ApprovalStatus) {
+    val (color, text) = when (status) {
+        ApprovalStatus.AUTO_APPROVED -> AppColors.CreditGreen to "Auto"
+        ApprovalStatus.MANUALLY_APPROVED -> AppColors.InfoBlue to "Approved"
+        ApprovalStatus.PENDING_REVIEW -> AppColors.WarningOrange to "Pending"
+        ApprovalStatus.REJECTED -> AppColors.DebitRed to "Rejected"
+        ApprovalStatus.EXPIRED -> Color.Gray to "Expired"
+    }
+
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(color.copy(alpha = 0.15f))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    ) {
+        Text(
+            text,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = color
+        )
+    }
+}
+
+private fun formatAmount(amount: Double): String {
+    return String.format(Locale.getDefault(), "+\u0E3F%,.2f", amount)
+}
+
+private fun formatDate(timestamp: Long): String {
+    val sdf = SimpleDateFormat("HH:mm dd/MM", Locale.getDefault())
+    return sdf.format(Date(timestamp))
+}

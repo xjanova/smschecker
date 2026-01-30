@@ -1,0 +1,63 @@
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+release/
+
+# Gradle files
+.gradle/
+build/
+app/build/
+
+# Local configuration file
+local.properties
+
+# Android Studio
+*.iml
+.idea/
+.DS_Store
+
+# NDK
+obj/
+.externalNativeBuild/
+.cxx/
+
+# Keystore files
+*.jks
+*.keystore
+
+# Google Services
+google-services.json
+
+# Signing config
+signing.properties
+
+# Log files
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Null file artifact
+nul
+
+# Laravel vendor
+laravel-api/vendor/
+laravel-api/.env
+laravel-api/storage/logs/
+
+# Gradle wrapper jar (will be downloaded)
+!gradle/wrapper/gradle-wrapper.jar

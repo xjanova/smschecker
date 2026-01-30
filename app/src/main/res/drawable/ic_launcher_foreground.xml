@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Safe zone group centered at 54,54 -->
+    <group
+        android:translateX="22"
+        android:translateY="22">
+
+        <!-- Shield body -->
+        <path
+            android:fillColor="#D4AF37"
+            android:pathData="M32,8L8,18V38C8,53.52 18.16,68 32,72C45.84,68 56,53.52 56,38V18L32,8Z" />
+
+        <!-- Shield inner darker area -->
+        <path
+            android:fillColor="#B8860B"
+            android:pathData="M32,12L12,20.8V38C12,51.28 20.8,63.52 32,67.6C43.2,63.52 52,51.28 52,38V20.8L32,12Z" />
+
+        <!-- Shield inner gradient area -->
+        <path
+            android:fillColor="#1A1A2E"
+            android:pathData="M32,16L16,23.6V38C16,49.04 23.44,59.04 32,63.2C40.56,59.04 48,49.04 48,38V23.6L32,16Z" />
+
+        <!-- SMS envelope icon -->
+        <path
+            android:fillColor="#D4AF37"
+            android:pathData="M22,32H42C43.1,32 44,32.9 44,34V46C44,47.1 43.1,48 42,48H22C20.9,48 20,47.1 20,46V34C20,32.9 20.9,32 22,32Z" />
+
+        <!-- Envelope flap -->
+        <path
+            android:fillColor="#F5DEB3"
+            android:pathData="M20,34L32,41L44,34" />
+
+        <!-- Checkmark circle -->
+        <path
+            android:fillColor="#4CAF50"
+            android:pathData="M39,24A7,7 0,1 1,25 24A7,7 0,0 1,39 24Z" />
+
+        <!-- Checkmark -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:strokeWidth="0"
+            android:pathData="M29.5,24L31,25.5L35,21.5L36.5,23L31,28.5L28,25.5L29.5,24Z" />
+
+    </group>
+</vector>
