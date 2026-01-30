@@ -23,7 +23,7 @@ android {
         versionName = ciVersionName
 
         // Expose build metadata via BuildConfig
-        buildConfigField("String", "BUILD_TIME", "\"${java.time.Instant.now()}\"")
+        buildConfigField("String", "BUILD_TIME", "\"${System.currentTimeMillis()}\"")
         buildConfigField("String", "GIT_SHA", "\"${System.getenv("GITHUB_SHA")?.take(7) ?: "local"}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
