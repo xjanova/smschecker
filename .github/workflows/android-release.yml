@@ -15,9 +15,6 @@ jobs:
   release:
     name: Build Signed Release APK
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: android-app
 
     steps:
       - name: Checkout code
@@ -35,56 +32,46 @@ jobs:
       - name: Install SDK components
         run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
       - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+        run: chmod +x android-app/gradlew
 
       - name: Decode keystore
         run: |
-          echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
-          echo "Keystore decoded: $(wc -c < app/release.keystore) bytes"
+          echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > android-app/app/release.keystore
+          echo "Keystore decoded: $(wc -c < android-app/app/release.keystore) bytes"
 
       - name: Build release APK
         id: build
-        run: |
-          ./gradlew assembleRelease --stacktrace 2>&1 | tee /tmp/build.log
-          echo "EXIT_CODE=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+        continue-on-error: true
+        working-directory: android-app
+        run: ./gradlew assembleRelease --stacktrace 2>&1 | tee $GITHUB_WORKSPACE/ci-build-output.log
         env:
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
           SIGNING_STORE_FILE: app/release.keystore
 
-      - name: Commit error log if build failed
-        if: steps.build.outputs.EXIT_CODE != '0'
+      - name: Always commit build log
+        if: always()
         run: |
-          cd $GITHUB_WORKSPACE
-          echo "=== RELEASE BUILD ERROR LOG ===" > ci-release-error.log
-          echo "Date: $(date)" >> ci-release-error.log
-          echo "Commit: $GITHUB_SHA" >> ci-release-error.log
-          echo "=== ERRORS ===" >> ci-release-error.log
-          grep -i "error\|FAILURE\|Exception\|failed" /tmp/build.log >> ci-release-error.log || true
-          echo "" >> ci-release-error.log
-          echo "=== LAST 100 LINES ===" >> ci-release-error.log
-          tail -100 /tmp/build.log >> ci-release-error.log
+          echo "Build step outcome: ${{ steps.build.outcome }}" >> ci-build-output.log
+          echo "" >> ci-build-output.log
+          echo "=== APK FILES ===" >> ci-build-output.log
+          find android-app/app/build/outputs -name "*.apk" -type f 2>/dev/null >> ci-build-output.log || echo "No APK found" >> ci-build-output.log
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add ci-release-error.log
-          git commit -m "ci: Release build error log [skip ci]"
+          git add ci-build-output.log
+          git commit -m "ci: Build output log (${{ steps.build.outcome }}) [skip ci]"
           git push
-          echo "::error::Build failed - error log committed to repo"
-          exit 1
-
-      - name: List outputs
-        if: steps.build.outputs.EXIT_CODE == '0'
-        run: find app/build/outputs -name "*.apk" -type f
 
       - name: Upload release APK
-        if: steps.build.outputs.EXIT_CODE == '0'
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: smschecker-release-${{ github.event.inputs.version_name || '1.0.0' }}
           path: android-app/app/build/outputs/apk/release/
           retention-days: 90
+
+      - name: Fail if build failed
+        if: steps.build.outcome != 'success'
+        run: exit 1
