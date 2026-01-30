@@ -70,3 +70,5 @@ out/
 # Claude
 # ========================================
 .claude/
+smschecker-release.keystore
+keystore-base64.txt
