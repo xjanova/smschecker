@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-01-31
+
+### Added
+
+#### Android App
+- **QR Code Scanner**: CameraX + ML Kit barcode scanning for server auto-configuration
+- **Dark/Light Theme Toggle**: Full Material 3 theme switching (Dark, Light, System)
+- **Thai/English Language Toggle**: Complete bilingual UI (Thai, English, System)
+- **SMS Bank Matcher**: Custom sender-to-bank mapping with rule management
+- **SMS Auto-Scan**: Reads existing SMS inbox to detect bank transactions using ContentResolver
+- **Intelligent Bank Detection**: Heuristic detection for unknown senders using financial keywords + amount patterns
+- **Auto-Match with Orders**: Compares credit transaction amounts with pending orders (0.01 tolerance)
+- **TTS Voice Alerts**: Android built-in TextToSpeech for transaction announcements (Thai/English, free, no download)
+- **Order Approval System**: Full order management with approve/reject/bulk-approve workflow
+- **Dashboard Statistics**: Charts, daily breakdown, sync status with server
+- **Multi-server Support**: Connect to multiple Laravel backends simultaneously
+- **Premium UI Components**: GlassCard, GradientHeader, BankLogoCircle, SectionTitle
+- **Settings Enhancements**: Device info, approval mode selection, TTS toggle, theme/language toggles
+
+#### Laravel Plugin
+- **QR Code Setup Page**: Web-based QR code generation for easy device configuration (qr-setup.blade.php)
+- **QrConfigController**: Generates JSON config payload as QR code for Android app scanning
+- **Order Approval Endpoints**: GET /orders, POST /orders/{id}/approve, POST /orders/{id}/reject, POST /orders/bulk-approve, GET /orders/sync
+- **Device Settings Endpoints**: GET /device-settings, PUT /device-settings
+- **Dashboard Statistics Endpoint**: GET /dashboard-stats with daily breakdown
+- **Web Routes**: QR code page routes with auth middleware
+
+### Fixed
+- SMS Matcher screen crash on navigation (Hilt DI injection issue with Application parameter)
+- SmsInboxScanner using Application instead of @ApplicationContext Context
+- Proper error handling around rules loading, order fetching, and inbox scanning
+
+### Security
+- QR code page warns users not to share/screenshot API keys
+- QR code page protected by Laravel auth middleware
+
 ## [1.0.0] - 2025-01-29
 
 ### Added
@@ -65,4 +101,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ProGuard rules for production builds
 - Secret key hidden from JSON serialization
 
+[1.1.0]: https://github.com/xjanova/smschecker/releases/tag/v1.1.0
 [1.0.0]: https://github.com/xjanova/smschecker/releases/tag/v1.0.0

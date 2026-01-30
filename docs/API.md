@@ -167,6 +167,284 @@ Update device information.
 
 ---
 
+### GET /orders
+
+Get a paginated list of orders for the device.
+
+**Headers:**
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Api-Key` | Yes | Device API key |
+| `X-Device-Id` | Yes | Device identifier |
+
+**Query Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `status` | string | Filter by approval status: `pending`, `approved`, `rejected` |
+| `date_from` | string | Filter orders created on or after this date (ISO 8601) |
+| `date_to` | string | Filter orders created on or before this date (ISO 8601) |
+| `page` | int | Page number (default: 1) |
+| `per_page` | int | Items per page (default: 20) |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "data": [
+      {
+        "id": 1,
+        "notification_id": 42,
+        "matched_transaction_id": 156,
+        "device_id": "SMSCHK-ABCD1234",
+        "approval_status": "pending",
+        "confidence": 0.95,
+        "approved_by": null,
+        "approved_at": null,
+        "rejected_at": null,
+        "rejection_reason": null,
+        "order_details_json": {
+          "order_number": "ORD-2025-001",
+          "product_name": "Premium Widget"
+        },
+        "synced_version": 3,
+        "created_at": "2025-01-29T14:30:05.000000Z",
+        "updated_at": "2025-01-29T14:30:05.000000Z",
+        "notification": {
+          "id": 42,
+          "bank": "KBANK",
+          "type": "credit",
+          "amount": "500.37",
+          "sms_timestamp": "2025-01-29T14:30:00.000000Z",
+          "sender_or_receiver": "นายทดสอบ"
+        }
+      }
+    ],
+    "current_page": 1,
+    "last_page": 3,
+    "total": 52
+  }
+}
+```
+
+---
+
+### POST /orders/{id}/approve
+
+Approve a specific order.
+
+**Headers:**
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Api-Key` | Yes | Device API key |
+| `X-Device-Id` | Yes | Device identifier |
+
+**URL Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `id` | int | Order ID to approve |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Order approved"
+}
+```
+
+---
+
+### POST /orders/{id}/reject
+
+Reject a specific order with a reason.
+
+**Headers:**
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Api-Key` | Yes | Device API key |
+| `X-Device-Id` | Yes | Device identifier |
+
+**URL Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `id` | int | Order ID to reject |
+
+**Body:**
+
+```json
+{
+  "reason": "Amount does not match expected payment"
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Order rejected"
+}
+```
+
+---
+
+### POST /orders/bulk-approve
+
+Approve multiple orders at once.
+
+**Headers:**
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Api-Key` | Yes | Device API key |
+| `X-Device-Id` | Yes | Device identifier |
+
+**Body:**
+
+```json
+{
+  "ids": [1, 2, 3]
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Orders approved"
+}
+```
+
+---
+
+### GET /orders/sync
+
+Sync orders that have changed since a given version number. Used for incremental synchronization between the Android app and the server.
+
+**Headers:**
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Api-Key` | Yes | Device API key |
+| `X-Device-Id` | Yes | Device identifier |
+
+**Query Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `since_version` | int | Return orders with `synced_version` greater than this value |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "orders": [
+      {
+        "id": 1,
+        "notification_id": 42,
+        "matched_transaction_id": 156,
+        "device_id": "SMSCHK-ABCD1234",
+        "approval_status": "approved",
+        "confidence": 0.95,
+        "approved_by": "device",
+        "approved_at": "2025-01-29T15:00:00.000000Z",
+        "rejected_at": null,
+        "rejection_reason": null,
+        "order_details_json": {
+          "order_number": "ORD-2025-001",
+          "product_name": "Premium Widget"
+        },
+        "synced_version": 5,
+        "created_at": "2025-01-29T14:30:05.000000Z",
+        "updated_at": "2025-01-29T15:00:00.000000Z",
+        "notification": {
+          "id": 42,
+          "bank": "KBANK",
+          "type": "credit",
+          "amount": "500.37",
+          "sms_timestamp": "2025-01-29T14:30:00.000000Z",
+          "sender_or_receiver": "นายทดสอบ"
+        }
+      }
+    ],
+    "latest_version": 5
+  }
+}
+```
+
+---
+
+### GET /device-settings
+
+Get the current device settings.
+
+**Headers:**
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Api-Key` | Yes | Device API key |
+| `X-Device-Id` | Yes | Device identifier |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "approval_mode": "auto"
+  }
+}
+```
+
+---
+
+### PUT /device-settings
+
+Update the device settings.
+
+**Headers:**
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Api-Key` | Yes | Device API key |
+| `X-Device-Id` | Yes | Device identifier |
+
+**Body:**
+
+```json
+{
+  "approval_mode": "auto"
+}
+```
+
+| Field | Type | Values | Description |
+|-------|------|--------|-------------|
+| `approval_mode` | string | `auto`, `manual` | Whether orders are auto-approved or require manual review |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "approval_mode": "auto"
+  }
+}
+```
+
+---
+
 ## Admin Endpoints
 
 ### POST /generate-amount
@@ -256,6 +534,110 @@ View notification history with filtering.
   }
 }
 ```
+
+---
+
+### GET /dashboard-stats
+
+Get dashboard statistics for a given time period.
+
+**Authentication:** Bearer token (Sanctum)
+
+**Query Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `days` | int | Number of days to include in the statistics (default: 7) |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "total_orders": 120,
+    "auto_approved": 85,
+    "manually_approved": 20,
+    "pending_review": 10,
+    "rejected": 5,
+    "total_amount": "45230.50",
+    "daily_breakdown": [
+      {
+        "date": "2025-01-29",
+        "count": 18,
+        "approved": 15,
+        "rejected": 1,
+        "amount": "7250.00"
+      },
+      {
+        "date": "2025-01-28",
+        "count": 22,
+        "approved": 20,
+        "rejected": 0,
+        "amount": "8100.75"
+      }
+    ]
+  }
+}
+```
+
+---
+
+## QR Code / Web Endpoints
+
+These endpoints are served outside the API prefix and are used for device setup via QR code scanning.
+
+**Base URL:** `https://your-domain.com`
+
+### GET /smschecker/device/{device}/qr
+
+Render the QR code setup page for a specific device. This page displays a scannable QR code that the Android app can use to auto-configure its server connection.
+
+**Authentication:** Auth middleware (web session)
+
+**URL Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `device` | string | Device identifier or slug |
+
+**Response:** HTML page containing a QR code image.
+
+---
+
+### GET /smschecker/device/{device}/qr.json
+
+Return the device configuration as JSON. This is the data encoded in the QR code.
+
+**Authentication:** Auth middleware (web session)
+
+**URL Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `device` | string | Device identifier or slug |
+
+**Response:**
+
+```json
+{
+  "type": "smschecker_config",
+  "version": 1,
+  "url": "https://your-domain.com",
+  "apiKey": "device_api_key_here",
+  "secretKey": "device_secret_key_here",
+  "deviceName": "Device Name"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | Always `smschecker_config` — used by the app to validate the QR payload |
+| `version` | int | Config schema version |
+| `url` | string | Server base URL the app should connect to |
+| `apiKey` | string | API key for device authentication |
+| `secretKey` | string | Secret key for HMAC signing and AES encryption |
+| `deviceName` | string | Human-readable device name |
 
 ---
 

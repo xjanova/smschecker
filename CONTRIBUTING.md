@@ -7,7 +7,7 @@
 | Tool | Version | Purpose |
 |------|---------|---------|
 | Android Studio | 2023.2+ | Android app development |
-| JDK | 17+ | Kotlin compilation |
+| JDK | 21+ | Kotlin compilation |
 | PHP | 8.1+ | Laravel plugin |
 | Composer | 2.x | PHP dependency management |
 | Node.js | 18+ | (optional) for Laravel frontend |
@@ -16,7 +16,7 @@
 
 ```bash
 # Open project
-# Android Studio → File → Open → select android-app/
+# Android Studio → File → Open → select SmsChecker/ root folder
 
 # Sync Gradle
 # File → Sync Project with Gradle Files
@@ -192,7 +192,7 @@ We use [Semantic Versioning](https://semver.org/):
 
 1. Update `VERSION` file
 2. Update `CHANGELOG.md`
-3. Update `android-app/app/build.gradle.kts` version
+3. Update `app/build.gradle.kts` version
 4. Create release branch: `release/x.y.z`
 5. Create Git tag: `vx.y.z`
 6. Create GitHub Release with APK artifact
