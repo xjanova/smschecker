@@ -8,6 +8,9 @@ on:
         required: false
         default: '1.0.0'
 
+permissions:
+  contents: write
+
 jobs:
   release:
     name: Build Signed Release APK
@@ -44,17 +47,42 @@ jobs:
           echo "Keystore decoded: $(wc -c < app/release.keystore) bytes"
 
       - name: Build release APK
-        run: ./gradlew assembleRelease --stacktrace
+        id: build
+        run: |
+          ./gradlew assembleRelease --stacktrace 2>&1 | tee /tmp/build.log
+          echo "EXIT_CODE=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
         env:
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
           SIGNING_STORE_FILE: app/release.keystore
 
+      - name: Commit error log if build failed
+        if: steps.build.outputs.EXIT_CODE != '0'
+        run: |
+          cd $GITHUB_WORKSPACE
+          echo "=== RELEASE BUILD ERROR LOG ===" > ci-release-error.log
+          echo "Date: $(date)" >> ci-release-error.log
+          echo "Commit: $GITHUB_SHA" >> ci-release-error.log
+          echo "=== ERRORS ===" >> ci-release-error.log
+          grep -i "error\|FAILURE\|Exception\|failed" /tmp/build.log >> ci-release-error.log || true
+          echo "" >> ci-release-error.log
+          echo "=== LAST 100 LINES ===" >> ci-release-error.log
+          tail -100 /tmp/build.log >> ci-release-error.log
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ci-release-error.log
+          git commit -m "ci: Release build error log [skip ci]"
+          git push
+          echo "::error::Build failed - error log committed to repo"
+          exit 1
+
       - name: List outputs
+        if: steps.build.outputs.EXIT_CODE == '0'
         run: find app/build/outputs -name "*.apk" -type f
 
       - name: Upload release APK
+        if: steps.build.outputs.EXIT_CODE == '0'
         uses: actions/upload-artifact@v4
         with:
           name: smschecker-release-${{ github.event.inputs.version_name || '1.0.0' }}
