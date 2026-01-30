@@ -7,6 +7,8 @@ import com.thaiprompt.smschecker.data.model.ServerConfig
 import com.thaiprompt.smschecker.data.repository.OrderRepository
 import com.thaiprompt.smschecker.data.repository.TransactionRepository
 import com.thaiprompt.smschecker.security.SecureStorage
+import com.thaiprompt.smschecker.ui.theme.LanguageMode
+import com.thaiprompt.smschecker.ui.theme.ThemeMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -20,7 +22,9 @@ data class SettingsState(
     val showAddDialog: Boolean = false,
     val isLoading: Boolean = true,
     val approvalMode: ApprovalMode = ApprovalMode.AUTO,
-    val offlineQueueCount: Int = 0
+    val offlineQueueCount: Int = 0,
+    val themeMode: ThemeMode = ThemeMode.DARK,
+    val languageMode: LanguageMode = LanguageMode.THAI
 )
 
 @HiltViewModel
@@ -49,7 +53,9 @@ class SettingsViewModel @Inject constructor(
             it.copy(
                 isMonitoring = secureStorage.isMonitoringEnabled(),
                 deviceId = deviceId,
-                approvalMode = ApprovalMode.fromApiValue(secureStorage.getApprovalMode())
+                approvalMode = ApprovalMode.fromApiValue(secureStorage.getApprovalMode()),
+                themeMode = ThemeMode.fromKey(secureStorage.getThemeMode()),
+                languageMode = LanguageMode.fromKey(secureStorage.getLanguage())
             )
         }
 
@@ -115,5 +121,15 @@ class SettingsViewModel @Inject constructor(
                 // Server update failed, local setting still persisted
             }
         }
+    }
+
+    fun setThemeMode(mode: ThemeMode) {
+        secureStorage.setThemeMode(mode.key)
+        _state.update { it.copy(themeMode = mode) }
+    }
+
+    fun setLanguageMode(mode: LanguageMode) {
+        secureStorage.setLanguage(mode.key)
+        _state.update { it.copy(languageMode = mode) }
     }
 }

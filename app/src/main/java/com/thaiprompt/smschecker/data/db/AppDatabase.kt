@@ -6,6 +6,7 @@ import androidx.room.TypeConverters
 import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.OrderApproval
 import com.thaiprompt.smschecker.data.model.ServerConfig
+import com.thaiprompt.smschecker.data.model.SmsSenderRule
 import com.thaiprompt.smschecker.data.model.SyncLog
 
 @Database(
@@ -13,9 +14,10 @@ import com.thaiprompt.smschecker.data.model.SyncLog
         BankTransaction::class,
         ServerConfig::class,
         SyncLog::class,
-        OrderApproval::class
+        OrderApproval::class,
+        SmsSenderRule::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -24,4 +26,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun serverConfigDao(): ServerConfigDao
     abstract fun syncLogDao(): SyncLogDao
     abstract fun orderApprovalDao(): OrderApprovalDao
+    abstract fun smsSenderRuleDao(): SmsSenderRuleDao
 }

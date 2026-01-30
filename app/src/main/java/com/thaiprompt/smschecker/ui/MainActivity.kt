@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -30,6 +31,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.thaiprompt.smschecker.security.SecureStorage
 import com.thaiprompt.smschecker.service.OrderSyncWorker
 import com.thaiprompt.smschecker.service.SmsProcessingService
 import com.thaiprompt.smschecker.ui.dashboard.DashboardScreen
@@ -37,13 +39,16 @@ import com.thaiprompt.smschecker.ui.dashboard.DashboardViewModel
 import com.thaiprompt.smschecker.ui.orders.OrdersScreen
 import com.thaiprompt.smschecker.ui.qrscanner.QrScannerScreen
 import com.thaiprompt.smschecker.ui.settings.SettingsScreen
-import com.thaiprompt.smschecker.ui.theme.AppColors
-import com.thaiprompt.smschecker.ui.theme.SmsCheckerTheme
+import com.thaiprompt.smschecker.ui.smsmatcher.SmsMatcherScreen
+import com.thaiprompt.smschecker.ui.theme.*
 import com.thaiprompt.smschecker.ui.transactions.TransactionListScreen
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject lateinit var secureStorage: SecureStorage
 
     private val requiredPermissions = buildList {
         add(Manifest.permission.RECEIVE_SMS)
@@ -69,8 +74,41 @@ class MainActivity : ComponentActivity() {
         OrderSyncWorker.enqueuePeriodicSync(applicationContext)
 
         setContent {
-            SmsCheckerTheme {
-                MainApp()
+            val themeMode = remember { mutableStateOf(ThemeMode.fromKey(secureStorage.getThemeMode())) }
+            val languageMode = remember { mutableStateOf(LanguageMode.fromKey(secureStorage.getLanguage())) }
+
+            val isDarkTheme = when (themeMode.value) {
+                ThemeMode.DARK -> true
+                ThemeMode.LIGHT -> false
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+            }
+
+            val appStrings = when (languageMode.value) {
+                LanguageMode.THAI -> ThaiStrings
+                LanguageMode.ENGLISH -> EnglishStrings
+                LanguageMode.SYSTEM -> {
+                    val locale = java.util.Locale.getDefault().language
+                    if (locale == "th") ThaiStrings else EnglishStrings
+                }
+            }
+
+            CompositionLocalProvider(
+                LocalAppStrings provides appStrings,
+                LocalThemeMode provides themeMode.value,
+                LocalLanguageMode provides languageMode.value
+            ) {
+                SmsCheckerTheme(darkTheme = isDarkTheme) {
+                    MainApp(
+                        onThemeChanged = { mode ->
+                            secureStorage.setThemeMode(mode.key)
+                            themeMode.value = mode
+                        },
+                        onLanguageChanged = { mode ->
+                            secureStorage.setLanguage(mode.key)
+                            languageMode.value = mode
+                        }
+                    )
+                }
             }
         }
     }
@@ -95,20 +133,25 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-sealed class Screen(val route: String, val title: String) {
-    data object Dashboard : Screen("dashboard", "\u0E2B\u0E19\u0E49\u0E32\u0E2B\u0E25\u0E31\u0E01")
-    data object Orders : Screen("orders", "\u0E2D\u0E2D\u0E40\u0E14\u0E2D\u0E23\u0E4C")
-    data object Transactions : Screen("transactions", "\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23")
-    data object Settings : Screen("settings", "\u0E15\u0E31\u0E49\u0E07\u0E04\u0E48\u0E32")
-    data object QrScanner : Screen("qr_scanner", "\u0E2A\u0E41\u0E01\u0E19 QR")
+sealed class Screen(val route: String) {
+    data object Dashboard : Screen("dashboard")
+    data object Orders : Screen("orders")
+    data object Transactions : Screen("transactions")
+    data object Settings : Screen("settings")
+    data object QrScanner : Screen("qr_scanner")
+    data object SmsMatcher : Screen("sms_matcher")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainApp() {
+fun MainApp(
+    onThemeChanged: (ThemeMode) -> Unit = {},
+    onLanguageChanged: (LanguageMode) -> Unit = {}
+) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val strings = LocalAppStrings.current
 
     val bottomScreens = listOf(Screen.Dashboard, Screen.Orders, Screen.Transactions, Screen.Settings)
 
@@ -117,8 +160,8 @@ fun MainApp() {
     val dashboardState by dashboardViewModel.state.collectAsState()
     val pendingCount = dashboardState.pendingApprovalCount
 
-    // Hide bottom bar on QR scanner screen
-    val showBottomBar = currentRoute != Screen.QrScanner.route
+    // Hide bottom bar on full-screen routes
+    val showBottomBar = currentRoute != Screen.QrScanner.route && currentRoute != Screen.SmsMatcher.route
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -126,11 +169,18 @@ fun MainApp() {
         bottomBar = {
             if (showBottomBar) {
                 NavigationBar(
-                    containerColor = Color(0xFF0A0E14),
+                    containerColor = MaterialTheme.colorScheme.surface,
                     tonalElevation = 0.dp
                 ) {
                     bottomScreens.forEach { screen ->
                         val selected = currentRoute == screen.route
+                        val title = when (screen) {
+                            is Screen.Dashboard -> strings.navDashboard
+                            is Screen.Orders -> strings.navOrders
+                            is Screen.Transactions -> strings.navTransactions
+                            is Screen.Settings -> strings.navSettings
+                            else -> ""
+                        }
                         NavigationBarItem(
                             icon = {
                                 val icon = when (screen) {
@@ -156,21 +206,21 @@ fun MainApp() {
                                     ) {
                                         Icon(
                                             icon,
-                                            contentDescription = screen.title,
+                                            contentDescription = title,
                                             modifier = Modifier.size(22.dp)
                                         )
                                     }
                                 } else {
                                     Icon(
                                         icon,
-                                        contentDescription = screen.title,
+                                        contentDescription = title,
                                         modifier = Modifier.size(22.dp)
                                     )
                                 }
                             },
                             label = {
                                 Text(
-                                    screen.title,
+                                    title,
                                     fontSize = 10.sp
                                 )
                             },
@@ -187,8 +237,8 @@ fun MainApp() {
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = AppColors.GoldAccent,
                                 selectedTextColor = AppColors.GoldAccent,
-                                unselectedIconColor = Color(0xFF8B949E),
-                                unselectedTextColor = Color(0xFF8B949E),
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                 indicatorColor = AppColors.GoldAccent.copy(alpha = 0.12f)
                             )
                         )
@@ -200,7 +250,7 @@ fun MainApp() {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF0D1117))
+                .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
         ) {
             NavHost(
@@ -222,6 +272,11 @@ fun MainApp() {
                         onNavigateToQrScanner = {
                             navController.navigate(Screen.QrScanner.route)
                         },
+                        onNavigateToSmsMatcher = {
+                            navController.navigate(Screen.SmsMatcher.route)
+                        },
+                        onThemeChanged = onThemeChanged,
+                        onLanguageChanged = onLanguageChanged,
                         qrServerName = qrServerName,
                         qrServerUrl = qrServerUrl,
                         qrApiKey = qrApiKey,
@@ -237,7 +292,6 @@ fun MainApp() {
                 composable(Screen.QrScanner.route) {
                     QrScannerScreen(
                         onConfigScanned = { result ->
-                            // Navigate back and pass QR result via savedStateHandle
                             navController.previousBackStackEntry
                                 ?.savedStateHandle
                                 ?.apply {
@@ -248,6 +302,13 @@ fun MainApp() {
                                 }
                             navController.popBackStack()
                         },
+                        onBack = {
+                            navController.popBackStack()
+                        }
+                    )
+                }
+                composable(Screen.SmsMatcher.route) {
+                    SmsMatcherScreen(
                         onBack = {
                             navController.popBackStack()
                         }

@@ -97,6 +97,15 @@ object AppColors {
     )
 
     val GlassCardBorder = Color(0xFF30363D)
+    val GlassCardBorderLight = Color(0xFFD0D7DE)
+
+    val HeaderGradientLight = Brush.verticalGradient(
+        colors = listOf(Color(0xFF1A237E), Color(0xFF283593), Color(0xFF3949AB))
+    )
+
+    val NavBarGradientLight = Brush.verticalGradient(
+        colors = listOf(Color.White, Color(0xFFF6F8FA))
+    )
 }
 
 @Composable

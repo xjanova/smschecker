@@ -28,8 +28,9 @@ import com.thaiprompt.smschecker.ui.components.BankLogoCircle
 import com.thaiprompt.smschecker.ui.components.DateRangePickerDialog
 import com.thaiprompt.smschecker.ui.components.GlassCard
 import com.thaiprompt.smschecker.ui.components.GradientHeader
-import com.thaiprompt.smschecker.ui.components.premiumBackground
+import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
 import com.thaiprompt.smschecker.ui.theme.AppColors
+import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -39,11 +40,12 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     var showDatePicker by remember { mutableStateOf(false) }
+    val strings = LocalAppStrings.current
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .premiumBackground(),
+            .background(premiumBackgroundBrush()),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         // Gradient Header
@@ -56,13 +58,13 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                 ) {
                     Column {
                         Text(
-                            "\u0E2D\u0E2D\u0E40\u0E14\u0E2D\u0E23\u0E4C",
+                            strings.ordersTitle,
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(
-                            "\u0E08\u0E31\u0E14\u0E01\u0E32\u0E23\u0E01\u0E32\u0E23\u0E2D\u0E19\u0E38\u0E21\u0E31\u0E15\u0E34",
+                            strings.approvalManagement,
                             style = MaterialTheme.typography.bodySmall,
                             color = AppColors.GoldAccent
                         )
@@ -79,7 +81,7 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                             ) {
                                 Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("\u0E2D\u0E19\u0E38\u0E21\u0E31\u0E15\u0E34\u0E17\u0E31\u0E49\u0E07\u0E2B\u0E21\u0E14", fontSize = 12.sp)
+                                Text(strings.approveAll, fontSize = 12.sp)
                             }
                             Spacer(modifier = Modifier.width(8.dp))
                         }
@@ -91,7 +93,7 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                                     color = AppColors.GoldAccent
                                 )
                             } else {
-                                Icon(Icons.Default.Refresh, contentDescription = "\u0E23\u0E35\u0E40\u0E1F\u0E23\u0E0A", tint = AppColors.GoldAccent)
+                                Icon(Icons.Default.Refresh, contentDescription = strings.refresh, tint = AppColors.GoldAccent)
                             }
                         }
                     }
@@ -108,11 +110,11 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                 contentPadding = PaddingValues(horizontal = 16.dp)
             ) {
                 val filters = listOf<Pair<String, ApprovalStatus?>>(
-                    "\u0E17\u0E31\u0E49\u0E07\u0E2B\u0E21\u0E14" to null,
-                    "\u0E23\u0E2D\u0E15\u0E23\u0E27\u0E08\u0E2A\u0E2D\u0E1A" to ApprovalStatus.PENDING_REVIEW,
-                    "\u0E2D\u0E31\u0E15\u0E42\u0E19\u0E21\u0E31\u0E15\u0E34" to ApprovalStatus.AUTO_APPROVED,
-                    "\u0E2D\u0E19\u0E38\u0E21\u0E31\u0E15\u0E34\u0E41\u0E25\u0E49\u0E27" to ApprovalStatus.MANUALLY_APPROVED,
-                    "\u0E1B\u0E0F\u0E34\u0E40\u0E2A\u0E18" to ApprovalStatus.REJECTED
+                    strings.filterAll to null,
+                    strings.filterPendingReview to ApprovalStatus.PENDING_REVIEW,
+                    strings.filterAutoApproved to ApprovalStatus.AUTO_APPROVED,
+                    strings.filterApproved to ApprovalStatus.MANUALLY_APPROVED,
+                    strings.filterRejected to ApprovalStatus.REJECTED
                 )
                 items(filters) { (label, status) ->
                     FilterChip(
@@ -126,7 +128,7 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                             labelColor = MaterialTheme.colorScheme.onSurfaceVariant
                         ),
                         border = FilterChipDefaults.filterChipBorder(
-                            borderColor = AppColors.GlassCardBorder,
+                            borderColor = MaterialTheme.colorScheme.outline,
                             selectedBorderColor = AppColors.GoldAccent.copy(alpha = 0.5f)
                         )
                     )
@@ -154,7 +156,7 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                             FilterChip(
                                 selected = state.serverFilter == null,
                                 onClick = { viewModel.setServerFilter(null) },
-                                label = { Text("\u0E17\u0E31\u0E49\u0E07\u0E2B\u0E21\u0E14", fontSize = 12.sp) }
+                                label = { Text(strings.filterAll, fontSize = 12.sp) }
                             )
                         }
                         items(state.servers) { server ->
@@ -177,7 +179,7 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                     Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        if (state.dateFrom != null) "\u0E01\u0E23\u0E2D\u0E07\u0E41\u0E25\u0E49\u0E27" else "\u0E27\u0E31\u0E19\u0E17\u0E35\u0E48",
+                        if (state.dateFrom != null) strings.filtered else strings.filterDate,
                         fontSize = 12.sp
                     )
                 }
@@ -187,7 +189,7 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                         onClick = { viewModel.clearDateRange() },
                         modifier = Modifier.size(32.dp)
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "\u0E25\u0E49\u0E32\u0E07", modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Close, contentDescription = strings.clearFilter, modifier = Modifier.size(16.dp))
                     }
                 }
             }
@@ -202,21 +204,21 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    StatItem("\u0E17\u0E31\u0E49\u0E07\u0E2B\u0E21\u0E14", state.orders.size, Color.White)
+                    StatItem(strings.totalLabel, state.orders.size, MaterialTheme.colorScheme.onBackground)
                     Box(
                         modifier = Modifier
                             .width(1.dp)
                             .height(36.dp)
-                            .background(AppColors.GlassCardBorder)
+                            .background(MaterialTheme.colorScheme.outline)
                     )
-                    StatItem("\u0E23\u0E2D\u0E15\u0E23\u0E27\u0E08", state.pendingCount, AppColors.WarningOrange)
+                    StatItem(strings.pendingCheck, state.pendingCount, AppColors.WarningOrange)
                     Box(
                         modifier = Modifier
                             .width(1.dp)
                             .height(36.dp)
-                            .background(AppColors.GlassCardBorder)
+                            .background(MaterialTheme.colorScheme.outline)
                     )
-                    StatItem("\u0E2D\u0E2D\u0E1F\u0E44\u0E25\u0E19\u0E4C", state.offlineQueueCount, AppColors.InfoBlue)
+                    StatItem(strings.offlineQueue, state.offlineQueueCount, AppColors.InfoBlue)
                 }
             }
         }
@@ -249,12 +251,12 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            "\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E21\u0E35\u0E2D\u0E2D\u0E40\u0E14\u0E2D\u0E23\u0E4C",
+                            strings.noOrders,
                             style = MaterialTheme.typography.bodyLarge,
-                            color = Color.White
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(
-                            "\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23\u0E0A\u0E33\u0E23\u0E30\u0E40\u0E07\u0E34\u0E19\u0E17\u0E35\u0E48\u0E15\u0E23\u0E07\u0E01\u0E31\u0E19\u0E08\u0E30\u0E41\u0E2A\u0E14\u0E07\u0E17\u0E35\u0E48\u0E19\u0E35\u0E48",
+                            strings.matchedOrdersWillShow,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
@@ -314,6 +316,7 @@ fun OrderCard(
     onReject: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
     val statusColor = when (order.approvalStatus) {
         ApprovalStatus.AUTO_APPROVED, ApprovalStatus.MANUALLY_APPROVED -> AppColors.CreditGreen
         ApprovalStatus.PENDING_REVIEW -> AppColors.WarningOrange
@@ -324,7 +327,7 @@ fun OrderCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .border(1.dp, AppColors.GlassCardBorder, RoundedCornerShape(16.dp)),
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp)),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
@@ -356,10 +359,10 @@ fun OrderCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = order.websiteName ?: "\u0E44\u0E21\u0E48\u0E17\u0E23\u0E32\u0E1A",
+                        text = order.websiteName ?: strings.unknown,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onBackground,
                         modifier = Modifier.weight(1f)
                     )
                     StatusBadge(order.approvalStatus)
@@ -430,7 +433,7 @@ fun OrderCard(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            "\u0E01\u0E32\u0E23\u0E08\u0E31\u0E1A\u0E04\u0E39\u0E48\u0E44\u0E21\u0E48\u0E0A\u0E31\u0E14\u0E40\u0E08\u0E19",
+                            strings.ambiguousMatch,
                             fontSize = 10.sp,
                             color = AppColors.WarningOrange,
                             fontWeight = FontWeight.Medium
@@ -450,7 +453,7 @@ fun OrderCard(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            "\u0E23\u0E2D\u0E04\u0E34\u0E27: ${order.pendingAction.name}",
+                            "${strings.queuedLabel}: ${order.pendingAction.name}",
                             style = MaterialTheme.typography.bodySmall,
                             fontSize = 10.sp,
                             color = AppColors.InfoBlue
@@ -473,7 +476,7 @@ fun OrderCard(
                             modifier = Modifier.height(34.dp),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)
                         ) {
-                            Text("\u0E1B\u0E0F\u0E34\u0E40\u0E2A\u0E18", fontSize = 12.sp)
+                            Text(strings.rejectButton, fontSize = 12.sp)
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
@@ -486,7 +489,7 @@ fun OrderCard(
                         ) {
                             Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("\u0E2D\u0E19\u0E38\u0E21\u0E31\u0E15\u0E34", fontSize = 12.sp)
+                            Text(strings.approveButton, fontSize = 12.sp)
                         }
                     }
                 }
@@ -497,12 +500,13 @@ fun OrderCard(
 
 @Composable
 private fun StatusBadge(status: ApprovalStatus) {
+    val strings = LocalAppStrings.current
     val (color, text) = when (status) {
-        ApprovalStatus.AUTO_APPROVED -> AppColors.CreditGreen to "\u0E2D\u0E31\u0E15\u0E42\u0E19\u0E21\u0E31\u0E15\u0E34"
-        ApprovalStatus.MANUALLY_APPROVED -> AppColors.InfoBlue to "\u0E2D\u0E19\u0E38\u0E21\u0E31\u0E15\u0E34\u0E41\u0E25\u0E49\u0E27"
-        ApprovalStatus.PENDING_REVIEW -> AppColors.WarningOrange to "\u0E23\u0E2D\u0E15\u0E23\u0E27\u0E08"
-        ApprovalStatus.REJECTED -> AppColors.DebitRed to "\u0E1B\u0E0F\u0E34\u0E40\u0E2A\u0E18"
-        ApprovalStatus.EXPIRED -> Color.Gray to "\u0E2B\u0E21\u0E14\u0E2D\u0E32\u0E22\u0E38"
+        ApprovalStatus.AUTO_APPROVED -> AppColors.CreditGreen to strings.statusAutoApproved
+        ApprovalStatus.MANUALLY_APPROVED -> AppColors.InfoBlue to strings.statusApproved
+        ApprovalStatus.PENDING_REVIEW -> AppColors.WarningOrange to strings.statusPendingReview
+        ApprovalStatus.REJECTED -> AppColors.DebitRed to strings.statusRejected
+        ApprovalStatus.EXPIRED -> Color.Gray to strings.statusExpired
     }
 
     Box(

@@ -72,4 +72,20 @@ class SecureStorage @Inject constructor(
     fun setApprovalMode(mode: String) {
         prefs.edit().putString("approval_mode", mode).apply()
     }
+
+    fun getThemeMode(): String {
+        return prefs.getString("theme_mode", "dark") ?: "dark"
+    }
+
+    fun setThemeMode(mode: String) {
+        prefs.edit().putString("theme_mode", mode).apply()
+    }
+
+    fun getLanguage(): String {
+        return prefs.getString("language", "th") ?: "th"
+    }
+
+    fun setLanguage(language: String) {
+        prefs.edit().putString("language", language).apply()
+    }
 }

@@ -38,8 +38,9 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import com.thaiprompt.smschecker.ui.components.GradientHeader
 import com.thaiprompt.smschecker.ui.components.GlassCard
-import com.thaiprompt.smschecker.ui.components.premiumBackground
+import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
 import com.thaiprompt.smschecker.ui.theme.AppColors
+import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -60,6 +61,7 @@ fun QrScannerScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val strings = LocalAppStrings.current
     var hasCameraPermission by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val isProcessing = remember { AtomicBoolean(false) }
@@ -69,7 +71,7 @@ fun QrScannerScreen(
     ) { granted ->
         hasCameraPermission = granted
         if (!granted) {
-            errorMessage = "ต้องอนุญาตใช้กล้องเพื่อสแกน QR Code"
+            errorMessage = strings.cameraPermissionDenied
         }
     }
 
@@ -87,7 +89,7 @@ fun QrScannerScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .premiumBackground()
+            .background(premiumBackgroundBrush())
     ) {
         // Header
         GradientHeader {
@@ -96,18 +98,22 @@ fun QrScannerScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "กลับ", tint = Color.White)
+                    Icon(
+                        Icons.Default.ArrowBack,
+                        contentDescription = strings.backButton,
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
                     Text(
-                        "สแกน QR Code",
+                        strings.qrScannerTitle,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
-                        "เพิ่มเซิร์ฟเวอร์จาก QR Code",
+                        strings.qrScannerSubtitle,
                         style = MaterialTheme.typography.bodySmall,
                         color = AppColors.GoldAccent
                     )
@@ -128,7 +134,7 @@ fun QrScannerScreen(
                         .fillMaxWidth()
                         .aspectRatio(1f)
                         .clip(RoundedCornerShape(16.dp))
-                        .border(1.dp, AppColors.GlassCardBorder, RoundedCornerShape(16.dp))
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
                 ) {
                     AndroidView(
                         factory = { ctx ->
@@ -162,7 +168,7 @@ fun QrScannerScreen(
                                             imageAnalysis
                                         )
                                     } catch (e: Exception) {
-                                        errorMessage = "เปิดกล้องไม่สำเร็จ: ${e.message}"
+                                        errorMessage = "${strings.cameraFailed}: ${e.message}"
                                         Log.e("QrScanner", "Camera bind failed", e)
                                     }
                                 }, ContextCompat.getMainExecutor(ctx))
@@ -200,16 +206,16 @@ fun QrScannerScreen(
                     ) {
                         Card(
                             colors = CardDefaults.cardColors(
-                                containerColor = Color(0xFF161B22).copy(alpha = 0.9f)
+                                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
                             ),
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Text(
-                                "เล็งกล้องไปที่ QR Code ของเซิร์ฟเวอร์",
+                                strings.pointCameraAtQr,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                                 style = MaterialTheme.typography.bodyMedium,
                                 textAlign = TextAlign.Center,
-                                color = Color.White
+                                color = MaterialTheme.colorScheme.onBackground
                             )
                         }
                     }
@@ -243,7 +249,7 @@ fun QrScannerScreen(
                             )
                         }
                         Text(
-                            "ต้องอนุญาตใช้กล้อง",
+                            strings.cameraPermissionRequired,
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -254,7 +260,7 @@ fun QrScannerScreen(
                                 contentColor = Color.Black
                             )
                         ) {
-                            Text("อนุญาตใช้กล้อง")
+                            Text(strings.allowCamera)
                         }
                     }
                 }
@@ -282,17 +288,14 @@ fun QrScannerScreen(
             // Instructions
             GlassCard {
                 Text(
-                    "วิธีรับ QR Code",
+                    strings.howToGetQrCode,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = AppColors.GoldAccent
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "1. เปิดหน้า Admin ของเว็บไซต์\n" +
-                            "2. ไปที่ตั้งค่า SMS Checker\n" +
-                            "3. กด 'แสดง QR Code' สำหรับอุปกรณ์\n" +
-                            "4. สแกน QR Code ที่แสดงบนหน้าจอ",
+                    strings.qrInstructions,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 22.sp
@@ -357,7 +360,7 @@ private fun parseQrConfig(json: String): QrConfigResult? {
             url = obj.getString("url"),
             apiKey = obj.getString("apiKey"),
             secretKey = obj.getString("secretKey"),
-            deviceName = obj.optString("deviceName", "เซิร์ฟเวอร์จาก QR")
+            deviceName = obj.optString("deviceName", "\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C\u0E08\u0E32\u0E01 QR")
         )
     } catch (e: Exception) {
         Log.e("QrScanner", "Failed to parse QR config: $json", e)

@@ -30,8 +30,11 @@ import com.thaiprompt.smschecker.data.model.ServerConfig
 import com.thaiprompt.smschecker.ui.components.GlassCard
 import com.thaiprompt.smschecker.ui.components.GradientHeader
 import com.thaiprompt.smschecker.ui.components.SectionTitle
-import com.thaiprompt.smschecker.ui.components.premiumBackground
+import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
 import com.thaiprompt.smschecker.ui.theme.AppColors
+import com.thaiprompt.smschecker.ui.theme.LanguageMode
+import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
+import com.thaiprompt.smschecker.ui.theme.ThemeMode
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -39,6 +42,9 @@ import java.util.*
 @Composable
 fun SettingsScreen(
     onNavigateToQrScanner: () -> Unit = {},
+    onNavigateToSmsMatcher: () -> Unit = {},
+    onThemeChanged: (ThemeMode) -> Unit = {},
+    onLanguageChanged: (LanguageMode) -> Unit = {},
     qrServerName: String? = null,
     qrServerUrl: String? = null,
     qrApiKey: String? = null,
@@ -47,6 +53,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    val strings = LocalAppStrings.current
 
     // Handle QR scan result
     LaunchedEffect(qrServerName, qrServerUrl, qrApiKey, qrSecretKey) {
@@ -65,20 +72,20 @@ fun SettingsScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .premiumBackground(),
+            .background(premiumBackgroundBrush()),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         // Gradient Header
         item {
             GradientHeader {
                 Text(
-                    "\u0E15\u0E31\u0E49\u0E07\u0E04\u0E48\u0E32",
+                    strings.settingsTitle,
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 Text(
-                    "\u0E01\u0E32\u0E23\u0E01\u0E33\u0E2B\u0E19\u0E14\u0E04\u0E48\u0E32\u0E41\u0E25\u0E30\u0E01\u0E32\u0E23\u0E15\u0E31\u0E49\u0E07\u0E04\u0E48\u0E32",
+                    strings.configAndSettings,
                     style = MaterialTheme.typography.bodySmall,
                     color = AppColors.GoldAccent
                 )
@@ -108,7 +115,7 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
-                            "\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E2D\u0E38\u0E1B\u0E01\u0E23\u0E13\u0E4C",
+                            strings.deviceInfo,
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = AppColors.GoldAccent
@@ -155,14 +162,14 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                "\u0E15\u0E34\u0E14\u0E15\u0E32\u0E21 SMS",
+                                strings.monitorSms,
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Medium,
-                                color = Color.White
+                                color = MaterialTheme.colorScheme.onBackground
                             )
                             Text(
-                                if (state.isMonitoring) "\u0E17\u0E33\u0E07\u0E32\u0E19\u0E2D\u0E22\u0E39\u0E48 - \u0E23\u0E2D\u0E23\u0E31\u0E1A SMS \u0E18\u0E19\u0E32\u0E04\u0E32\u0E23"
-                                else "\u0E2B\u0E22\u0E38\u0E14\u0E0A\u0E31\u0E48\u0E27\u0E04\u0E23\u0E32\u0E27",
+                                if (state.isMonitoring) strings.monitoringActive
+                                else strings.monitoringPaused,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -182,6 +189,126 @@ fun SettingsScreen(
 
         item { Spacer(modifier = Modifier.height(12.dp)) }
 
+        // Theme Toggle
+        item {
+            GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+                Text(
+                    strings.themeMode,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = AppColors.GoldAccent
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                val themeOptions = listOf(
+                    ThemeMode.DARK to strings.themeDark,
+                    ThemeMode.LIGHT to strings.themeLight,
+                    ThemeMode.SYSTEM to strings.themeSystem
+                )
+                themeOptions.forEach { (mode, label) ->
+                    val isSelected = state.themeMode == mode
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                if (isSelected) AppColors.GoldAccent.copy(alpha = 0.08f)
+                                else Color.Transparent
+                            )
+                            .then(
+                                if (isSelected) Modifier.border(
+                                    1.dp,
+                                    AppColors.GoldAccent.copy(alpha = 0.3f),
+                                    RoundedCornerShape(10.dp)
+                                )
+                                else Modifier
+                            )
+                            .padding(vertical = 6.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = isSelected,
+                            onClick = {
+                                viewModel.setThemeMode(mode)
+                                onThemeChanged(mode)
+                            },
+                            colors = RadioButtonDefaults.colors(selectedColor = AppColors.GoldAccent)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) AppColors.GoldAccent
+                                else MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(12.dp)) }
+
+        // Language Toggle
+        item {
+            GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+                Text(
+                    strings.languageTitle,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = AppColors.GoldAccent
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                val langOptions = listOf(
+                    LanguageMode.THAI to strings.languageThai,
+                    LanguageMode.ENGLISH to strings.languageEnglish,
+                    LanguageMode.SYSTEM to strings.languageSystem
+                )
+                langOptions.forEach { (mode, label) ->
+                    val isSelected = state.languageMode == mode
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                if (isSelected) AppColors.GoldAccent.copy(alpha = 0.08f)
+                                else Color.Transparent
+                            )
+                            .then(
+                                if (isSelected) Modifier.border(
+                                    1.dp,
+                                    AppColors.GoldAccent.copy(alpha = 0.3f),
+                                    RoundedCornerShape(10.dp)
+                                )
+                                else Modifier
+                            )
+                            .padding(vertical = 6.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = isSelected,
+                            onClick = {
+                                viewModel.setLanguageMode(mode)
+                                onLanguageChanged(mode)
+                            },
+                            colors = RadioButtonDefaults.colors(selectedColor = AppColors.GoldAccent)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) AppColors.GoldAccent
+                                else MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(12.dp)) }
+
         // Approval Mode
         item {
             GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -191,7 +318,7 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "\u0E42\u0E2B\u0E21\u0E14\u0E2D\u0E19\u0E38\u0E21\u0E31\u0E15\u0E34",
+                        strings.approvalModeTitle,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = AppColors.GoldAccent
@@ -212,7 +339,7 @@ fun SettingsScreen(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                "${state.offlineQueueCount} \u0E23\u0E2D\u0E04\u0E34\u0E27",
+                                "${state.offlineQueueCount} ${strings.queueCount}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = AppColors.WarningOrange,
                                 fontSize = 11.sp
@@ -257,7 +384,7 @@ fun SettingsScreen(
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                 color = if (isSelected) AppColors.GoldAccent
-                                    else Color.White
+                                    else MaterialTheme.colorScheme.onBackground
                             )
                             Text(
                                 mode.description,
@@ -282,7 +409,7 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SectionTitle("\u0E40\u0E0A\u0E37\u0E48\u0E2D\u0E21\u0E15\u0E48\u0E2D\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C", showDivider = false)
+                SectionTitle(strings.serverConnections, showDivider = false)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     // QR Code Scanner button
                     FilledTonalButton(
@@ -295,7 +422,7 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("\u0E2A\u0E41\u0E01\u0E19 QR", fontSize = 12.sp)
+                        Text(strings.scanQr, fontSize = 12.sp)
                     }
                     // Manual add button
                     FilledTonalButton(
@@ -308,7 +435,7 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("\u0E40\u0E1E\u0E34\u0E48\u0E21\u0E40\u0E2D\u0E07", fontSize = 12.sp)
+                        Text(strings.addManual, fontSize = 12.sp)
                     }
                 }
             }
@@ -342,12 +469,12 @@ fun SettingsScreen(
                         }
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            "\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E21\u0E35\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C",
+                            strings.noServers,
                             style = MaterialTheme.typography.bodyLarge,
-                            color = Color.White
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(
-                            "\u0E40\u0E1E\u0E34\u0E48\u0E21\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C\u0E40\u0E1E\u0E37\u0E48\u0E2D\u0E0B\u0E34\u0E07\u0E04\u0E4C\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E01\u0E32\u0E23\u0E0A\u0E33\u0E23\u0E30\u0E40\u0E07\u0E34\u0E19",
+                            strings.addServerToSync,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -362,7 +489,7 @@ fun SettingsScreen(
                         ) {
                             Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("\u0E2A\u0E41\u0E01\u0E19 QR Code \u0E40\u0E1E\u0E34\u0E48\u0E21\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C")
+                            Text(strings.scanQrToAddServer)
                         }
                     }
                 }
@@ -383,7 +510,7 @@ fun SettingsScreen(
         // Supported Banks Info
         item {
             SectionTitle(
-                "\u0E18\u0E19\u0E32\u0E04\u0E32\u0E23\u0E17\u0E35\u0E48\u0E23\u0E2D\u0E07\u0E23\u0E31\u0E1A",
+                strings.supportedBanks,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
         }
@@ -392,15 +519,16 @@ fun SettingsScreen(
 
         item {
             GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+                val strings2 = LocalAppStrings.current
                 val banks = listOf(
-                    "KBANK" to "\u0E18\u0E19\u0E32\u0E04\u0E32\u0E23\u0E01\u0E2A\u0E34\u0E01\u0E23\u0E44\u0E17\u0E22",
-                    "SCB" to "\u0E18\u0E19\u0E32\u0E04\u0E32\u0E23\u0E44\u0E17\u0E22\u0E1E\u0E32\u0E13\u0E34\u0E0A\u0E22\u0E4C",
-                    "KTB" to "\u0E18\u0E19\u0E32\u0E04\u0E32\u0E23\u0E01\u0E23\u0E38\u0E07\u0E44\u0E17\u0E22",
-                    "BBL" to "\u0E18\u0E19\u0E32\u0E04\u0E32\u0E23\u0E01\u0E23\u0E38\u0E07\u0E40\u0E17\u0E1E",
-                    "GSB" to "\u0E18\u0E19\u0E32\u0E04\u0E32\u0E23\u0E2D\u0E2D\u0E21\u0E2A\u0E34\u0E19",
-                    "BAY" to "\u0E18\u0E19\u0E32\u0E04\u0E32\u0E23\u0E01\u0E23\u0E38\u0E07\u0E28\u0E23\u0E35\u0E2D\u0E22\u0E38\u0E18\u0E22\u0E32",
-                    "TTB" to "\u0E18\u0E19\u0E32\u0E04\u0E32\u0E23\u0E17\u0E35\u0E17\u0E35\u0E1A\u0E35",
-                    "PromptPay" to "\u0E1E\u0E23\u0E49\u0E2D\u0E21\u0E40\u0E1E\u0E22\u0E4C"
+                    "KBANK" to strings2.bankKbank,
+                    "SCB" to strings2.bankScb,
+                    "KTB" to strings2.bankKtb,
+                    "BBL" to strings2.bankBbl,
+                    "GSB" to strings2.bankGsb,
+                    "BAY" to strings2.bankBay,
+                    "TTB" to strings2.bankTtb,
+                    "PromptPay" to strings2.bankPromptPay
                 )
                 banks.forEachIndexed { index, (code, name) ->
                     Row(
@@ -420,7 +548,7 @@ fun SettingsScreen(
                                 code,
                                 fontWeight = FontWeight.Medium,
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Color.White
+                                color = MaterialTheme.colorScheme.onBackground
                             )
                         }
                         Text(
@@ -431,9 +559,47 @@ fun SettingsScreen(
                     }
                     if (index < banks.lastIndex) {
                         Divider(
-                            color = AppColors.GlassCardBorder,
+                            color = MaterialTheme.colorScheme.outline,
                             thickness = 0.5.dp
                         )
+                    }
+                }
+            }
+        }
+
+        // SMS Matcher
+        item { Spacer(modifier = Modifier.height(12.dp)) }
+        item {
+            GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            strings.customBankMapping,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = AppColors.GoldAccent
+                        )
+                        Text(
+                            strings.customBankMappingDesc,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    FilledTonalButton(
+                        onClick = onNavigateToSmsMatcher,
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = AppColors.GoldAccent.copy(alpha = 0.2f),
+                            contentColor = AppColors.GoldAccent
+                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Sms, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(strings.smsMatcherTitle, fontSize = 12.sp)
                     }
                 }
             }
@@ -443,7 +609,7 @@ fun SettingsScreen(
         item {
             Spacer(modifier = Modifier.height(24.dp))
             Text(
-                "SMS Payment Checker v1.0.0",
+                strings.versionInfo,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                 modifier = Modifier
@@ -472,13 +638,14 @@ fun ServerCard(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
     val dateFormat = SimpleDateFormat("HH:mm dd/MM/yyyy", Locale.getDefault())
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .border(1.dp, AppColors.GlassCardBorder, RoundedCornerShape(16.dp)),
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp)),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
@@ -520,7 +687,7 @@ fun ServerCard(
                                 server.name,
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = MaterialTheme.colorScheme.onBackground
                             )
                             if (server.isDefault) {
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -531,7 +698,7 @@ fun ServerCard(
                                         .padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Text(
-                                        "\u0E2B\u0E25\u0E31\u0E01",
+                                        strings.primaryBadge,
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = AppColors.GoldAccent
@@ -559,7 +726,7 @@ fun ServerCard(
             }
 
             Spacer(modifier = Modifier.height(10.dp))
-            Divider(color = AppColors.GlassCardBorder, thickness = 0.5.dp)
+            Divider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
             Spacer(modifier = Modifier.height(8.dp))
 
             Row(
@@ -570,14 +737,14 @@ fun ServerCard(
                 Column {
                     if (server.lastSyncAt != null) {
                         Text(
-                            "\u0E0B\u0E34\u0E07\u0E04\u0E4C\u0E25\u0E48\u0E32\u0E2A\u0E38\u0E14: ${dateFormat.format(Date(server.lastSyncAt))}",
+                            "${strings.lastSyncLabel}: ${dateFormat.format(Date(server.lastSyncAt))}",
                             style = MaterialTheme.typography.bodySmall,
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     } else {
                         Text(
-                            "\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E40\u0E04\u0E22\u0E0B\u0E34\u0E07\u0E04\u0E4C",
+                            strings.neverSynced,
                             style = MaterialTheme.typography.bodySmall,
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -600,8 +767,8 @@ fun ServerCard(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 when (server.lastSyncStatus) {
-                                    "success" -> "\u0E2A\u0E33\u0E40\u0E23\u0E47\u0E08"
-                                    "failed" -> "\u0E25\u0E49\u0E21\u0E40\u0E2B\u0E25\u0E27"
+                                    "success" -> strings.successStatus
+                                    "failed" -> strings.failedStatus
                                     else -> server.lastSyncStatus
                                 },
                                 style = MaterialTheme.typography.bodySmall,
@@ -623,7 +790,7 @@ fun ServerCard(
                 ) {
                     Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("\u0E25\u0E1A", fontSize = 11.sp)
+                    Text(strings.removeButton, fontSize = 11.sp)
                 }
             }
         }
@@ -632,19 +799,19 @@ fun ServerCard(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("\u0E25\u0E1A\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C") },
-            text = { Text("\u0E15\u0E49\u0E2D\u0E07\u0E01\u0E32\u0E23\u0E25\u0E1A \"${server.name}\" \u0E2D\u0E2D\u0E01\u0E08\u0E32\u0E01\u0E01\u0E32\u0E23\u0E40\u0E0A\u0E37\u0E48\u0E2D\u0E21\u0E15\u0E48\u0E2D\u0E2B\u0E23\u0E37\u0E2D\u0E44\u0E21\u0E48? \u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E1A\u0E19\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C\u0E08\u0E30\u0E44\u0E21\u0E48\u0E16\u0E39\u0E01\u0E25\u0E1A") },
+            title = { Text(strings.removeServerTitle) },
+            text = { Text(strings.removeServerMessage) },
             confirmButton = {
                 TextButton(onClick = {
                     onDelete()
                     showDeleteConfirm = false
                 }) {
-                    Text("\u0E25\u0E1A", color = AppColors.DebitRed)
+                    Text(strings.removeButton, color = AppColors.DebitRed)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("\u0E22\u0E01\u0E40\u0E25\u0E34\u0E01")
+                    Text(strings.cancelButton)
                 }
             }
         )
@@ -657,6 +824,7 @@ fun AddServerDialog(
     onDismiss: () -> Unit,
     onConfirm: (name: String, url: String, apiKey: String, secretKey: String, isDefault: Boolean) -> Unit
 ) {
+    val strings = LocalAppStrings.current
     var name by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("https://") }
     var apiKey by remember { mutableStateOf("") }
@@ -691,14 +859,14 @@ fun AddServerDialog(
                 )
 
                 Text(
-                    "\u0E40\u0E1E\u0E34\u0E48\u0E21\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C",
+                    strings.addServerTitle,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = AppColors.GoldAccent
                 )
 
                 Text(
-                    "\u0E40\u0E0A\u0E37\u0E48\u0E2D\u0E21\u0E15\u0E48\u0E2D\u0E01\u0E31\u0E1A Laravel \u0E40\u0E1E\u0E37\u0E48\u0E2D\u0E0B\u0E34\u0E07\u0E04\u0E4C\u0E02\u0E49\u0E2D\u0E21\u0E39\u0E25\u0E01\u0E32\u0E23\u0E0A\u0E33\u0E23\u0E30\u0E40\u0E07\u0E34\u0E19",
+                    strings.addServerSubtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -706,8 +874,8 @@ fun AddServerDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("\u0E0A\u0E37\u0E48\u0E2D\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C") },
-                    placeholder = { Text("\u0E40\u0E0A\u0E48\u0E19 Thaiprompt Main") },
+                    label = { Text(strings.serverNameLabel) },
+                    placeholder = { Text(strings.serverNamePlaceholder) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     leadingIcon = { Icon(Icons.Default.Label, contentDescription = null) }
@@ -716,7 +884,7 @@ fun AddServerDialog(
                 OutlinedTextField(
                     value = url,
                     onValueChange = { url = it },
-                    label = { Text("URL \u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C") },
+                    label = { Text(strings.serverUrlLabel) },
                     placeholder = { Text("https://your-domain.com") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
@@ -745,7 +913,7 @@ fun AddServerDialog(
                 OutlinedTextField(
                     value = secretKey,
                     onValueChange = { secretKey = it },
-                    label = { Text("Secret Key (\u0E2A\u0E33\u0E2B\u0E23\u0E31\u0E1A\u0E40\u0E02\u0E49\u0E32\u0E23\u0E2B\u0E31\u0E2A)") },
+                    label = { Text(strings.secretKeyLabel) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     visualTransformation = if (showSecretKey) VisualTransformation.None else PasswordVisualTransformation(),
@@ -767,9 +935,9 @@ fun AddServerDialog(
                     Checkbox(checked = isDefault, onCheckedChange = { isDefault = it })
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        "\u0E15\u0E31\u0E49\u0E07\u0E40\u0E1B\u0E47\u0E19\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C\u0E2B\u0E25\u0E31\u0E01",
+                        strings.setAsDefault,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
@@ -779,7 +947,7 @@ fun AddServerDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("\u0E22\u0E01\u0E40\u0E25\u0E34\u0E01")
+                        Text(strings.cancelButton)
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
@@ -792,7 +960,7 @@ fun AddServerDialog(
                     ) {
                         Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("\u0E1A\u0E31\u0E19\u0E17\u0E36\u0E01")
+                        Text(strings.saveButton)
                     }
                 }
             }

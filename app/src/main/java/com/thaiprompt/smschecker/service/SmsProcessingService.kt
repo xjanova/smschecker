@@ -11,6 +11,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.thaiprompt.smschecker.R
 import com.thaiprompt.smschecker.SmsCheckerApp
+import com.thaiprompt.smschecker.data.db.SmsSenderRuleDao
 import com.thaiprompt.smschecker.data.repository.TransactionRepository
 import com.thaiprompt.smschecker.domain.parser.BankSmsParser
 import com.thaiprompt.smschecker.security.SecureStorage
@@ -44,8 +45,9 @@ class SmsProcessingService : Service() {
 
     @Inject lateinit var repository: TransactionRepository
     @Inject lateinit var secureStorage: SecureStorage
+    @Inject lateinit var smsSenderRuleDao: SmsSenderRuleDao
+    @Inject lateinit var parser: BankSmsParser
 
-    private val parser = BankSmsParser()
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -80,6 +82,10 @@ class SmsProcessingService : Service() {
 
         serviceScope.launch {
             try {
+                // Load custom rules
+                val rules = smsSenderRuleDao.getActiveRules()
+                parser.setCustomRules(rules)
+
                 // Check if this is a bank transaction SMS
                 if (!parser.isBankTransactionSms(sender, message)) {
                     Log.d(TAG, "Not a bank SMS from: $sender")

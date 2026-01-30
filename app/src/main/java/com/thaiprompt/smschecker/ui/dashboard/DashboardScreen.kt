@@ -30,8 +30,9 @@ import com.thaiprompt.smschecker.ui.components.GlassCard
 import com.thaiprompt.smschecker.ui.components.GradientHeader
 import com.thaiprompt.smschecker.ui.components.OrderBarChart
 import com.thaiprompt.smschecker.ui.components.SectionTitle
-import com.thaiprompt.smschecker.ui.components.premiumBackground
+import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
 import com.thaiprompt.smschecker.ui.theme.AppColors
+import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -40,11 +41,12 @@ import java.util.*
 fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val strings = LocalAppStrings.current
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .premiumBackground(),
+            .background(premiumBackgroundBrush()),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         // Gradient Header
@@ -60,7 +62,7 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                             "SMS Payment",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(
                             "Checker",
@@ -81,13 +83,13 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                             } else {
                                 Icon(
                                     Icons.Default.Refresh,
-                                    contentDescription = "\u0E23\u0E35\u0E40\u0E1F\u0E23\u0E0A",
+                                    contentDescription = strings.refresh,
                                     tint = AppColors.GoldAccent
                                 )
                             }
                         }
                         Text(
-                            if (state.isMonitoring) "\u0E17\u0E33\u0E07\u0E32\u0E19" else "\u0E2B\u0E22\u0E38\u0E14",
+                            if (state.isMonitoring) strings.running else strings.stopped,
                             style = MaterialTheme.typography.bodySmall,
                             color = if (state.isMonitoring) AppColors.CreditGreen else AppColors.DebitRed
                         )
@@ -118,7 +120,7 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
             ) {
                 SummaryCard(
                     modifier = Modifier.weight(1f),
-                    title = "\u0E23\u0E32\u0E22\u0E23\u0E31\u0E1A\u0E27\u0E31\u0E19\u0E19\u0E35\u0E49",
+                    title = strings.todayIncome,
                     amount = state.todayCredit,
                     icon = Icons.Default.TrendingUp,
                     color = AppColors.CreditGreen,
@@ -131,7 +133,7 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                 )
                 SummaryCard(
                     modifier = Modifier.weight(1f),
-                    title = "\u0E23\u0E32\u0E22\u0E08\u0E48\u0E32\u0E22\u0E27\u0E31\u0E19\u0E19\u0E35\u0E49",
+                    title = strings.todayExpense,
                     amount = state.todayDebit,
                     icon = Icons.Default.TrendingDown,
                     color = AppColors.DebitRed,
@@ -178,14 +180,14 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                "\u0E2A\u0E16\u0E32\u0E19\u0E30\u0E01\u0E32\u0E23\u0E0B\u0E34\u0E07\u0E04\u0E4C",
+                                strings.syncStatus,
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Medium,
-                                color = Color.White
+                                color = MaterialTheme.colorScheme.onBackground
                             )
                             Text(
-                                if (state.unsyncedCount > 0) "${state.unsyncedCount} \u0E23\u0E2D\u0E14\u0E33\u0E40\u0E19\u0E34\u0E19\u0E01\u0E32\u0E23"
-                                else "\u0E0B\u0E34\u0E07\u0E04\u0E4C\u0E04\u0E23\u0E1A\u0E41\u0E25\u0E49\u0E27",
+                                if (state.unsyncedCount > 0) "${state.unsyncedCount} ${strings.syncPending}"
+                                else strings.syncComplete,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -202,7 +204,7 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                         ) {
                             Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("\u0E0B\u0E34\u0E07\u0E04\u0E4C")
+                            Text(strings.syncButton)
                         }
                     }
                 }
@@ -215,7 +217,7 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
             item {
                 GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
                     Text(
-                        "\u0E2A\u0E16\u0E32\u0E19\u0E30\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C",
+                        strings.serverStatus,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Medium,
                         color = AppColors.GoldAccent
@@ -240,11 +242,11 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                                 Text(
                                     health.serverName,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White
+                                    color = MaterialTheme.colorScheme.onBackground
                                 )
                             }
                             Text(
-                                if (health.isReachable) "${health.latencyMs}ms" else "\u0E2D\u0E2D\u0E1F\u0E44\u0E25\u0E19\u0E4C",
+                                if (health.isReachable) "${health.latencyMs}ms" else strings.serverOffline,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (health.isReachable) AppColors.CreditGreen else AppColors.DebitRed,
                                 fontSize = 11.sp
@@ -269,7 +271,7 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
         item { Spacer(modifier = Modifier.height(16.dp)) }
         item {
             SectionTitle(
-                "\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23\u0E25\u0E48\u0E32\u0E2A\u0E38\u0E14",
+                strings.recentTransactions,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
         }
@@ -293,12 +295,12 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            "\u0E22\u0E31\u0E07\u0E44\u0E21\u0E48\u0E21\u0E35\u0E23\u0E32\u0E22\u0E01\u0E32\u0E23",
+                            strings.noTransactions,
                             style = MaterialTheme.typography.bodyLarge,
-                            color = Color.White
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(
-                            "SMS \u0E18\u0E19\u0E32\u0E04\u0E32\u0E23\u0E08\u0E30\u0E41\u0E2A\u0E14\u0E07\u0E17\u0E35\u0E48\u0E19\u0E35\u0E48\u0E2D\u0E31\u0E15\u0E42\u0E19\u0E21\u0E31\u0E15\u0E34",
+                            strings.smsAutoDisplay,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
@@ -326,6 +328,8 @@ private fun OrderApprovalSummaryCard(
     pendingCount: Int,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
+
     GlassCard(modifier = modifier) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -333,7 +337,7 @@ private fun OrderApprovalSummaryCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "\u0E2D\u0E19\u0E38\u0E21\u0E31\u0E15\u0E34\u0E2D\u0E2D\u0E40\u0E14\u0E2D\u0E23\u0E4C",
+                strings.orderApproval,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = AppColors.GoldAccent
@@ -341,9 +345,9 @@ private fun OrderApprovalSummaryCard(
             if (pendingCount > 0) {
                 Badge(
                     containerColor = AppColors.WarningOrange,
-                    contentColor = Color.White
+                    contentColor = MaterialTheme.colorScheme.onBackground
                 ) {
-                    Text("$pendingCount \u0E23\u0E2D\u0E14\u0E33\u0E40\u0E19\u0E34\u0E19\u0E01\u0E32\u0E23")
+                    Text("$pendingCount ${strings.pending}")
                 }
             }
         }
@@ -367,17 +371,17 @@ private fun OrderApprovalSummaryCard(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                ChartLegendItem(label = "\u0E2D\u0E19\u0E38\u0E21\u0E31\u0E15\u0E34\u0E2D\u0E31\u0E15\u0E42\u0E19\u0E21\u0E31\u0E15\u0E34", count = stats.autoApproved, color = AppColors.CreditGreen)
-                ChartLegendItem(label = "\u0E2D\u0E19\u0E38\u0E21\u0E31\u0E15\u0E34\u0E14\u0E49\u0E27\u0E22\u0E15\u0E19\u0E40\u0E2D\u0E07", count = stats.manuallyApproved, color = AppColors.GoldAccent)
-                ChartLegendItem(label = "\u0E23\u0E2D\u0E15\u0E23\u0E27\u0E08\u0E2A\u0E2D\u0E1A", count = stats.pendingReview, color = AppColors.WarningOrange)
-                ChartLegendItem(label = "\u0E1B\u0E0F\u0E34\u0E40\u0E2A\u0E18", count = stats.rejected, color = AppColors.DebitRed)
+                ChartLegendItem(label = strings.autoApproved, count = stats.autoApproved, color = AppColors.CreditGreen)
+                ChartLegendItem(label = strings.manuallyApproved, count = stats.manuallyApproved, color = AppColors.GoldAccent)
+                ChartLegendItem(label = strings.pendingReview, count = stats.pendingReview, color = AppColors.WarningOrange)
+                ChartLegendItem(label = strings.rejected, count = stats.rejected, color = AppColors.DebitRed)
             }
         }
 
         if (stats.dailyBreakdown.isNotEmpty()) {
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                "7 \u0E27\u0E31\u0E19\u0E17\u0E35\u0E48\u0E1C\u0E48\u0E32\u0E19\u0E21\u0E32",
+                strings.last7Days,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -403,9 +407,11 @@ fun SummaryCard(
         colors = listOf(color.copy(alpha = 0.15f), color.copy(alpha = 0.05f))
     )
 ) {
+    val strings = LocalAppStrings.current
+
     Card(
         modifier = modifier
-            .border(1.dp, AppColors.GlassCardBorder, RoundedCornerShape(16.dp)),
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp)),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -434,7 +440,7 @@ fun SummaryCard(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                "\u0E3F${String.format("%,.2f", amount)}",
+                "${strings.bahtSymbol}${String.format("%,.2f", amount)}",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = color
@@ -448,6 +454,7 @@ fun TransactionItem(
     transaction: BankTransaction,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
     val isCredit = transaction.type == TransactionType.CREDIT
     val amountColor = if (isCredit) AppColors.CreditGreen else AppColors.DebitRed
     val dateFormat = SimpleDateFormat("HH:mm dd/MM", Locale.getDefault())
@@ -478,7 +485,7 @@ fun TransactionItem(
                         transaction.bank,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
                         dateFormat.format(Date(transaction.timestamp)),
@@ -513,7 +520,7 @@ fun TransactionItem(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        if (transaction.isSynced) "\u0E0B\u0E34\u0E07\u0E04\u0E4C\u0E41\u0E25\u0E49\u0E27" else "\u0E23\u0E2D\u0E14\u0E33\u0E40\u0E19\u0E34\u0E19\u0E01\u0E32\u0E23",
+                        if (transaction.isSynced) strings.synced else strings.pending,
                         style = MaterialTheme.typography.bodySmall,
                         fontSize = 10.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant

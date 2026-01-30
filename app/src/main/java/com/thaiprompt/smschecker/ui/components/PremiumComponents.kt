@@ -2,6 +2,7 @@ package com.thaiprompt.smschecker.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
@@ -12,17 +13,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.thaiprompt.smschecker.ui.theme.AppColors
+import com.thaiprompt.smschecker.ui.theme.LocalThemeMode
+import com.thaiprompt.smschecker.ui.theme.ThemeMode
+
+/**
+ * Returns true if the current theme is effectively dark.
+ */
+@Composable
+fun isEffectivelyDark(): Boolean {
+    val themeMode = LocalThemeMode.current
+    return when (themeMode) {
+        ThemeMode.DARK -> true
+        ThemeMode.LIGHT -> false
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
+}
 
 /**
  * A gradient header banner with gold accent line at the bottom.
@@ -32,21 +42,20 @@ fun GradientHeader(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val isDark = isEffectivelyDark()
+    val gradientColors = if (isDark) {
+        listOf(Color(0xFF1A1F35), Color(0xFF141824), Color(0xFF0D1117))
+    } else {
+        listOf(Color(0xFF1A237E), Color(0xFF283593), Color(0xFF3949AB))
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp))
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF1A1F35),
-                        Color(0xFF141824),
-                        Color(0xFF0D1117)
-                    )
-                )
-            )
+            .background(Brush.verticalGradient(colors = gradientColors))
     ) {
-        // Subtle gold accent dots / glow
+        // Gold accent line at bottom
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -85,7 +94,7 @@ fun GlassCard(
             .fillMaxWidth()
             .border(
                 width = 1.dp,
-                color = AppColors.GlassCardBorder,
+                color = MaterialTheme.colorScheme.outline,
                 shape = RoundedCornerShape(16.dp)
             ),
         shape = RoundedCornerShape(16.dp),
@@ -111,7 +120,7 @@ fun GoldAccentCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f))
-            .border(1.dp, AppColors.GlassCardBorder, RoundedCornerShape(16.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
     ) {
         // Gold accent bar
         Box(
@@ -168,7 +177,18 @@ fun SectionTitle(
 }
 
 /**
- * Gradient background for the entire screen (use as root modifier).
+ * Gradient background brush for the entire screen - adapts to theme.
+ */
+@Composable
+fun premiumBackgroundBrush(): Brush {
+    val bg = MaterialTheme.colorScheme.background
+    return Brush.verticalGradient(
+        colors = listOf(bg, bg.copy(alpha = 0.97f), bg)
+    )
+}
+
+/**
+ * Gradient background modifier - for theme-aware usage, use background(premiumBackgroundBrush()).
  */
 fun Modifier.premiumBackground(): Modifier = this.background(
     Brush.verticalGradient(

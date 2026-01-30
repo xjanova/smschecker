@@ -1,6 +1,7 @@
 package com.thaiprompt.smschecker.domain.parser
 
 import com.thaiprompt.smschecker.data.model.BankTransaction
+import com.thaiprompt.smschecker.data.model.SmsSenderRule
 import com.thaiprompt.smschecker.data.model.TransactionType
 
 /**
@@ -19,6 +20,12 @@ class BankSmsParser {
         val senderOrReceiver: String,
         val referenceNumber: String
     )
+
+    private var customRules: List<SmsSenderRule> = emptyList()
+
+    fun setCustomRules(rules: List<SmsSenderRule>) {
+        this.customRules = rules
+    }
 
     companion object {
         // Known bank SMS sender addresses
@@ -76,6 +83,15 @@ class BankSmsParser {
      */
     fun identifyBank(senderAddress: String): String? {
         val normalizedSender = senderAddress.trim()
+
+        // Check custom rules first
+        for (rule in customRules) {
+            if (rule.isActive && normalizedSender.contains(rule.senderAddress, ignoreCase = true)) {
+                return rule.bankCode
+            }
+        }
+
+        // Fall back to hardcoded bank senders
         for ((bank, senders) in BANK_SENDERS) {
             if (senders.any { normalizedSender.contains(it, ignoreCase = true) }) {
                 return bank

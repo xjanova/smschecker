@@ -8,6 +8,7 @@ import com.thaiprompt.smschecker.data.api.ApiClientFactory
 import com.thaiprompt.smschecker.data.db.AppDatabase
 import com.thaiprompt.smschecker.data.db.OrderApprovalDao
 import com.thaiprompt.smschecker.data.db.ServerConfigDao
+import com.thaiprompt.smschecker.data.db.SmsSenderRuleDao
 import com.thaiprompt.smschecker.data.db.SyncLogDao
 import com.thaiprompt.smschecker.data.db.TransactionDao
 import com.thaiprompt.smschecker.domain.parser.BankSmsParser
@@ -47,6 +48,9 @@ object AppModule {
 
     @Provides
     fun provideOrderApprovalDao(db: AppDatabase): OrderApprovalDao = db.orderApprovalDao()
+
+    @Provides
+    fun provideSmsSenderRuleDao(db: AppDatabase): SmsSenderRuleDao = db.smsSenderRuleDao()
 
     @Provides
     @Singleton
