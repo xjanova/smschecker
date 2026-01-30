@@ -22,12 +22,21 @@ data class BankTransaction(
     val syncResponse: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 ) {
-    fun getAmountAsBigDecimal(): BigDecimal = BigDecimal(amount)
+    fun getAmountAsBigDecimal(): BigDecimal = try {
+        BigDecimal(amount)
+    } catch (_: Exception) {
+        BigDecimal.ZERO
+    }
 
     fun getFormattedAmount(): String {
-        val bd = getAmountAsBigDecimal()
-        val prefix = if (type == TransactionType.CREDIT) "+" else "-"
-        return "$prefix฿${String.format("%,.2f", bd)}"
+        return try {
+            val bd = getAmountAsBigDecimal()
+            val prefix = if (type == TransactionType.CREDIT) "+" else "-"
+            "$prefix฿${String.format("%,.2f", bd)}"
+        } catch (_: Exception) {
+            val prefix = if (type == TransactionType.CREDIT) "+" else "-"
+            "$prefix฿$amount"
+        }
     }
 
     fun getMaskedAccount(): String {

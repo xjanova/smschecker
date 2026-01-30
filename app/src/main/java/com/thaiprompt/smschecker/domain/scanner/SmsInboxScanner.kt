@@ -45,48 +45,63 @@ class SmsInboxScanner @Inject constructor(
      */
     suspend fun scanInbox(maxMessages: Int = MAX_SCAN_COUNT): List<ScannedSms> {
         // Load custom rules into parser
-        val customRules = smsSenderRuleDao.getActiveRules()
+        val customRules = try {
+            smsSenderRuleDao.getActiveRules()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading custom rules", e)
+            emptyList()
+        }
         parser.setCustomRules(customRules)
 
         val allMessages = readInboxMessages(maxMessages)
+        Log.d(TAG, "Read ${allMessages.size} inbox messages")
         val results = mutableListOf<ScannedSms>()
 
         for (msg in allMessages) {
-            val bank = parser.identifyBank(msg.sender)
+            try {
+                val bank = parser.identifyBank(msg.sender)
 
-            if (bank != null) {
-                // Detected as bank SMS
-                val isCustomRule = customRules.any {
-                    it.isActive && msg.sender.contains(it.senderAddress, ignoreCase = true)
-                }
+                if (bank != null) {
+                    // Detected as bank SMS
+                    val isCustomRule = customRules.any {
+                        it.isActive && msg.sender.contains(it.senderAddress, ignoreCase = true)
+                    }
 
-                val parsed = parser.parse(msg.sender, msg.body, msg.timestamp)
+                    val parsed = try {
+                        parser.parse(msg.sender, msg.body, msg.timestamp)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error parsing SMS from ${msg.sender}", e)
+                        null
+                    }
 
-                results.add(
-                    ScannedSms(
-                        sender = msg.sender,
-                        body = msg.body,
-                        timestamp = msg.timestamp,
-                        detectedBank = bank,
-                        detectionMethod = if (isCustomRule) DetectionMethod.CUSTOM_RULE else DetectionMethod.AUTO_DETECTED,
-                        parsedTransaction = parsed
-                    )
-                )
-            } else {
-                // Try to detect if it looks like a bank/financial message even without sender match
-                val looksLikeBankSms = detectBankLikeContent(msg.body)
-                if (looksLikeBankSms) {
                     results.add(
                         ScannedSms(
                             sender = msg.sender,
                             body = msg.body,
                             timestamp = msg.timestamp,
-                            detectedBank = null,
-                            detectionMethod = DetectionMethod.UNKNOWN,
-                            parsedTransaction = null
+                            detectedBank = bank,
+                            detectionMethod = if (isCustomRule) DetectionMethod.CUSTOM_RULE else DetectionMethod.AUTO_DETECTED,
+                            parsedTransaction = parsed
                         )
                     )
+                } else {
+                    // Try to detect if it looks like a bank/financial message even without sender match
+                    val looksLikeBankSms = detectBankLikeContent(msg.body)
+                    if (looksLikeBankSms) {
+                        results.add(
+                            ScannedSms(
+                                sender = msg.sender,
+                                body = msg.body,
+                                timestamp = msg.timestamp,
+                                detectedBank = null,
+                                detectionMethod = DetectionMethod.UNKNOWN,
+                                parsedTransaction = null
+                            )
+                        )
+                    }
                 }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error processing message from ${msg.sender}", e)
             }
         }
 

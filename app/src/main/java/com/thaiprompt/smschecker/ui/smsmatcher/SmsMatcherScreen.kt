@@ -1,5 +1,6 @@
 package com.thaiprompt.smschecker.ui.smsmatcher
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,6 +10,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,12 +40,15 @@ import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 import java.text.SimpleDateFormat
 import java.util.*
 
+private const val TAG = "SmsMatcherScreen"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SmsMatcherScreen(
     onBack: () -> Unit,
     viewModel: SmsMatcherViewModel = hiltViewModel()
 ) {
+    Log.d(TAG, "SmsMatcherScreen composable entered")
     val state by viewModel.state.collectAsState()
     val strings = LocalAppStrings.current
 
@@ -59,7 +66,7 @@ fun SmsMatcherScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = strings.backButton, tint = Color.White)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = strings.backButton, tint = Color.White)
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -80,6 +87,40 @@ fun SmsMatcherScreen(
         }
 
         item { Spacer(modifier = Modifier.height(12.dp)) }
+
+        // Error message display
+        if (state.errorMessage != null) {
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = AppColors.DebitRed.copy(alpha = 0.1f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = AppColors.DebitRed,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            state.errorMessage ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AppColors.DebitRed
+                        )
+                    }
+                }
+            }
+            item { Spacer(modifier = Modifier.height(8.dp)) }
+        }
 
         // Scan Status Bar
         item {
@@ -261,7 +302,7 @@ fun SmsMatcherScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                Icons.Default.HelpOutline,
+                                Icons.AutoMirrored.Filled.Help,
                                 contentDescription = null,
                                 tint = AppColors.WarningOrange,
                                 modifier = Modifier.size(20.dp)
@@ -717,7 +758,7 @@ private fun AddRuleDialog(
                     label = { Text(strings.sampleMessageLabel) },
                     maxLines = 3,
                     modifier = Modifier.fillMaxWidth(),
-                    leadingIcon = { Icon(Icons.Default.Message, contentDescription = null) }
+                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Message, contentDescription = null) }
                 )
 
                 Row(

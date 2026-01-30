@@ -13,6 +13,7 @@ import com.thaiprompt.smschecker.domain.scanner.DetectionMethod
 import com.thaiprompt.smschecker.domain.scanner.ScannedSms
 import com.thaiprompt.smschecker.domain.scanner.SmsInboxScanner
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -31,7 +32,8 @@ data class SmsMatcherState(
     val scanCount: Int = 0,
     val showAddDialog: Boolean = false,
     val selectedSender: String = "",
-    val selectedSample: String = ""
+    val selectedSample: String = "",
+    val errorMessage: String? = null
 )
 
 @HiltViewModel
@@ -49,12 +51,22 @@ class SmsMatcherViewModel @Inject constructor(
     val state: StateFlow<SmsMatcherState> = _state.asStateFlow()
 
     init {
-        loadRules()
-        scanInbox()
+        Log.d(TAG, "ViewModel init started")
+        try {
+            loadRules()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start loadRules", e)
+        }
+        try {
+            scanInbox()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start scanInbox", e)
+        }
+        Log.d(TAG, "ViewModel init completed")
     }
 
     private fun loadRules() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 smsSenderRuleDao.getAllRules().collect { rules ->
                     _state.update { it.copy(rules = rules) }
@@ -66,10 +78,27 @@ class SmsMatcherViewModel @Inject constructor(
     }
 
     fun scanInbox() {
-        viewModelScope.launch {
-            _state.update { it.copy(isScanning = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            _state.update { it.copy(isScanning = true, errorMessage = null) }
             try {
-                val scanned = smsInboxScanner.scanInbox()
+                Log.d(TAG, "Starting inbox scan...")
+                val scanned = try {
+                    smsInboxScanner.scanInbox()
+                } catch (e: SecurityException) {
+                    Log.w(TAG, "SMS permission denied", e)
+                    _state.update {
+                        it.copy(isScanning = false, scanCount = 0, errorMessage = "SMS permission required")
+                    }
+                    return@launch
+                } catch (e: Exception) {
+                    Log.e(TAG, "Inbox scan failed", e)
+                    _state.update {
+                        it.copy(isScanning = false, scanCount = 0, errorMessage = "Scan failed: ${e.message}")
+                    }
+                    return@launch
+                }
+
+                Log.d(TAG, "Scanned ${scanned.size} messages")
 
                 val detected = scanned.filter {
                     it.detectionMethod == DetectionMethod.AUTO_DETECTED ||
@@ -99,13 +128,17 @@ class SmsMatcherViewModel @Inject constructor(
                 }
 
                 for (tx in creditTransactions) {
-                    val amountDouble = tx.amount.toDoubleOrNull() ?: continue
-                    // Find orders with matching amount (within 0.01 tolerance)
-                    val matchingOrder = orders.find { order ->
-                        kotlin.math.abs(order.amount - amountDouble) < 0.01
-                    }
-                    if (matchingOrder != null) {
-                        matches.add(OrderMatch(order = matchingOrder, transaction = tx))
+                    try {
+                        val amountDouble = tx.amount.toDoubleOrNull() ?: continue
+                        // Find orders with matching amount (within 0.01 tolerance)
+                        val matchingOrder = orders.find { order ->
+                            kotlin.math.abs(order.amount - amountDouble) < 0.01
+                        }
+                        if (matchingOrder != null) {
+                            matches.add(OrderMatch(order = matchingOrder, transaction = tx))
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error matching transaction", e)
                     }
                 }
 
@@ -118,9 +151,10 @@ class SmsMatcherViewModel @Inject constructor(
                         scanCount = scanned.size
                     )
                 }
+                Log.d(TAG, "Scan complete: ${detected.size} detected, ${unknown.size} unknown, ${matches.size} matches")
             } catch (e: Exception) {
                 Log.e(TAG, "Error scanning inbox", e)
-                _state.update { it.copy(isScanning = false, scanCount = 0) }
+                _state.update { it.copy(isScanning = false, scanCount = 0, errorMessage = "Error: ${e.message}") }
             }
         }
     }
@@ -140,28 +174,40 @@ class SmsMatcherViewModel @Inject constructor(
     }
 
     fun addRule(senderAddress: String, bankCode: String, sampleMessage: String) {
-        viewModelScope.launch {
-            val rule = SmsSenderRule(
-                senderAddress = senderAddress,
-                bankCode = bankCode,
-                sampleMessage = sampleMessage
-            )
-            smsSenderRuleDao.insert(rule)
-            _state.update { it.copy(showAddDialog = false) }
-            // Re-scan after adding rule
-            scanInbox()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val rule = SmsSenderRule(
+                    senderAddress = senderAddress,
+                    bankCode = bankCode,
+                    sampleMessage = sampleMessage
+                )
+                smsSenderRuleDao.insert(rule)
+                _state.update { it.copy(showAddDialog = false) }
+                // Re-scan after adding rule
+                scanInbox()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error adding rule", e)
+            }
         }
     }
 
     fun toggleRule(rule: SmsSenderRule) {
-        viewModelScope.launch {
-            smsSenderRuleDao.update(rule.copy(isActive = !rule.isActive))
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                smsSenderRuleDao.update(rule.copy(isActive = !rule.isActive))
+            } catch (e: Exception) {
+                Log.e(TAG, "Error toggling rule", e)
+            }
         }
     }
 
     fun deleteRule(rule: SmsSenderRule) {
-        viewModelScope.launch {
-            smsSenderRuleDao.delete(rule)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                smsSenderRuleDao.delete(rule)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error deleting rule", e)
+            }
         }
     }
 }
