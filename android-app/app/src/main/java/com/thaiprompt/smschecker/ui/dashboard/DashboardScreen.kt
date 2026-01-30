@@ -13,7 +13,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,15 +31,10 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
 
-    PullToRefreshBox(
-        isRefreshing = isRefreshing,
-        onRefresh = { viewModel.refresh() },
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+            .background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -66,8 +60,23 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                     )
                 }
 
-                // Monitoring toggle
+                // Refresh + Monitoring toggle
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { viewModel.refresh() }) {
+                        if (isRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = AppColors.GoldAccent
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Refresh",
+                                tint = AppColors.GoldAccent
+                            )
+                        }
+                    }
                     Text(
                         if (state.isMonitoring) "Active" else "Paused",
                         style = MaterialTheme.typography.bodySmall,
@@ -272,7 +281,6 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
             TransactionItem(transaction = transaction)
         }
     }
-    } // end PullToRefreshBox
 }
 
 @Composable
