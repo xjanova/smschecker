@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.room.Room
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
-import com.thaiprompt.smschecker.data.api.ApiClientFactory
 import com.thaiprompt.smschecker.data.db.AppDatabase
 import com.thaiprompt.smschecker.data.db.ServerConfigDao
 import com.thaiprompt.smschecker.data.db.SyncLogDao
@@ -51,10 +50,6 @@ object AppModule {
     @Provides
     @Singleton
     fun provideCryptoManager(): CryptoManager = CryptoManager()
-
-    @Provides
-    @Singleton
-    fun provideApiClientFactory(): ApiClientFactory = ApiClientFactory()
 
     @Provides
     @Singleton
