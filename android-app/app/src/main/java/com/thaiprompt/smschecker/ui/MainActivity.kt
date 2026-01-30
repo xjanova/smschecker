@@ -18,19 +18,26 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.thaiprompt.smschecker.security.SecureStorage
 import com.thaiprompt.smschecker.service.SmsProcessingService
 import com.thaiprompt.smschecker.ui.dashboard.DashboardScreen
+import com.thaiprompt.smschecker.ui.qrscanner.QrScannerScreen
 import com.thaiprompt.smschecker.ui.settings.SettingsScreen
 import com.thaiprompt.smschecker.ui.theme.SmsCheckerTheme
 import com.thaiprompt.smschecker.ui.transactions.TransactionListScreen
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var secureStorage: SecureStorage
 
     private val requiredPermissions = buildList {
         add(Manifest.permission.RECEIVE_SMS)
@@ -50,13 +57,21 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
 
         checkAndRequestPermissions()
 
         setContent {
-            SmsCheckerTheme {
-                MainApp()
+            val themeMode = remember { mutableStateOf(secureStorage.getThemeMode()) }
+
+            SmsCheckerTheme(themeMode = themeMode.value) {
+                MainApp(
+                    themeMode = themeMode,
+                    onThemeModeChanged = { mode ->
+                        themeMode.value = mode
+                    }
+                )
             }
         }
     }
@@ -85,48 +100,58 @@ sealed class Screen(val route: String, val title: String) {
     data object Dashboard : Screen("dashboard", "Dashboard")
     data object Transactions : Screen("transactions", "Transactions")
     data object Settings : Screen("settings", "Settings")
+    data object QrScanner : Screen("qr_scanner", "Scan QR Code")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainApp() {
+fun MainApp(
+    themeMode: MutableState<String> = mutableStateOf("system"),
+    onThemeModeChanged: (String) -> Unit = {}
+) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
     val screens = listOf(Screen.Dashboard, Screen.Transactions, Screen.Settings)
 
+    // Hide bottom bar on QR scanner screen
+    val showBottomBar = currentRoute in screens.map { it.route }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = NavigationBarDefaults.Elevation
-            ) {
-                screens.forEach { screen ->
-                    NavigationBarItem(
-                        icon = {
-                            Icon(
-                                imageVector = when (screen) {
-                                    is Screen.Dashboard -> Icons.Default.Dashboard
-                                    is Screen.Transactions -> Icons.Default.History
-                                    is Screen.Settings -> Icons.Default.Settings
-                                },
-                                contentDescription = screen.title
-                            )
-                        },
-                        label = { Text(screen.title) },
-                        selected = currentRoute == screen.route,
-                        onClick = {
-                            if (currentRoute != screen.route) {
-                                navController.navigate(screen.route) {
-                                    popUpTo(Screen.Dashboard.route) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
+            if (showBottomBar) {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = NavigationBarDefaults.Elevation
+                ) {
+                    screens.forEach { screen ->
+                        NavigationBarItem(
+                            icon = {
+                                Icon(
+                                    imageVector = when (screen) {
+                                        is Screen.Dashboard -> Icons.Default.Dashboard
+                                        is Screen.Transactions -> Icons.Default.History
+                                        is Screen.Settings -> Icons.Default.Settings
+                                        else -> Icons.Default.Dashboard
+                                    },
+                                    contentDescription = screen.title
+                                )
+                            },
+                            label = { Text(screen.title) },
+                            selected = currentRoute == screen.route,
+                            onClick = {
+                                if (currentRoute != screen.route) {
+                                    navController.navigate(screen.route) {
+                                        popUpTo(Screen.Dashboard.route) { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
                                 }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -138,7 +163,30 @@ fun MainApp() {
         ) {
             composable(Screen.Dashboard.route) { DashboardScreen() }
             composable(Screen.Transactions.route) { TransactionListScreen() }
-            composable(Screen.Settings.route) { SettingsScreen() }
+            composable(Screen.Settings.route) {
+                SettingsScreen(navController = navController)
+            }
+            composable(Screen.QrScanner.route) {
+                QrScannerScreen(
+                    onConfigScanned = { result ->
+                        // Pass result back to Settings via savedStateHandle
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("qr_server_name", result.deviceName)
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("qr_server_url", result.url)
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("qr_api_key", result.apiKey)
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("qr_secret_key", result.secretKey)
+                        navController.popBackStack()
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
         }
     }
 }

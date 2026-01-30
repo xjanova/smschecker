@@ -1,5 +1,6 @@
 package com.thaiprompt.smschecker.data.repository
 
+import android.util.Log
 import com.google.gson.Gson
 import com.thaiprompt.smschecker.data.api.*
 import com.thaiprompt.smschecker.data.db.ServerConfigDao
@@ -8,6 +9,7 @@ import com.thaiprompt.smschecker.data.db.TransactionDao
 import com.thaiprompt.smschecker.data.model.*
 import com.thaiprompt.smschecker.security.CryptoManager
 import com.thaiprompt.smschecker.security.SecureStorage
+import com.thaiprompt.smschecker.ui.dashboard.ServerHealth
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -210,4 +212,44 @@ class TransactionRepository @Inject constructor(
 
     // Sync logs
     fun getRecentSyncLogs(): Flow<List<SyncLog>> = syncLogDao.getRecentLogs()
+
+    // Server health check
+    suspend fun checkAllServersHealth(): List<ServerHealth> {
+        val servers = serverConfigDao.getActiveConfigs()
+        return servers.map { server ->
+            try {
+                val apiKey = secureStorage.getApiKey(server.id)
+                val deviceId = secureStorage.getDeviceId() ?: ""
+                if (apiKey.isNullOrBlank()) {
+                    return@map ServerHealth(
+                        serverId = server.id,
+                        serverName = server.name,
+                        isReachable = false
+                    )
+                }
+
+                val start = System.currentTimeMillis()
+                val client = apiClientFactory.getClient(server.baseUrl)
+                val response = client.checkStatus(
+                    apiKey = apiKey,
+                    deviceId = deviceId
+                )
+                val latency = System.currentTimeMillis() - start
+
+                ServerHealth(
+                    serverId = server.id,
+                    serverName = server.name,
+                    isReachable = response.isSuccessful,
+                    latencyMs = latency
+                )
+            } catch (e: Exception) {
+                Log.w("TransactionRepo", "Health check failed for ${server.name}", e)
+                ServerHealth(
+                    serverId = server.id,
+                    serverName = server.name,
+                    isReachable = false
+                )
+            }
+        }
+    }
 }

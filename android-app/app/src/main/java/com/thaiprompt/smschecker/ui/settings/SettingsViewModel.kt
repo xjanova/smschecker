@@ -16,7 +16,8 @@ data class SettingsState(
     val isMonitoring: Boolean = true,
     val deviceId: String = "",
     val showAddDialog: Boolean = false,
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    val themeMode: String = "system"
 )
 
 @HiltViewModel
@@ -43,7 +44,8 @@ class SettingsViewModel @Inject constructor(
         _state.update {
             it.copy(
                 isMonitoring = secureStorage.isMonitoringEnabled(),
-                deviceId = deviceId
+                deviceId = deviceId,
+                themeMode = secureStorage.getThemeMode()
             )
         }
 
@@ -91,5 +93,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             repository.toggleServerActive(config)
         }
+    }
+
+    fun setThemeMode(mode: String) {
+        secureStorage.setThemeMode(mode)
+        _state.update { it.copy(themeMode = mode) }
     }
 }

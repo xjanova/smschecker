@@ -21,8 +21,13 @@
     <!-- Vibrate for notifications -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- Hardware features: telephony not required (app works on tablets too) -->
+    <!-- Camera for QR code scanning -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Hardware features (not required - app works on tablets without camera/telephony) -->
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <application
         android:name=".SmsCheckerApp"
@@ -38,7 +43,7 @@
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.SmsChecker">
+            android:theme="@style/Theme.SmsChecker.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -69,6 +74,17 @@
             android:name=".service.SmsProcessingService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
+
+        <!-- FileProvider for CSV export -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_provider_paths" />
+        </provider>
 
     </application>
 </manifest>

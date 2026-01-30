@@ -50,6 +50,9 @@ class CreateDeviceCommand extends Command
         $this->warn('⚠️  SAVE THESE KEYS! They cannot be retrieved later.');
         $this->warn('    Enter these in the Android app Settings → Add Server');
         $this->info('');
+        $this->info('📱 Or scan the QR code for easy setup:');
+        $this->info('   ' . url("/smschecker/device/{$device->id}/qr"));
+        $this->info('');
 
         return Command::SUCCESS;
     }

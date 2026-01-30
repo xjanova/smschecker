@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.TransactionType
+import com.thaiprompt.smschecker.ui.components.BankLogoCircle
 import com.thaiprompt.smschecker.ui.theme.AppColors
 import java.text.SimpleDateFormat
 import java.util.*
@@ -29,11 +30,17 @@ import java.util.*
 @Composable
 fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
 
-    LazyColumn(
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = { viewModel.refresh() },
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -158,6 +165,57 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
             }
         }
 
+        // Server Health
+        if (state.serverHealthList.isNotEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            "Server Status",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        state.serverHealthList.forEach { health ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        if (health.isReachable) Icons.Default.CheckCircle else Icons.Default.Error,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = if (health.isReachable) AppColors.CreditGreen else AppColors.DebitRed
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        health.serverName,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                Text(
+                                    if (health.isReachable) "${health.latencyMs}ms" else "Offline",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (health.isReachable) AppColors.CreditGreen else AppColors.DebitRed,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Recent Transactions Header
         item {
             Row(
@@ -214,6 +272,7 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
             TransactionItem(transaction = transaction)
         }
     }
+    } // end PullToRefreshBox
 }
 
 @Composable
@@ -292,24 +351,11 @@ fun TransactionItem(transaction: BankTransaction) {
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                // Bank icon
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (isCredit) AppColors.CreditGreen.copy(alpha = 0.1f)
-                            else AppColors.DebitRed.copy(alpha = 0.1f)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        if (isCredit) Icons.Default.CallReceived else Icons.Default.CallMade,
-                        contentDescription = null,
-                        tint = amountColor,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
+                // Bank logo
+                BankLogoCircle(
+                    bankCode = transaction.bank,
+                    size = 44.dp
+                )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(

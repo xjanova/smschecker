@@ -64,4 +64,12 @@ class SecureStorage @Inject constructor(
     fun setMonitoringEnabled(enabled: Boolean) {
         prefs.edit().putBoolean("monitoring_enabled", enabled).apply()
     }
+
+    fun getThemeMode(): String {
+        return prefs.getString("theme_mode", "system") ?: "system"
+    }
+
+    fun setThemeMode(mode: String) {
+        prefs.edit().putString("theme_mode", mode).apply()
+    }
 }

@@ -29,7 +29,7 @@ class ApiClientFactory @Inject constructor() {
                 val request = chain.request().newBuilder()
                     .addHeader("Accept", "application/json")
                     .addHeader("Content-Type", "application/json")
-                    .addHeader("User-Agent", "SmsChecker-Android/1.0")
+                    .addHeader("User-Agent", "SmsChecker-Android/${com.thaiprompt.smschecker.BuildConfig.VERSION_NAME}")
                     .build()
                 chain.proceed(request)
             }

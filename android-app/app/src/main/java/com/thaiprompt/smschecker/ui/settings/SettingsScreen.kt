@@ -20,15 +20,52 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.NavHostController
+import com.thaiprompt.smschecker.BuildConfig
 import com.thaiprompt.smschecker.data.model.ServerConfig
+import com.thaiprompt.smschecker.ui.Screen
+import com.thaiprompt.smschecker.ui.components.BankLogoCircle
+import com.thaiprompt.smschecker.ui.components.BankVisuals
 import com.thaiprompt.smschecker.ui.theme.AppColors
 import java.text.SimpleDateFormat
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(
+    navController: NavHostController? = null,
+    viewModel: SettingsViewModel = hiltViewModel()
+) {
     val state by viewModel.state.collectAsState()
+
+    // Handle QR scan result
+    val savedStateHandle = navController?.currentBackStackEntry?.savedStateHandle
+    LaunchedEffect(savedStateHandle) {
+        savedStateHandle?.let { handle ->
+            // Check for QR config data returned from scanner
+            val serverName = handle.get<String>("qr_server_name")
+            val serverUrl = handle.get<String>("qr_server_url")
+            val apiKey = handle.get<String>("qr_api_key")
+            val secretKey = handle.get<String>("qr_secret_key")
+
+            if (!serverName.isNullOrBlank() && !serverUrl.isNullOrBlank() &&
+                !apiKey.isNullOrBlank() && !secretKey.isNullOrBlank()
+            ) {
+                viewModel.addServer(
+                    name = serverName,
+                    url = serverUrl,
+                    apiKey = apiKey,
+                    secretKey = secretKey,
+                    isDefault = true
+                )
+                // Clear the data so it doesn't re-trigger
+                handle.remove<String>("qr_server_name")
+                handle.remove<String>("qr_server_url")
+                handle.remove<String>("qr_api_key")
+                handle.remove<String>("qr_secret_key")
+            }
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -125,6 +162,49 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             }
         }
 
+        // Theme Section
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        "Theme",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = AppColors.GoldAccent
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEach { (mode, label) ->
+                            FilterChip(
+                                selected = state.themeMode == mode,
+                                onClick = { viewModel.setThemeMode(mode) },
+                                label = { Text(label) },
+                                leadingIcon = if (state.themeMode == mode) {
+                                    {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                } else null,
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = AppColors.GoldAccent.copy(alpha = 0.2f),
+                                    selectedLabelColor = AppColors.GoldAccent
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // Server Connections Header
         item {
             Row(
@@ -137,16 +217,31 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                FilledTonalButton(
-                    onClick = { viewModel.showAddServerDialog() },
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = AppColors.GoldAccent.copy(alpha = 0.2f),
-                        contentColor = AppColors.GoldAccent
-                    )
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Add Server")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // QR Scan button
+                    FilledTonalButton(
+                        onClick = { navController?.navigate(Screen.QrScanner.route) },
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = AppColors.InfoBlue.copy(alpha = 0.2f),
+                            contentColor = AppColors.InfoBlue
+                        )
+                    ) {
+                        Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("QR")
+                    }
+                    // Add Server button
+                    FilledTonalButton(
+                        onClick = { viewModel.showAddServerDialog() },
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = AppColors.GoldAccent.copy(alpha = 0.2f),
+                            contentColor = AppColors.GoldAccent
+                        )
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Add")
+                    }
                 }
             }
         }
@@ -215,40 +310,68 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 )
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    val banks = listOf(
-                        "KBANK" to "Kasikorn Bank",
-                        "SCB" to "Siam Commercial Bank",
-                        "KTB" to "Krungthai Bank",
-                        "BBL" to "Bangkok Bank",
-                        "GSB" to "Government Savings Bank",
-                        "BAY" to "Bank of Ayudhya (Krungsri)",
-                        "TTB" to "TMBThanachart Bank",
-                        "PromptPay" to "PromptPay QR"
-                    )
-                    banks.forEach { (code, name) ->
+                    BankVisuals.allBanks().forEach { bank ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(code, fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium)
-                            Text(name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            BankLogoCircle(bankCode = bank.code, size = 32.dp)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    bank.code,
+                                    fontWeight = FontWeight.Medium,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    bank.fullName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
             }
         }
 
-        // Version info
+        // Version & Branding
         item {
             Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                "SMS Payment Checker v1.0.0",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.fillMaxWidth()
-            )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "SMS Payment Checker v${BuildConfig.VERSION_NAME}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                )
+                if (BuildConfig.GIT_SHA != "local") {
+                    Text(
+                        "Build ${BuildConfig.GIT_SHA}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                        fontSize = 10.sp
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Produced by xman studio",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium,
+                    color = AppColors.GoldAccent.copy(alpha = 0.6f)
+                )
+                Text(
+                    "xman4289.com",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    fontSize = 11.sp
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
         }
     }
 

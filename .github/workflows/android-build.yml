@@ -46,9 +46,15 @@ jobs:
 
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --stacktrace
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          GITHUB_SHA: ${{ github.sha }}
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          GITHUB_SHA: ${{ github.sha }}
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -96,6 +102,9 @@ jobs:
 
       - name: Run Android Lint
         run: ./gradlew lintDebug --stacktrace
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          GITHUB_SHA: ${{ github.sha }}
 
       - name: Upload lint report
         uses: actions/upload-artifact@v4
