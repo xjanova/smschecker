@@ -10,19 +10,21 @@ import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -42,7 +44,11 @@ import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
 import com.thaiprompt.smschecker.ui.theme.AppColors
 import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 import org.json.JSONObject
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
+
+private const val TAG = "QrScanner"
 
 data class QrConfigResult(
     val type: String,
@@ -64,7 +70,25 @@ fun QrScannerScreen(
     val strings = LocalAppStrings.current
     var hasCameraPermission by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isScanning by remember { mutableStateOf(false) }
+    var framesProcessed by remember { mutableIntStateOf(0) }
     val isProcessing = remember { AtomicBoolean(false) }
+    val lastProcessingTime = remember { AtomicLong(0L) }
+
+    // Background executor for ML Kit — keeps UI thread free
+    val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
+
+    // Auto-reset isProcessing if stuck for >3 seconds
+    LaunchedEffect(framesProcessed) {
+        val lastTime = lastProcessingTime.get()
+        if (lastTime > 0 && isProcessing.get()) {
+            val elapsed = System.currentTimeMillis() - lastTime
+            if (elapsed > 3000) {
+                Log.w(TAG, "isProcessing stuck for ${elapsed}ms, resetting")
+                isProcessing.set(false)
+            }
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -86,6 +110,17 @@ fun QrScannerScreen(
         }
     }
 
+    // Cleanup executor when composable leaves
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                analysisExecutor.shutdown()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error shutting down executor", e)
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -99,7 +134,7 @@ fun QrScannerScreen(
             ) {
                 IconButton(onClick = onBack) {
                     Icon(
-                        Icons.Default.ArrowBack,
+                        Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = strings.backButton,
                         tint = MaterialTheme.colorScheme.onBackground
                     )
@@ -139,27 +174,37 @@ fun QrScannerScreen(
                     AndroidView(
                         factory = { ctx ->
                             PreviewView(ctx).also { previewView ->
+                                Log.d(TAG, "Setting up camera preview")
                                 val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
                                 cameraProviderFuture.addListener({
-                                    val cameraProvider = cameraProviderFuture.get()
-                                    val preview = Preview.Builder().build().also {
-                                        it.setSurfaceProvider(previewView.surfaceProvider)
-                                    }
-
-                                    val imageAnalysis = ImageAnalysis.Builder()
-                                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                                        .build()
-                                        .also { analysis ->
-                                            analysis.setAnalyzer(
-                                                ContextCompat.getMainExecutor(ctx)
-                                            ) { imageProxy ->
-                                                processImage(imageProxy, isProcessing) { result ->
-                                                    onConfigScanned(result)
-                                                }
-                                            }
+                                    try {
+                                        val cameraProvider = cameraProviderFuture.get()
+                                        val preview = Preview.Builder().build().also {
+                                            it.setSurfaceProvider(previewView.surfaceProvider)
                                         }
 
-                                    try {
+                                        val imageAnalysis = ImageAnalysis.Builder()
+                                            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                                            .build()
+                                            .also { analysis ->
+                                                // Use background executor to avoid blocking UI thread
+                                                analysis.setAnalyzer(analysisExecutor) { imageProxy ->
+                                                    isScanning = true
+                                                    processImage(
+                                                        imageProxy,
+                                                        isProcessing,
+                                                        lastProcessingTime
+                                                    ) { result ->
+                                                        Log.d(TAG, "QR config scanned successfully: ${result.url}")
+                                                        // Callback on main thread
+                                                        ContextCompat.getMainExecutor(ctx).execute {
+                                                            onConfigScanned(result)
+                                                        }
+                                                    }
+                                                    framesProcessed++
+                                                }
+                                            }
+
                                         cameraProvider.unbindAll()
                                         cameraProvider.bindToLifecycle(
                                             lifecycleOwner,
@@ -167,9 +212,10 @@ fun QrScannerScreen(
                                             preview,
                                             imageAnalysis
                                         )
+                                        Log.d(TAG, "Camera bound successfully")
                                     } catch (e: Exception) {
                                         errorMessage = "${strings.cameraFailed}: ${e.message}"
-                                        Log.e("QrScanner", "Camera bind failed", e)
+                                        Log.e(TAG, "Camera bind failed", e)
                                     }
                                 }, ContextCompat.getMainExecutor(ctx))
                             }
@@ -197,7 +243,7 @@ fun QrScannerScreen(
                         )
                     }
 
-                    // Bottom instruction
+                    // Scanning indicator + bottom instruction
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -210,13 +256,39 @@ fun QrScannerScreen(
                             ),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text(
-                                strings.pointCameraAtQr,
+                            Row(
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                                style = MaterialTheme.typography.bodyMedium,
-                                textAlign = TextAlign.Center,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                if (isScanning) {
+                                    // Animated scanning indicator
+                                    val rotation = rememberInfiniteTransition(label = "scan")
+                                    val angle by rotation.animateFloat(
+                                        initialValue = 0f,
+                                        targetValue = 360f,
+                                        animationSpec = infiniteRepeatable(
+                                            animation = tween(1500, easing = LinearEasing)
+                                        ),
+                                        label = "scanRotation"
+                                    )
+                                    Icon(
+                                        Icons.Default.QrCodeScanner,
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .rotate(angle),
+                                        tint = AppColors.GoldAccent
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
+                                Text(
+                                    strings.pointCameraAtQr,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    textAlign = TextAlign.Center,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                            }
                         }
                     }
                 }
@@ -309,15 +381,26 @@ fun QrScannerScreen(
 private fun processImage(
     imageProxy: ImageProxy,
     isProcessing: AtomicBoolean,
+    lastProcessingTime: AtomicLong,
     onResult: (QrConfigResult) -> Unit
 ) {
     if (!isProcessing.compareAndSet(false, true)) {
+        // Check for stuck state — auto-reset after 3 seconds
+        val elapsed = System.currentTimeMillis() - lastProcessingTime.get()
+        if (elapsed > 3000) {
+            Log.w(TAG, "Processing stuck for ${elapsed}ms, force resetting")
+            isProcessing.set(false)
+            // Try again on next frame
+        }
         imageProxy.close()
         return
     }
 
+    lastProcessingTime.set(System.currentTimeMillis())
+
     val mediaImage = imageProxy.image
     if (mediaImage == null) {
+        Log.w(TAG, "mediaImage is null")
         isProcessing.set(false)
         imageProxy.close()
         return
@@ -328,20 +411,27 @@ private fun processImage(
 
     scanner.process(inputImage)
         .addOnSuccessListener { barcodes ->
+            if (barcodes.isNotEmpty()) {
+                Log.d(TAG, "Found ${barcodes.size} barcode(s)")
+            }
             for (barcode in barcodes) {
                 if (barcode.valueType == Barcode.TYPE_TEXT || barcode.valueType == Barcode.TYPE_UNKNOWN) {
                     val rawValue = barcode.rawValue ?: continue
+                    Log.d(TAG, "Barcode raw value: ${rawValue.take(100)}...")
                     parseQrConfig(rawValue)?.let { result ->
+                        Log.d(TAG, "Valid QR config found: url=${result.url}")
                         onResult(result)
+                        // Reset processing flag after successful callback
+                        isProcessing.set(false)
                         return@addOnSuccessListener
                     }
                 }
             }
             isProcessing.set(false)
         }
-        .addOnFailureListener {
+        .addOnFailureListener { e ->
+            Log.e(TAG, "ML Kit barcode scan failed", e)
             isProcessing.set(false)
-            Log.e("QrScanner", "ML Kit failed", it)
         }
         .addOnCompleteListener {
             imageProxy.close()
@@ -352,7 +442,10 @@ private fun parseQrConfig(json: String): QrConfigResult? {
     return try {
         val obj = JSONObject(json)
         val type = obj.optString("type", "")
-        if (type != "smschecker_config") return null
+        if (type != "smschecker_config") {
+            Log.d(TAG, "QR type mismatch: '$type' (expected 'smschecker_config')")
+            return null
+        }
 
         QrConfigResult(
             type = type,
@@ -361,9 +454,11 @@ private fun parseQrConfig(json: String): QrConfigResult? {
             apiKey = obj.getString("apiKey"),
             secretKey = obj.getString("secretKey"),
             deviceName = obj.optString("deviceName", "\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C\u0E08\u0E32\u0E01 QR")
-        )
+        ).also {
+            Log.d(TAG, "Parsed QR config: url=${it.url}, device=${it.deviceName}")
+        }
     } catch (e: Exception) {
-        Log.e("QrScanner", "Failed to parse QR config: $json", e)
+        Log.e(TAG, "Failed to parse QR config: $json", e)
         null
     }
 }
