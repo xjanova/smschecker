@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
@@ -46,7 +47,6 @@ import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 import org.json.JSONObject
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 
 private const val TAG = "QrScanner"
 
@@ -59,6 +59,11 @@ data class QrConfigResult(
     val deviceName: String
 )
 
+// Singleton scanner with QR_CODE format only — faster and more accurate
+private val scannerOptions = BarcodeScannerOptions.Builder()
+    .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+    .build()
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QrScannerScreen(
@@ -70,25 +75,16 @@ fun QrScannerScreen(
     val strings = LocalAppStrings.current
     var hasCameraPermission by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var scanStatus by remember { mutableStateOf<String?>(null) }
     var isScanning by remember { mutableStateOf(false) }
-    var framesProcessed by remember { mutableIntStateOf(0) }
     val isProcessing = remember { AtomicBoolean(false) }
-    val lastProcessingTime = remember { AtomicLong(0L) }
+    val hasFoundResult = remember { AtomicBoolean(false) }
 
     // Background executor for ML Kit — keeps UI thread free
     val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
 
-    // Auto-reset isProcessing if stuck for >3 seconds
-    LaunchedEffect(framesProcessed) {
-        val lastTime = lastProcessingTime.get()
-        if (lastTime > 0 && isProcessing.get()) {
-            val elapsed = System.currentTimeMillis() - lastTime
-            if (elapsed > 3000) {
-                Log.w(TAG, "isProcessing stuck for ${elapsed}ms, resetting")
-                isProcessing.set(false)
-            }
-        }
-    }
+    // Create scanner once — reuse across all frames
+    val barcodeScanner = remember { BarcodeScanning.getClient(scannerOptions) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -110,13 +106,14 @@ fun QrScannerScreen(
         }
     }
 
-    // Cleanup executor when composable leaves
+    // Cleanup when composable leaves
     DisposableEffect(Unit) {
         onDispose {
             try {
+                barcodeScanner.close()
                 analysisExecutor.shutdown()
             } catch (e: Exception) {
-                Log.w(TAG, "Error shutting down executor", e)
+                Log.w(TAG, "Error during cleanup", e)
             }
         }
     }
@@ -187,21 +184,27 @@ fun QrScannerScreen(
                                             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                                             .build()
                                             .also { analysis ->
-                                                // Use background executor to avoid blocking UI thread
+                                                // Use background executor to avoid blocking UI
                                                 analysis.setAnalyzer(analysisExecutor) { imageProxy ->
                                                     isScanning = true
                                                     processImage(
                                                         imageProxy,
+                                                        barcodeScanner,
                                                         isProcessing,
-                                                        lastProcessingTime
+                                                        hasFoundResult
                                                     ) { result ->
-                                                        Log.d(TAG, "QR config scanned successfully: ${result.url}")
-                                                        // Callback on main thread
-                                                        ContextCompat.getMainExecutor(ctx).execute {
-                                                            onConfigScanned(result)
+                                                        when (result) {
+                                                            is ScanResult.ConfigFound -> {
+                                                                Log.d(TAG, "Config found, navigating back")
+                                                                ContextCompat.getMainExecutor(ctx).execute {
+                                                                    onConfigScanned(result.config)
+                                                                }
+                                                            }
+                                                            is ScanResult.WrongFormat -> {
+                                                                scanStatus = result.message
+                                                            }
                                                         }
                                                     }
-                                                    framesProcessed++
                                                 }
                                             }
 
@@ -262,7 +265,6 @@ fun QrScannerScreen(
                                 horizontalArrangement = Arrangement.Center
                             ) {
                                 if (isScanning) {
-                                    // Animated scanning indicator
                                     val rotation = rememberInfiniteTransition(label = "scan")
                                     val angle by rotation.animateFloat(
                                         initialValue = 0f,
@@ -340,6 +342,24 @@ fun QrScannerScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // Show scan status (wrong format QR detected)
+            scanStatus?.let { status ->
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = AppColors.WarningOrange.copy(alpha = 0.1f)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        status,
+                        modifier = Modifier.padding(16.dp),
+                        color = AppColors.WarningOrange,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
             errorMessage?.let { error ->
                 Card(
                     colors = CardDefaults.cardColors(
@@ -377,26 +397,31 @@ fun QrScannerScreen(
     }
 }
 
+/** Sealed class for scan results */
+private sealed class ScanResult {
+    data class ConfigFound(val config: QrConfigResult) : ScanResult()
+    data class WrongFormat(val message: String) : ScanResult()
+}
+
 @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
 private fun processImage(
     imageProxy: ImageProxy,
+    scanner: com.google.mlkit.vision.barcode.BarcodeScanner,
     isProcessing: AtomicBoolean,
-    lastProcessingTime: AtomicLong,
-    onResult: (QrConfigResult) -> Unit
+    hasFoundResult: AtomicBoolean,
+    onResult: (ScanResult) -> Unit
 ) {
-    if (!isProcessing.compareAndSet(false, true)) {
-        // Check for stuck state — auto-reset after 3 seconds
-        val elapsed = System.currentTimeMillis() - lastProcessingTime.get()
-        if (elapsed > 3000) {
-            Log.w(TAG, "Processing stuck for ${elapsed}ms, force resetting")
-            isProcessing.set(false)
-            // Try again on next frame
-        }
+    // Already found a valid config — stop processing
+    if (hasFoundResult.get()) {
         imageProxy.close()
         return
     }
 
-    lastProcessingTime.set(System.currentTimeMillis())
+    // Skip if already processing a frame
+    if (!isProcessing.compareAndSet(false, true)) {
+        imageProxy.close()
+        return
+    }
 
     val mediaImage = imageProxy.image
     if (mediaImage == null) {
@@ -407,30 +432,36 @@ private fun processImage(
     }
 
     val inputImage = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-    val scanner = BarcodeScanning.getClient()
 
     scanner.process(inputImage)
         .addOnSuccessListener { barcodes ->
-            if (barcodes.isNotEmpty()) {
-                Log.d(TAG, "Found ${barcodes.size} barcode(s)")
-            }
             for (barcode in barcodes) {
-                if (barcode.valueType == Barcode.TYPE_TEXT || barcode.valueType == Barcode.TYPE_UNKNOWN) {
-                    val rawValue = barcode.rawValue ?: continue
-                    Log.d(TAG, "Barcode raw value: ${rawValue.take(100)}...")
-                    parseQrConfig(rawValue)?.let { result ->
-                        Log.d(TAG, "Valid QR config found: url=${result.url}")
-                        onResult(result)
-                        // Reset processing flag after successful callback
-                        isProcessing.set(false)
-                        return@addOnSuccessListener
+                val rawValue = barcode.rawValue
+                if (rawValue.isNullOrBlank()) continue
+
+                Log.d(TAG, "Barcode found! format=${barcode.format}, valueType=${barcode.valueType}, length=${rawValue.length}")
+                Log.d(TAG, "Raw value: ${rawValue.take(200)}")
+
+                val config = parseQrConfig(rawValue)
+                if (config != null) {
+                    if (hasFoundResult.compareAndSet(false, true)) {
+                        Log.d(TAG, "✓ Valid smschecker_config found: url=${config.url}")
+                        onResult(ScanResult.ConfigFound(config))
                     }
+                    return@addOnSuccessListener
+                } else {
+                    // QR code read successfully but it's not our config format
+                    Log.d(TAG, "QR code read but not smschecker_config format")
+                    onResult(ScanResult.WrongFormat(
+                        "QR Code อ่านได้แต่ไม่ใช่ format ของ SMS Checker\n" +
+                        "ต้องเป็น QR ที่สร้างจากระบบเซิร์ฟเวอร์เท่านั้น"
+                    ))
                 }
             }
             isProcessing.set(false)
         }
         .addOnFailureListener { e ->
-            Log.e(TAG, "ML Kit barcode scan failed", e)
+            Log.e(TAG, "ML Kit scan failed: ${e.message}")
             isProcessing.set(false)
         }
         .addOnCompleteListener {
@@ -438,27 +469,43 @@ private fun processImage(
         }
 }
 
-private fun parseQrConfig(json: String): QrConfigResult? {
+private fun parseQrConfig(raw: String): QrConfigResult? {
+    // Try parsing as JSON first
+    val json = raw.trim()
+    if (!json.startsWith("{")) {
+        Log.d(TAG, "Not JSON (starts with '${json.take(1)}')")
+        return null
+    }
+
     return try {
         val obj = JSONObject(json)
         val type = obj.optString("type", "")
         if (type != "smschecker_config") {
-            Log.d(TAG, "QR type mismatch: '$type' (expected 'smschecker_config')")
+            Log.d(TAG, "JSON found but type='$type' (expected 'smschecker_config')")
+            return null
+        }
+
+        val url = obj.optString("url", "")
+        val apiKey = obj.optString("apiKey", "")
+        val secretKey = obj.optString("secretKey", "")
+
+        if (url.isBlank() || apiKey.isBlank() || secretKey.isBlank()) {
+            Log.w(TAG, "Config missing required fields: url=$url, apiKey=${apiKey.take(4)}..., secretKey=${secretKey.take(4)}...")
             return null
         }
 
         QrConfigResult(
             type = type,
             version = obj.optInt("version", 1),
-            url = obj.getString("url"),
-            apiKey = obj.getString("apiKey"),
-            secretKey = obj.getString("secretKey"),
+            url = url,
+            apiKey = apiKey,
+            secretKey = secretKey,
             deviceName = obj.optString("deviceName", "\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C\u0E08\u0E32\u0E01 QR")
         ).also {
-            Log.d(TAG, "Parsed QR config: url=${it.url}, device=${it.deviceName}")
+            Log.d(TAG, "✓ Parsed config: url=${it.url}, device=${it.deviceName}")
         }
     } catch (e: Exception) {
-        Log.e(TAG, "Failed to parse QR config: $json", e)
+        Log.e(TAG, "JSON parse error: ${e.message}", e)
         null
     }
 }
