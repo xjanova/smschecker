@@ -145,34 +145,23 @@ jobs:
           echo "Keystore size: $(wc -c < app/release.keystore) bytes"
 
       - name: Build release APK
-        run: |
-          ./gradlew assembleRelease --stacktrace 2>&1 | tee /tmp/release-build.log; BUILD_EXIT=${PIPESTATUS[0]}
-          if [ $BUILD_EXIT -ne 0 ]; then
-            echo "BUILD_FAILED=true" >> $GITHUB_ENV
-            echo "BUILD_EXIT=$BUILD_EXIT" >> $GITHUB_ENV
-          fi
+        run: ./gradlew assembleRelease --stacktrace
         env:
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
           SIGNING_STORE_FILE: app/release.keystore
 
-      - name: Commit error log on failure
-        if: env.BUILD_FAILED == 'true'
-        run: |
-          cd $GITHUB_WORKSPACE
-          cp /tmp/release-build.log ci-release-error.log
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add ci-release-error.log
-          git commit -m "ci: Release build error log [skip ci]"
-          git push
-          exit 1
+      - name: List build outputs
+        if: always()
+        run: find app/build/outputs -type f -name "*.apk" 2>/dev/null || echo "No APK files found"
 
       - name: Upload release APK
-        if: env.BUILD_FAILED != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: release-apk-${{ github.sha }}
-          path: android-app/app/build/outputs/apk/release/*.apk
+          path: |
+            android-app/app/build/outputs/apk/release/*.apk
+            android-app/app/build/outputs/apk/release/
+          if-no-files-found: warn
           retention-days: 30
