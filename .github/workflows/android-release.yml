@@ -38,41 +38,17 @@ jobs:
           echo "Keystore decoded: $(wc -c < android-app/app/release.keystore) bytes"
 
       - name: Build release APK
-        id: build
-        continue-on-error: true
         working-directory: android-app
-        run: ./gradlew assembleRelease --stacktrace 2>&1 | tee $GITHUB_WORKSPACE/build-output.log
+        run: ./gradlew assembleRelease --stacktrace
         env:
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
-          SIGNING_STORE_FILE: app/release.keystore
-
-      - name: Append build info to log
-        if: always()
-        run: |
-          echo "" >> build-output.log
-          echo "=== BUILD OUTCOME: ${{ steps.build.outcome }} ===" >> build-output.log
-          echo "=== APK FILES ===" >> build-output.log
-          find android-app/app/build/outputs -name "*.apk" -type f 2>/dev/null >> build-output.log || echo "No APK found" >> build-output.log
-
-      - name: Upload build log (always)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build-output.log
-          retention-days: 7
+          SIGNING_STORE_FILE: release.keystore
 
       - name: Upload release APK
-        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: smschecker-release-${{ github.event.inputs.version_name || '1.0.0' }}
-          path: android-app/app/build/outputs/apk/release/
-          if-no-files-found: warn
+          path: android-app/app/build/outputs/apk/release/*.apk
           retention-days: 90
-
-      - name: Fail if build failed
-        if: steps.build.outcome != 'success'
-        run: exit 1
