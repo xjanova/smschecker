@@ -137,15 +137,34 @@ jobs:
         run: chmod +x gradlew
 
       - name: Decode keystore
-        run: echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
+        run: |
+          echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
+          ls -la app/release.keystore
+          echo "Keystore size: $(wc -c < app/release.keystore) bytes"
 
       - name: Build release APK
-        run: ./gradlew assembleRelease --stacktrace
+        run: |
+          ./gradlew assembleRelease --stacktrace 2>&1 | tee /tmp/release-build.log; BUILD_EXIT=${PIPESTATUS[0]}
+          if [ $BUILD_EXIT -ne 0 ]; then
+            echo "## ❌ Release Build Failed" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            grep -A2 -i "error\|FAILURE\|Exception" /tmp/release-build.log | tail -60 >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit $BUILD_EXIT
+          fi
         env:
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
           SIGNING_STORE_FILE: app/release.keystore
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-build-log-${{ github.sha }}
+          path: /tmp/release-build.log
+          retention-days: 7
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
