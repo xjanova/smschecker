@@ -1,37 +1,45 @@
 package com.thaiprompt.smschecker.ui.smsmatcher
 
 import android.app.Application
-import android.net.Uri
-import android.provider.Telephony
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.thaiprompt.smschecker.data.db.SmsSenderRuleDao
+import com.thaiprompt.smschecker.data.model.BankTransaction
+import com.thaiprompt.smschecker.data.model.OrderApproval
 import com.thaiprompt.smschecker.data.model.SmsSenderRule
+import com.thaiprompt.smschecker.data.model.TransactionType
+import com.thaiprompt.smschecker.data.repository.OrderRepository
+import com.thaiprompt.smschecker.domain.scanner.DetectionMethod
+import com.thaiprompt.smschecker.domain.scanner.ScannedSms
+import com.thaiprompt.smschecker.domain.scanner.SmsInboxScanner
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-data class SmsMessage(
-    val sender: String,
-    val body: String,
-    val timestamp: Long
+data class OrderMatch(
+    val order: OrderApproval,
+    val transaction: BankTransaction
 )
 
 data class SmsMatcherState(
     val rules: List<SmsSenderRule> = emptyList(),
-    val recentSms: List<SmsMessage> = emptyList(),
-    val uniqueSenders: List<Pair<String, String>> = emptyList(), // sender to sample message
+    val detectedBankSms: List<ScannedSms> = emptyList(),
+    val unknownFinancialSms: List<ScannedSms> = emptyList(),
+    val orderMatches: List<OrderMatch> = emptyList(),
+    val isScanning: Boolean = true,
+    val scanCount: Int = 0,
     val showAddDialog: Boolean = false,
     val selectedSender: String = "",
-    val selectedSample: String = "",
-    val isLoading: Boolean = true
+    val selectedSample: String = ""
 )
 
 @HiltViewModel
 class SmsMatcherViewModel @Inject constructor(
     private val application: Application,
-    private val smsSenderRuleDao: SmsSenderRuleDao
+    private val smsSenderRuleDao: SmsSenderRuleDao,
+    private val smsInboxScanner: SmsInboxScanner,
+    private val orderRepository: OrderRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SmsMatcherState())
@@ -39,7 +47,7 @@ class SmsMatcherViewModel @Inject constructor(
 
     init {
         loadRules()
-        loadRecentSms()
+        scanInbox()
     }
 
     private fun loadRules() {
@@ -50,48 +58,59 @@ class SmsMatcherViewModel @Inject constructor(
         }
     }
 
-    private fun loadRecentSms() {
+    fun scanInbox() {
         viewModelScope.launch {
+            _state.update { it.copy(isScanning = true) }
             try {
-                val messages = mutableListOf<SmsMessage>()
-                val uri = Uri.parse("content://sms/inbox")
-                val cursor = application.contentResolver.query(
-                    uri,
-                    arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE),
-                    null,
-                    null,
-                    "${Telephony.Sms.DATE} DESC"
-                )
+                val scanned = smsInboxScanner.scanInbox()
 
-                cursor?.use {
-                    val addressIdx = it.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
-                    val bodyIdx = it.getColumnIndexOrThrow(Telephony.Sms.BODY)
-                    val dateIdx = it.getColumnIndexOrThrow(Telephony.Sms.DATE)
-                    var count = 0
-                    while (it.moveToNext() && count < 100) {
-                        val address = it.getString(addressIdx) ?: continue
-                        val body = it.getString(bodyIdx) ?: continue
-                        val date = it.getLong(dateIdx)
-                        messages.add(SmsMessage(address, body, date))
-                        count++
+                val detected = scanned.filter {
+                    it.detectionMethod == DetectionMethod.AUTO_DETECTED ||
+                    it.detectionMethod == DetectionMethod.CUSTOM_RULE
+                }
+                val unknown = scanned.filter {
+                    it.detectionMethod == DetectionMethod.UNKNOWN
+                }
+
+                // Try to match credit transactions with pending orders
+                val matches = mutableListOf<OrderMatch>()
+                val creditTransactions = detected.mapNotNull { it.parsedTransaction }
+                    .filter { it.type == TransactionType.CREDIT }
+
+                // Get all orders (non-flow, one-shot)
+                try {
+                    orderRepository.fetchOrders()
+                } catch (_: Exception) { /* ignore */ }
+
+                // Collect orders once
+                val ordersFlow = orderRepository.getAllOrders()
+                var orders: List<OrderApproval> = emptyList()
+                ordersFlow.first().let { ordersList ->
+                    orders = ordersList
+                }
+
+                for (tx in creditTransactions) {
+                    val amountDouble = tx.amount.toDoubleOrNull() ?: continue
+                    // Find orders with matching amount (within 0.01 tolerance)
+                    val matchingOrder = orders.find { order ->
+                        kotlin.math.abs(order.amount - amountDouble) < 0.01
+                    }
+                    if (matchingOrder != null) {
+                        matches.add(OrderMatch(order = matchingOrder, transaction = tx))
                     }
                 }
 
-                // Group by unique sender, take latest message as sample
-                val uniqueSenders = messages
-                    .groupBy { it.sender }
-                    .map { (sender, msgs) -> sender to msgs.first().body }
-                    .take(30)
-
                 _state.update {
                     it.copy(
-                        recentSms = messages,
-                        uniqueSenders = uniqueSenders,
-                        isLoading = false
+                        detectedBankSms = detected,
+                        unknownFinancialSms = unknown,
+                        orderMatches = matches,
+                        isScanning = false,
+                        scanCount = scanned.size
                     )
                 }
             } catch (e: Exception) {
-                _state.update { it.copy(isLoading = false) }
+                _state.update { it.copy(isScanning = false) }
             }
         }
     }
@@ -119,6 +138,8 @@ class SmsMatcherViewModel @Inject constructor(
             )
             smsSenderRuleDao.insert(rule)
             _state.update { it.copy(showAddDialog = false) }
+            // Re-scan after adding rule
+            scanInbox()
         }
     }
 

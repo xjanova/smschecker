@@ -12,12 +12,15 @@ import androidx.core.app.NotificationCompat
 import com.thaiprompt.smschecker.R
 import com.thaiprompt.smschecker.SmsCheckerApp
 import com.thaiprompt.smschecker.data.db.SmsSenderRuleDao
+import com.thaiprompt.smschecker.data.model.TransactionType
+import com.thaiprompt.smschecker.data.repository.OrderRepository
 import com.thaiprompt.smschecker.data.repository.TransactionRepository
 import com.thaiprompt.smschecker.domain.parser.BankSmsParser
 import com.thaiprompt.smschecker.security.SecureStorage
 import com.thaiprompt.smschecker.ui.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -47,6 +50,8 @@ class SmsProcessingService : Service() {
     @Inject lateinit var secureStorage: SecureStorage
     @Inject lateinit var smsSenderRuleDao: SmsSenderRuleDao
     @Inject lateinit var parser: BankSmsParser
+    @Inject lateinit var ttsManager: TtsManager
+    @Inject lateinit var orderRepository: OrderRepository
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -108,6 +113,26 @@ class SmsProcessingService : Service() {
                 // Update notification
                 updateNotification("${transaction.bank}: ${transaction.getFormattedAmount()}")
 
+                // Try to match with orders (by amount for credit transactions)
+                var matchedOrderNumber: String? = null
+                if (transaction.type == TransactionType.CREDIT) {
+                    try {
+                        val amountDouble = transaction.amount.toDoubleOrNull()
+                        if (amountDouble != null) {
+                            val ordersList = orderRepository.getAllOrders().first()
+                            val match = ordersList.find { order ->
+                                kotlin.math.abs(order.amount - amountDouble) < 0.01
+                            }
+                            matchedOrderNumber = match?.orderNumber
+                            if (match != null) {
+                                Log.d(TAG, "Matched transaction with order: ${match.orderNumber}")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Order matching failed", e)
+                    }
+                }
+
                 // Sync to servers
                 val synced = repository.syncTransaction(savedTransaction)
                 if (synced) {
@@ -115,6 +140,18 @@ class SmsProcessingService : Service() {
                     showTransactionNotification(savedTransaction)
                 } else {
                     Log.w(TAG, "Transaction saved locally but sync failed")
+                }
+
+                // TTS announcement
+                try {
+                    ttsManager.speakTransaction(
+                        bankName = transaction.bank,
+                        amount = transaction.amount,
+                        isCredit = transaction.type == TransactionType.CREDIT,
+                        orderNumber = matchedOrderNumber
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "TTS announcement failed", e)
                 }
 
             } catch (e: Exception) {
@@ -183,6 +220,7 @@ class SmsProcessingService : Service() {
     }
 
     override fun onDestroy() {
+        ttsManager.stop()
         serviceScope.cancel()
         super.onDestroy()
     }

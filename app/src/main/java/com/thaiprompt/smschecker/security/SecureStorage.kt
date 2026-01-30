@@ -88,4 +88,12 @@ class SecureStorage @Inject constructor(
     fun setLanguage(language: String) {
         prefs.edit().putString("language", language).apply()
     }
+
+    fun isTtsEnabled(): Boolean {
+        return prefs.getBoolean("tts_enabled", false)
+    }
+
+    fun setTtsEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("tts_enabled", enabled).apply()
+    }
 }

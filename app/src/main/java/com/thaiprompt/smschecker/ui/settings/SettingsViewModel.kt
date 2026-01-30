@@ -24,7 +24,8 @@ data class SettingsState(
     val approvalMode: ApprovalMode = ApprovalMode.AUTO,
     val offlineQueueCount: Int = 0,
     val themeMode: ThemeMode = ThemeMode.DARK,
-    val languageMode: LanguageMode = LanguageMode.THAI
+    val languageMode: LanguageMode = LanguageMode.THAI,
+    val ttsEnabled: Boolean = false
 )
 
 @HiltViewModel
@@ -55,7 +56,8 @@ class SettingsViewModel @Inject constructor(
                 deviceId = deviceId,
                 approvalMode = ApprovalMode.fromApiValue(secureStorage.getApprovalMode()),
                 themeMode = ThemeMode.fromKey(secureStorage.getThemeMode()),
-                languageMode = LanguageMode.fromKey(secureStorage.getLanguage())
+                languageMode = LanguageMode.fromKey(secureStorage.getLanguage()),
+                ttsEnabled = secureStorage.isTtsEnabled()
             )
         }
 
@@ -131,5 +133,10 @@ class SettingsViewModel @Inject constructor(
     fun setLanguageMode(mode: LanguageMode) {
         secureStorage.setLanguage(mode.key)
         _state.update { it.copy(languageMode = mode) }
+    }
+
+    fun setTtsEnabled(enabled: Boolean) {
+        secureStorage.setTtsEnabled(enabled)
+        _state.update { it.copy(ttsEnabled = enabled) }
     }
 }

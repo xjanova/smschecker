@@ -309,6 +309,62 @@ fun SettingsScreen(
 
         item { Spacer(modifier = Modifier.height(12.dp)) }
 
+        // TTS Toggle
+        item {
+            GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (state.ttsEnabled) AppColors.GoldAccent.copy(alpha = 0.15f)
+                                    else MaterialTheme.colorScheme.surfaceVariant
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.VolumeUp,
+                                contentDescription = null,
+                                tint = if (state.ttsEnabled) AppColors.GoldAccent
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                strings.ttsTitle,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Text(
+                                strings.ttsDescription,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = state.ttsEnabled,
+                        onCheckedChange = { viewModel.setTtsEnabled(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = AppColors.GoldAccent,
+                            checkedTrackColor = AppColors.GoldAccent.copy(alpha = 0.3f)
+                        )
+                    )
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(12.dp)) }
+
         // Approval Mode
         item {
             GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
