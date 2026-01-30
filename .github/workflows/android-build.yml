@@ -109,9 +109,7 @@ jobs:
     name: Build Release APK
     runs-on: ubuntu-latest
     needs: [build, lint]
-    if: github.ref == 'refs/heads/main'
-    permissions:
-      contents: write
+    if: github.ref == 'refs/heads/main' && vars.ENABLE_RELEASE_BUILD == 'true'
     defaults:
       run:
         working-directory: android-app
@@ -138,35 +136,20 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Decode keystore
+        run: echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
+
       - name: Build release APK
-        run: |
-          ./gradlew assembleRelease --stacktrace 2>&1 | tee release-build.log; echo "GRADLE_EXIT=$?" >> $GITHUB_ENV
+        run: ./gradlew assembleRelease --stacktrace
         env:
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-build-log-${{ github.sha }}
-          path: android-app/release-build.log
-          retention-days: 7
-
-      - name: Fail if build failed
-        if: env.GRADLE_EXIT != '0'
-        run: |
-          echo "::error::Release build failed with exit code $GRADLE_EXIT"
-          echo "## Release Build Error (last 80 lines)" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          tail -80 release-build.log >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          exit 1
+          SIGNING_STORE_FILE: app/release.keystore
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
           name: release-apk-${{ github.sha }}
-          path: android-app/app/build/outputs/apk/release/
+          path: android-app/app/build/outputs/apk/release/*.apk
           retention-days: 30
