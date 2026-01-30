@@ -1,6 +1,6 @@
 package com.thaiprompt.smschecker.ui.smsmatcher
 
-import android.app.Application
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.thaiprompt.smschecker.data.db.SmsSenderRuleDao
@@ -27,7 +27,7 @@ data class SmsMatcherState(
     val detectedBankSms: List<ScannedSms> = emptyList(),
     val unknownFinancialSms: List<ScannedSms> = emptyList(),
     val orderMatches: List<OrderMatch> = emptyList(),
-    val isScanning: Boolean = true,
+    val isScanning: Boolean = false,
     val scanCount: Int = 0,
     val showAddDialog: Boolean = false,
     val selectedSender: String = "",
@@ -36,11 +36,14 @@ data class SmsMatcherState(
 
 @HiltViewModel
 class SmsMatcherViewModel @Inject constructor(
-    private val application: Application,
     private val smsSenderRuleDao: SmsSenderRuleDao,
     private val smsInboxScanner: SmsInboxScanner,
     private val orderRepository: OrderRepository
 ) : ViewModel() {
+
+    companion object {
+        private const val TAG = "SmsMatcherVM"
+    }
 
     private val _state = MutableStateFlow(SmsMatcherState())
     val state: StateFlow<SmsMatcherState> = _state.asStateFlow()
@@ -52,8 +55,12 @@ class SmsMatcherViewModel @Inject constructor(
 
     private fun loadRules() {
         viewModelScope.launch {
-            smsSenderRuleDao.getAllRules().collect { rules ->
-                _state.update { it.copy(rules = rules) }
+            try {
+                smsSenderRuleDao.getAllRules().collect { rules ->
+                    _state.update { it.copy(rules = rules) }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading rules", e)
             }
         }
     }
@@ -77,16 +84,18 @@ class SmsMatcherViewModel @Inject constructor(
                 val creditTransactions = detected.mapNotNull { it.parsedTransaction }
                     .filter { it.type == TransactionType.CREDIT }
 
-                // Get all orders (non-flow, one-shot)
+                // Get all orders safely
+                var orders: List<OrderApproval> = emptyList()
                 try {
                     orderRepository.fetchOrders()
-                } catch (_: Exception) { /* ignore */ }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not fetch orders from server", e)
+                }
 
-                // Collect orders once
-                val ordersFlow = orderRepository.getAllOrders()
-                var orders: List<OrderApproval> = emptyList()
-                ordersFlow.first().let { ordersList ->
-                    orders = ordersList
+                try {
+                    orders = orderRepository.getAllOrders().first()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not load local orders", e)
                 }
 
                 for (tx in creditTransactions) {
@@ -110,7 +119,8 @@ class SmsMatcherViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                _state.update { it.copy(isScanning = false) }
+                Log.e(TAG, "Error scanning inbox", e)
+                _state.update { it.copy(isScanning = false, scanCount = 0) }
             }
         }
     }

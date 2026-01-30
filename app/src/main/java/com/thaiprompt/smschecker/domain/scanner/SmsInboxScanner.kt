@@ -1,6 +1,6 @@
 package com.thaiprompt.smschecker.domain.scanner
 
-import android.app.Application
+import android.content.Context
 import android.net.Uri
 import android.provider.Telephony
 import android.util.Log
@@ -8,6 +8,7 @@ import com.thaiprompt.smschecker.data.db.SmsSenderRuleDao
 import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.TransactionType
 import com.thaiprompt.smschecker.domain.parser.BankSmsParser
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -28,7 +29,7 @@ enum class DetectionMethod {
 
 @Singleton
 class SmsInboxScanner @Inject constructor(
-    private val application: Application,
+    @ApplicationContext private val context: Context,
     private val parser: BankSmsParser,
     private val smsSenderRuleDao: SmsSenderRuleDao
 ) {
@@ -136,7 +137,7 @@ class SmsInboxScanner @Inject constructor(
         val messages = mutableListOf<RawSms>()
         try {
             val uri = Uri.parse("content://sms/inbox")
-            val cursor = application.contentResolver.query(
+            val cursor = context.contentResolver.query(
                 uri,
                 arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE),
                 null,
