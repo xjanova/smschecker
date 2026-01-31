@@ -1,12 +1,14 @@
 package com.thaiprompt.smschecker.service
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import com.thaiprompt.smschecker.security.SecureStorage
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.Locale
+import java.util.concurrent.CopyOnWriteArrayList
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,11 +23,18 @@ class TtsManager @Inject constructor(
     }
 
     private var tts: TextToSpeech? = null
+    @Volatile
     private var isInitialized = false
-    private val pendingQueue = mutableListOf<String>()
+    private val pendingQueue = CopyOnWriteArrayList<String>()
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     init {
-        tts = TextToSpeech(context, this)
+        // TextToSpeech must be created on a thread with a Looper (Main thread)
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            tts = TextToSpeech(context, this)
+        } else {
+            mainHandler.post { tts = TextToSpeech(context, this) }
+        }
     }
 
     override fun onInit(status: Int) {
@@ -44,8 +53,9 @@ class TtsManager @Inject constructor(
             Log.d(TAG, "TTS initialized successfully")
 
             // Speak any queued messages
-            pendingQueue.forEach { speak(it) }
+            val queued = ArrayList(pendingQueue)
             pendingQueue.clear()
+            queued.forEach { speakOnMainThread(it) }
         } else {
             Log.e(TAG, "TTS initialization failed with status: $status")
         }
@@ -65,7 +75,21 @@ class TtsManager @Inject constructor(
             return
         }
 
-        tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "tts_${System.currentTimeMillis()}")
+        speakOnMainThread(text)
+    }
+
+    /**
+     * Ensures TTS.speak() is called on the Main thread for reliable operation.
+     * Android's TextToSpeech works best when called from the thread that created it.
+     */
+    private fun speakOnMainThread(text: String) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "tts_${System.currentTimeMillis()}")
+        } else {
+            mainHandler.post {
+                tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "tts_${System.currentTimeMillis()}")
+            }
+        }
     }
 
     fun speakTransaction(bankName: String, amount: String, isCredit: Boolean, orderNumber: String? = null) {
@@ -99,13 +123,15 @@ class TtsManager @Inject constructor(
     }
 
     fun stop() {
-        tts?.stop()
+        mainHandler.post { tts?.stop() }
     }
 
     fun shutdown() {
-        tts?.stop()
-        tts?.shutdown()
-        tts = null
-        isInitialized = false
+        mainHandler.post {
+            tts?.stop()
+            tts?.shutdown()
+            tts = null
+            isInitialized = false
+        }
     }
 }
