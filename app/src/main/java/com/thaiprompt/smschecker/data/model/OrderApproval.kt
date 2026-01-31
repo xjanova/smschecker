@@ -56,7 +56,9 @@ enum class ApprovalStatus(val apiValue: String, val displayName: String) {
     AUTO_APPROVED("auto_approved", "Auto Approved"),
     MANUALLY_APPROVED("manually_approved", "Approved"),
     REJECTED("rejected", "Rejected"),
-    EXPIRED("expired", "Expired");
+    EXPIRED("expired", "Expired"),
+    CANCELLED("cancelled", "Cancelled"),
+    DELETED("deleted", "Deleted");
 
     companion object {
         fun fromApiValue(value: String): ApprovalStatus {

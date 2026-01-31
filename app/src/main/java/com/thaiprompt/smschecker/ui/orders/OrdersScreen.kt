@@ -114,7 +114,8 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                     strings.filterPendingReview to ApprovalStatus.PENDING_REVIEW,
                     strings.filterAutoApproved to ApprovalStatus.AUTO_APPROVED,
                     strings.filterApproved to ApprovalStatus.MANUALLY_APPROVED,
-                    strings.filterRejected to ApprovalStatus.REJECTED
+                    strings.filterRejected to ApprovalStatus.REJECTED,
+                    strings.statusCancelled to ApprovalStatus.CANCELLED
                 )
                 items(filters) { (label, status) ->
                     FilterChip(
@@ -322,6 +323,8 @@ fun OrderCard(
         ApprovalStatus.PENDING_REVIEW -> AppColors.WarningOrange
         ApprovalStatus.REJECTED -> AppColors.DebitRed
         ApprovalStatus.EXPIRED -> Color.Gray
+        ApprovalStatus.CANCELLED -> Color(0xFFFF6F00)
+        ApprovalStatus.DELETED -> Color.Gray
     }
 
     Card(
@@ -507,6 +510,8 @@ private fun StatusBadge(status: ApprovalStatus) {
         ApprovalStatus.PENDING_REVIEW -> AppColors.WarningOrange to strings.statusPendingReview
         ApprovalStatus.REJECTED -> AppColors.DebitRed to strings.statusRejected
         ApprovalStatus.EXPIRED -> Color.Gray to strings.statusExpired
+        ApprovalStatus.CANCELLED -> Color(0xFFFF6F00) to strings.statusCancelled
+        ApprovalStatus.DELETED -> Color.Gray to strings.statusDeleted
     }
 
     Box(

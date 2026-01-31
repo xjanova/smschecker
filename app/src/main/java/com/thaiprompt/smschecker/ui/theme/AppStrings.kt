@@ -64,6 +64,8 @@ data class AppStrings(
     val statusPendingReview: String,
     val statusRejected: String,
     val statusExpired: String,
+    val statusCancelled: String,
+    val statusDeleted: String,
 
     // === Transactions ===
     val transactionsTitle: String,
@@ -275,6 +277,8 @@ val ThaiStrings = AppStrings(
     statusPendingReview = "รอตรวจ",
     statusRejected = "ปฏิเสธ",
     statusExpired = "หมดอายุ",
+    statusCancelled = "ยกเลิก",
+    statusDeleted = "ลบแล้ว",
 
     // Transactions
     transactionsTitle = "รายการ",
@@ -318,7 +322,7 @@ val ThaiStrings = AppStrings(
     secretKeyLabel = "Secret Key (สำหรับเข้ารหัส)",
     setAsDefault = "ตั้งเป็นเซิร์ฟเวอร์หลัก",
     saveButton = "บันทึก",
-    versionInfo = "SMS Payment Checker v1.5.1\n\u00A9 2025 Xman Studio",
+    versionInfo = "SMS Payment Checker v1.6.0\n\u00A9 2025 Xman Studio",
 
     // Theme
     themeMode = "ธีม",
@@ -485,6 +489,8 @@ val EnglishStrings = AppStrings(
     statusPendingReview = "Pending",
     statusRejected = "Rejected",
     statusExpired = "Expired",
+    statusCancelled = "Cancelled",
+    statusDeleted = "Deleted",
 
     // Transactions
     transactionsTitle = "Transactions",
@@ -528,7 +534,7 @@ val EnglishStrings = AppStrings(
     secretKeyLabel = "Secret Key (encryption)",
     setAsDefault = "Set as default server",
     saveButton = "Save",
-    versionInfo = "SMS Payment Checker v1.5.1\n\u00A9 2025 Xman Studio",
+    versionInfo = "SMS Payment Checker v1.6.0\n\u00A9 2025 Xman Studio",
 
     // Theme
     themeMode = "Theme",

@@ -33,6 +33,9 @@ Route::prefix('v1/sms-payment')->group(function () {
         Route::get('/orders', [SmsPaymentController::class, 'orders']);
         Route::post('/orders/{id}/approve', [SmsPaymentController::class, 'approveOrder']);
         Route::post('/orders/{id}/reject', [SmsPaymentController::class, 'rejectOrder']);
+        Route::post('/orders/{id}/cancel', [SmsPaymentController::class, 'cancelOrder']);
+        Route::put('/orders/{id}', [SmsPaymentController::class, 'updateOrder']);
+        Route::delete('/orders/{id}', [SmsPaymentController::class, 'deleteOrder']);
         Route::post('/orders/bulk-approve', [SmsPaymentController::class, 'bulkApproveOrders']);
         Route::get('/orders/sync', [SmsPaymentController::class, 'syncOrders']);
 

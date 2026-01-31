@@ -308,6 +308,77 @@ class SmsPaymentController extends Controller
     }
 
     /**
+     * Cancel a single order.
+     * POST /api/v1/sms-payment/orders/{id}/cancel
+     */
+    public function cancelOrder(Request $request, int $id): JsonResponse
+    {
+        $device = $request->attributes->get('sms_checker_device');
+        if (!$device instanceof SmsCheckerDevice) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $approval = OrderApproval::forDevice($device->device_id)->findOrFail($id);
+        $approval->cancel(
+            $request->input('reason', ''),
+            'device'
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Order cancelled',
+            'data' => $approval->fresh(),
+        ]);
+    }
+
+    /**
+     * Delete a single order (soft-delete via status for sync).
+     * DELETE /api/v1/sms-payment/orders/{id}
+     */
+    public function deleteOrder(Request $request, int $id): JsonResponse
+    {
+        $device = $request->attributes->get('sms_checker_device');
+        if (!$device instanceof SmsCheckerDevice) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $approval = OrderApproval::forDevice($device->device_id)->findOrFail($id);
+        $approval->markDeleted('device');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Order deleted',
+        ]);
+    }
+
+    /**
+     * Update order details (amount, product info).
+     * PUT /api/v1/sms-payment/orders/{id}
+     */
+    public function updateOrder(Request $request, int $id): JsonResponse
+    {
+        $device = $request->attributes->get('sms_checker_device');
+        if (!$device instanceof SmsCheckerDevice) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
+        $approval = OrderApproval::forDevice($device->device_id)->findOrFail($id);
+
+        $details = $request->only([
+            'amount', 'order_number', 'product_name',
+            'product_details', 'quantity', 'customer_name',
+        ]);
+
+        $approval->updateDetails($details, 'device');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Order updated',
+            'data' => $approval->fresh(),
+        ]);
+    }
+
+    /**
      * Bulk approve orders by IDs.
      * POST /api/v1/sms-payment/orders/bulk-approve
      */

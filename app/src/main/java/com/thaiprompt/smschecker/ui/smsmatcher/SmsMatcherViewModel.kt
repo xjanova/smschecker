@@ -6,6 +6,7 @@ import com.thaiprompt.smschecker.data.db.TransactionDao
 import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.TransactionType
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -16,6 +17,7 @@ enum class TransactionFilter {
 
 data class SmsHistoryState(
     val transactions: List<BankTransaction> = emptyList(),
+    val allTransactions: List<BankTransaction> = emptyList(),
     val filter: TransactionFilter = TransactionFilter.ALL,
     val totalDetected: Int = 0,
     val totalSynced: Int = 0,
@@ -30,19 +32,23 @@ class SmsMatcherViewModel @Inject constructor(
     private val _state = MutableStateFlow(SmsHistoryState())
     val state: StateFlow<SmsHistoryState> = _state.asStateFlow()
 
+    private var transactionsJob: Job? = null
+
     init {
         loadTransactions()
         loadCounts()
     }
 
     private fun loadTransactions() {
-        viewModelScope.launch {
+        transactionsJob?.cancel()
+        transactionsJob = viewModelScope.launch {
             transactionDao.getRecentTransactions()
-                .catch { /* ignore errors */ }
+                .catch { emit(emptyList()) }
                 .collect { transactions ->
                     val filtered = applyFilter(transactions, _state.value.filter)
                     _state.update {
                         it.copy(
+                            allTransactions = transactions,
                             transactions = filtered,
                             isLoading = false
                         )
@@ -69,18 +75,8 @@ class SmsMatcherViewModel @Inject constructor(
     }
 
     fun setFilter(filter: TransactionFilter) {
-        _state.update { it.copy(filter = filter) }
-        // Re-collect with new filter
-        viewModelScope.launch {
-            transactionDao.getRecentTransactions()
-                .catch { /* ignore */ }
-                .first()
-                .let { transactions ->
-                    _state.update {
-                        it.copy(transactions = applyFilter(transactions, filter))
-                    }
-                }
-        }
+        val filtered = applyFilter(_state.value.allTransactions, filter)
+        _state.update { it.copy(filter = filter, transactions = filtered) }
     }
 
     private fun applyFilter(

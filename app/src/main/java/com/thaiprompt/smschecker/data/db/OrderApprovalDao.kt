@@ -18,7 +18,7 @@ interface OrderApprovalDao {
     @Update
     suspend fun update(order: OrderApproval)
 
-    @Query("SELECT * FROM order_approvals ORDER BY createdAt DESC")
+    @Query("SELECT * FROM order_approvals WHERE approvalStatus != 'DELETED' ORDER BY createdAt DESC")
     fun getAllOrders(): Flow<List<OrderApproval>>
 
     @Query("SELECT * FROM order_approvals WHERE approvalStatus = :status ORDER BY createdAt DESC")
@@ -32,7 +32,8 @@ interface OrderApprovalDao {
 
     @Query("""
         SELECT * FROM order_approvals
-        WHERE (:status IS NULL OR approvalStatus = :status)
+        WHERE approvalStatus != 'DELETED'
+        AND (:status IS NULL OR approvalStatus = :status)
         AND (:serverId IS NULL OR serverId = :serverId)
         AND (:startTime IS NULL OR createdAt >= :startTime)
         AND (:endTime IS NULL OR createdAt <= :endTime)
@@ -77,4 +78,7 @@ interface OrderApprovalDao {
 
     @Query("DELETE FROM order_approvals WHERE createdAt < :cutoff")
     suspend fun deleteOlderThan(cutoff: Long)
+
+    @Query("DELETE FROM order_approvals WHERE id = :id")
+    suspend fun deleteById(id: Long)
 }

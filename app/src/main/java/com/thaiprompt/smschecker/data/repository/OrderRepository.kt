@@ -154,10 +154,22 @@ class OrderRepository @Inject constructor(
                     val orders = response.body()?.data?.orders ?: emptyList()
                     for (remote in orders) {
                         val existing = orderApprovalDao.getByRemoteId(remote.id, server.id)
+                        val remoteStatus = ApprovalStatus.fromApiValue(remote.approval_status)
+
+                        // Handle server-side deletion — remove from local DB
+                        if (remoteStatus == ApprovalStatus.DELETED) {
+                            if (existing != null) {
+                                orderApprovalDao.deleteById(existing.id)
+                            }
+                            continue
+                        }
+
                         // Local pending action wins — don't overwrite
                         if (existing != null && existing.pendingAction != null) {
                             continue
                         }
+
+                        // Convert remote to local entity (includes updated amount, status, details)
                         val local = remote.toLocalEntity(server.id)
                         if (existing != null) {
                             orderApprovalDao.update(local.copy(id = existing.id))
@@ -238,6 +250,9 @@ class OrderRepository @Inject constructor(
 
 fun RemoteOrderApproval.toLocalEntity(serverId: Long): OrderApproval {
     val details = order_details_json
+    // Server may update amount via order_details_json — prefer it over notification amount
+    val serverAmount = (details?.get("amount") as? Number)?.toDouble()
+    val notifAmount = notification?.amount?.toDoubleOrNull()
     return OrderApproval(
         serverId = serverId,
         remoteApprovalId = id,
@@ -251,10 +266,11 @@ fun RemoteOrderApproval.toLocalEntity(serverId: Long): OrderApproval {
         quantity = (details?.get("quantity") as? Number)?.toInt(),
         websiteName = details?.get("website_name")?.toString(),
         customerName = details?.get("customer_name")?.toString(),
-        amount = notification?.amount?.toDoubleOrNull() ?: 0.0,
+        amount = serverAmount ?: notifAmount ?: 0.0,
         bank = notification?.bank,
-        paymentTimestamp = null, // Parsed from notification.sms_timestamp if needed
+        paymentTimestamp = null,
         approvedBy = approved_by,
+        rejectionReason = rejection_reason,
         syncedVersion = synced_version,
         lastSyncedAt = System.currentTimeMillis()
     )

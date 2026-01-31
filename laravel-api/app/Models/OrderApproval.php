@@ -95,6 +95,59 @@ class OrderApproval extends Model
     }
 
     /**
+     * Cancel this order.
+     *
+     * @param string $reason Cancellation reason
+     * @param string $cancelledBy 'device', 'web_admin', or 'system'
+     */
+    public function cancel(string $reason = '', string $cancelledBy = 'web_admin'): void
+    {
+        $this->update([
+            'approval_status' => 'cancelled',
+            'approved_by' => $cancelledBy,
+            'rejection_reason' => $reason,
+            'synced_version' => $this->synced_version + 1,
+        ]);
+
+        $this->fireCallback('smschecker.on_order_cancelled');
+    }
+
+    /**
+     * Soft-delete this order (marks as deleted for sync, then removes).
+     * The synced_version is bumped so devices pick it up and remove locally.
+     *
+     * @param string $deletedBy 'device', 'web_admin', or 'system'
+     */
+    public function markDeleted(string $deletedBy = 'web_admin'): void
+    {
+        $this->update([
+            'approval_status' => 'deleted',
+            'approved_by' => $deletedBy,
+            'synced_version' => $this->synced_version + 1,
+        ]);
+
+        $this->fireCallback('smschecker.on_order_deleted');
+    }
+
+    /**
+     * Update order details (amount, product info, etc.) from admin.
+     *
+     * @param array $details Updated order details
+     * @param string $updatedBy 'web_admin' or 'system'
+     */
+    public function updateDetails(array $details, string $updatedBy = 'web_admin'): void
+    {
+        $currentDetails = $this->order_details_json ?? [];
+        $mergedDetails = array_merge($currentDetails, $details);
+
+        $this->update([
+            'order_details_json' => $mergedDetails,
+            'approved_by' => $updatedBy,
+            'synced_version' => $this->synced_version + 1,
+        ]);
+    }
+
+    /**
      * Fire a config callback safely.
      */
     private function fireCallback(string $configKey): void
