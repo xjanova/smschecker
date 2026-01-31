@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.thaiprompt.smschecker.ui.smsmatcher
 
 import androidx.compose.foundation.layout.*
@@ -26,7 +28,6 @@ import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SmsMatcherScreen(
     onBack: () -> Unit,
