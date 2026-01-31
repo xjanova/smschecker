@@ -1,52 +1,30 @@
 package com.thaiprompt.smschecker.ui.smsmatcher
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.util.Log
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Help
-import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.thaiprompt.smschecker.data.model.SmsSenderRule
+import com.thaiprompt.smschecker.data.model.BankTransaction
+import com.thaiprompt.smschecker.data.model.TransactionSource
 import com.thaiprompt.smschecker.data.model.TransactionType
-import com.thaiprompt.smschecker.domain.scanner.DetectionMethod
-import com.thaiprompt.smschecker.domain.scanner.ScannedSms
 import com.thaiprompt.smschecker.ui.components.BankLogoCircle
 import com.thaiprompt.smschecker.ui.components.GlassCard
-import com.thaiprompt.smschecker.ui.components.GradientHeader
-import com.thaiprompt.smschecker.ui.components.SectionTitle
-import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
 import com.thaiprompt.smschecker.ui.theme.AppColors
+import com.thaiprompt.smschecker.ui.theme.AppStrings
 import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 import java.text.SimpleDateFormat
 import java.util.*
-
-private const val TAG = "SmsMatcherScreen"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,902 +32,313 @@ fun SmsMatcherScreen(
     onBack: () -> Unit,
     viewModel: SmsMatcherViewModel = hiltViewModel()
 ) {
-    Log.d(TAG, "SmsMatcherScreen composable entered")
     val state by viewModel.state.collectAsState()
     val strings = LocalAppStrings.current
-    val context = LocalContext.current
+    val dateFormat = remember { SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()) }
 
-    // Snapshot lists เพื่อป้องกัน Compose อ่านค่าที่เปลี่ยนระหว่าง recomposition
-    val orderMatches = remember(state.orderMatches) { state.orderMatches.toList() }
-    val detectedBankSms = remember(state.detectedBankSms) { state.detectedBankSms.toList() }
-    val unknownFinancialSms = remember(state.unknownFinancialSms) { state.unknownFinancialSms.toList() }
-    val allOtherSms = remember(state.allOtherSms) { state.allOtherSms.toList() }
-    val rules = remember(state.rules) { state.rules.toList() }
-
-    // SMS permission request launcher
-    val smsPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            viewModel.scanInbox()
-        }
-    }
-
-    // Helper to check SMS permission before scanning
-    val scanWithPermission: () -> Unit = {
-        val hasPermission = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.READ_SMS
-        ) == PackageManager.PERMISSION_GRANTED
-        if (hasPermission) {
-            viewModel.scanInbox()
-        } else {
-            smsPermissionLauncher.launch(Manifest.permission.READ_SMS)
-        }
-    }
-
-    // Auto-request SMS permission when entering this screen
-    LaunchedEffect(Unit) {
-        val hasPermission = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.READ_SMS
-        ) == PackageManager.PERMISSION_GRANTED
-        if (!hasPermission) {
-            smsPermissionLauncher.launch(Manifest.permission.READ_SMS)
-        }
-    }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(premiumBackgroundBrush()),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
-    ) {
-        // Header
-        item {
-            GradientHeader {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = strings.backButton, tint = Color.White)
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column(modifier = Modifier.weight(1f)) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
                         Text(
                             strings.smsMatcherTitle,
-                            style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            fontSize = 18.sp
                         )
                         Text(
                             strings.smsMatcherSubtitle,
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF66BB6A) // Light green accent
-                        )
-                    }
-                }
-            }
-        }
-
-        item { Spacer(modifier = Modifier.height(12.dp)) }
-
-        // Error message display
-        if (state.errorMessage != null) {
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = AppColors.DebitRed.copy(alpha = 0.1f)
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = AppColors.DebitRed,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            state.errorMessage ?: "",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = AppColors.DebitRed
-                        )
-                    }
-                }
-            }
-            item { Spacer(modifier = Modifier.height(8.dp)) }
-        }
-
-        // Scan Status Bar
-        item {
-            GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (state.isScanning) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                                color = AppColors.GoldAccent
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                if (state.scanProgress.isNotEmpty()) {
-                                    "${strings.scanning} ${state.scanProgress}"
-                                } else {
-                                    strings.scanning
-                                },
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                        } else {
-                            Icon(
-                                Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = AppColors.CreditGreen,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                "${state.scanCount} ${strings.foundMessages}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                        }
-                    }
-                    FilledTonalButton(
-                        onClick = scanWithPermission,
-                        enabled = !state.isScanning,
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = AppColors.GoldAccent.copy(alpha = 0.2f),
-                            contentColor = AppColors.GoldAccent
-                        ),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(strings.scanInbox, fontSize = 12.sp)
-                    }
-                }
-            }
-        }
-
-        // Order Matches Section
-        if (orderMatches.isNotEmpty()) {
-            item { Spacer(modifier = Modifier.height(16.dp)) }
-            item {
-                SectionTitle(
-                    strings.matchedWithOrder,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-            }
-            item { Spacer(modifier = Modifier.height(8.dp)) }
-
-            items(
-                items = orderMatches,
-                key = { "order_${it.order.id}_${it.transaction.timestamp}" }
-            ) { match ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 3.dp)
-                        .border(1.dp, AppColors.CreditGreen.copy(alpha = 0.3f), RoundedCornerShape(14.dp)),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = AppColors.CreditGreen.copy(alpha = 0.08f)
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        BankLogoCircle(bankCode = match.transaction.bank, size = 40.dp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                match.transaction.bank,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                            Text(
-                                match.transaction.getFormattedAmount(),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = AppColors.CreditGreen
-                            )
-                            if (match.order.orderNumber != null) {
-                                Text(
-                                    "${strings.matchedWithOrder} #${match.order.orderNumber}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = AppColors.CreditGreen,
-                                    fontSize = 11.sp
-                                )
-                            }
-                        }
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(AppColors.CreditGreen.copy(alpha = 0.15f))
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = AppColors.CreditGreen,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Detected Bank SMS Section
-        if (detectedBankSms.isNotEmpty()) {
-            item { Spacer(modifier = Modifier.height(16.dp)) }
-            item {
-                SectionTitle(
-                    strings.detectedBankSms,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-            }
-            item { Spacer(modifier = Modifier.height(8.dp)) }
-
-            items(
-                items = detectedBankSms.take(20),
-                key = { "det_${it.sender}_${it.timestamp}" }
-            ) { sms ->
-                DetectedSmsCard(
-                    sms = sms,
-                    onClick = { viewModel.showAddRuleDialog(sms.sender, sms.body) }
-                )
-            }
-        }
-
-        // Unknown Financial SMS Section
-        if (unknownFinancialSms.isNotEmpty()) {
-            item { Spacer(modifier = Modifier.height(16.dp)) }
-            item {
-                SectionTitle(
-                    strings.unknownSender,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-            }
-            item { Spacer(modifier = Modifier.height(8.dp)) }
-
-            items(
-                items = unknownFinancialSms.take(15),
-                key = { "unk_${it.sender}_${it.timestamp}" }
-            ) { sms ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 3.dp)
-                        .clickable { viewModel.showAddRuleDialog(sms.sender, sms.body) },
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(AppColors.WarningOrange.copy(alpha = 0.1f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Help,
-                                contentDescription = null,
-                                tint = AppColors.WarningOrange,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                sms.sender,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                            Text(
-                                sms.body,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                fontSize = 11.sp
-                            )
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(AppColors.WarningOrange.copy(alpha = 0.1f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    "?",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = AppColors.WarningOrange
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Icon(
-                                Icons.Default.ChevronRight,
-                                contentDescription = strings.tapToAssign,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // All Other SMS Section
-        if (allOtherSms.isNotEmpty()) {
-            item { Spacer(modifier = Modifier.height(16.dp)) }
-            item {
-                SectionTitle(
-                    strings.allOtherSms,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-            }
-            item {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    strings.tapToAssignBank,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-            }
-            item { Spacer(modifier = Modifier.height(8.dp)) }
-
-            items(
-                items = allOtherSms.take(50),
-                key = { "other_${it.sender}_${it.timestamp}" }
-            ) { sms ->
-                val dateFormat = remember { SimpleDateFormat("HH:mm dd/MM", Locale.getDefault()) }
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 3.dp)
-                        .clickable { viewModel.showAddRuleDialog(sms.sender, sms.body) },
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(AppColors.InfoBlue.copy(alpha = 0.1f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Message,
-                                contentDescription = null,
-                                tint = AppColors.InfoBlue,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                sms.sender,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                            Text(
-                                sms.body,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                fontSize = 11.sp
-                            )
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                dateFormat.format(Date(sms.timestamp)),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 10.sp
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Icon(
-                                Icons.Default.ChevronRight,
-                                contentDescription = strings.tapToAssignBank,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Active Rules Section
-        item { Spacer(modifier = Modifier.height(16.dp)) }
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SectionTitle(strings.activeRules, showDivider = false)
-                FilledTonalButton(
-                    onClick = { viewModel.showAddRuleDialog("", "") },
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = AppColors.GoldAccent.copy(alpha = 0.2f),
-                        contentColor = AppColors.GoldAccent
-                    ),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(strings.addRule, fontSize = 12.sp)
-                }
-            }
-        }
-
-        item { Spacer(modifier = Modifier.height(8.dp)) }
-
-        if (rules.isEmpty()) {
-            item {
-                GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(56.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Sms,
-                                contentDescription = null,
-                                modifier = Modifier.size(28.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            strings.noRules,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Text(
-                            strings.noRulesDescription,
-                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                }
-            }
-        }
-
-        items(
-            items = rules,
-            key = { "rule_${it.id}" }
-        ) { rule ->
-            RuleCard(
-                rule = rule,
-                onToggle = { viewModel.toggleRule(rule) },
-                onDelete = { viewModel.deleteRule(rule) },
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         }
-
-        item { Spacer(modifier = Modifier.height(16.dp)) }
-    }
-
-    // Add Rule Dialog
-    if (state.showAddDialog) {
-        AddRuleDialog(
-            initialSender = state.selectedSender,
-            initialSample = state.selectedSample,
-            onDismiss = { viewModel.hideAddRuleDialog() },
-            onConfirm = { sender, bankCode, sample ->
-                viewModel.addRule(sender, bankCode, sample)
-            }
-        )
-    }
-}
-
-@Composable
-private fun DetectedSmsCard(
-    sms: ScannedSms,
-    onClick: () -> Unit
-) {
-    val strings = LocalAppStrings.current
-    val dateFormat = remember { SimpleDateFormat("HH:mm dd/MM", Locale.getDefault()) }
-    val isCredit = sms.parsedTransaction?.type == TransactionType.CREDIT
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 3.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Row(
+    ) { paddingValues ->
+        LazyColumn(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxSize()
+                .padding(paddingValues),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (sms.detectedBank != null) {
-                BankLogoCircle(bankCode = sms.detectedBank, size = 40.dp)
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(AppColors.GoldAccent.copy(alpha = 0.1f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.Sms,
-                        contentDescription = null,
-                        tint = AppColors.GoldAccent,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        sms.detectedBank ?: sms.sender,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    // Detection method badge
-                    val badgeText = when (sms.detectionMethod) {
-                        DetectionMethod.AUTO_DETECTED -> strings.autoDetected
-                        DetectionMethod.CUSTOM_RULE -> strings.customRule
-                        DetectionMethod.NOTIFICATION -> strings.notificationBadge
-                        DetectionMethod.UNKNOWN -> "?"
-                        DetectionMethod.OTHER -> "SMS"
-                    }
-                    val badgeColor = when (sms.detectionMethod) {
-                        DetectionMethod.AUTO_DETECTED -> AppColors.CreditGreen
-                        DetectionMethod.CUSTOM_RULE -> AppColors.GoldAccent
-                        DetectionMethod.NOTIFICATION -> AppColors.InfoBlue
-                        DetectionMethod.UNKNOWN -> AppColors.WarningOrange
-                        DetectionMethod.OTHER -> AppColors.InfoBlue
-                    }
-                    Box(
+            // === Stats Summary ===
+            item(key = "stats") {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Row(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(badgeColor.copy(alpha = 0.15f))
-                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        Text(
-                            badgeText,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = badgeColor
+                        StatItem(
+                            icon = Icons.Default.Email,
+                            value = "${state.totalDetected}",
+                            label = strings.totalDetected,
+                            color = AppColors.InfoBlue
+                        )
+                        StatItem(
+                            icon = Icons.Default.CloudDone,
+                            value = "${state.totalSynced}",
+                            label = strings.totalSynced,
+                            color = AppColors.CreditGreen
+                        )
+                        StatItem(
+                            icon = Icons.Default.Pending,
+                            value = "${state.totalDetected - state.totalSynced}",
+                            label = strings.pendingLabel,
+                            color = AppColors.WarningOrange
                         )
                     }
                 }
-                Text(
-                    sms.sender,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 11.sp
-                )
-                Text(
-                    sms.body,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    fontSize = 10.sp
-                )
             }
-            Column(horizontalAlignment = Alignment.End) {
-                if (sms.parsedTransaction != null) {
-                    val amountColor = if (isCredit) AppColors.CreditGreen else AppColors.DebitRed
-                    Text(
-                        sms.parsedTransaction.getFormattedAmount(),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = amountColor
-                    )
-                }
-                Text(
-                    dateFormat.format(Date(sms.timestamp)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 10.sp
-                )
-            }
-        }
-    }
-}
 
-@Composable
-private fun RuleCard(
-    rule: SmsSenderRule,
-    onToggle: () -> Unit,
-    onDelete: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val strings = LocalAppStrings.current
-    var showDeleteConfirm by remember { mutableStateOf(false) }
-
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp)),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            BankLogoCircle(bankCode = rule.bankCode, size = 40.dp)
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    rule.senderAddress,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Text(
-                    rule.bankCode,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = AppColors.GoldAccent,
-                    fontSize = 11.sp
-                )
-                if (rule.sampleMessage.isNotBlank()) {
-                    Text(
-                        rule.sampleMessage,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        fontSize = 10.sp
-                    )
-                }
-            }
-            Switch(
-                checked = rule.isActive,
-                onCheckedChange = { onToggle() },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = AppColors.CreditGreen,
-                    checkedTrackColor = AppColors.CreditGreen.copy(alpha = 0.3f)
-                )
-            )
-            IconButton(
-                onClick = { showDeleteConfirm = true },
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = strings.deleteRule,
-                    tint = AppColors.DebitRed.copy(alpha = 0.7f),
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
-    }
-
-    if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text(strings.deleteRule) },
-            text = { Text(strings.deleteRuleConfirm) },
-            confirmButton = {
-                TextButton(onClick = {
-                    onDelete()
-                    showDeleteConfirm = false
-                }) {
-                    Text(strings.removeButton, color = AppColors.DebitRed)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text(strings.cancelButton)
-                }
-            }
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AddRuleDialog(
-    initialSender: String,
-    initialSample: String,
-    onDismiss: () -> Unit,
-    onConfirm: (sender: String, bankCode: String, sampleMessage: String) -> Unit
-) {
-    val strings = LocalAppStrings.current
-    var sender by remember { mutableStateOf(initialSender) }
-    var sampleMessage by remember { mutableStateOf(initialSample) }
-    var selectedBank by remember { mutableStateOf("") }
-    var expanded by remember { mutableStateOf(false) }
-
-    val banks = listOf(
-        "KBANK" to strings.bankKbank,
-        "SCB" to strings.bankScb,
-        "KTB" to strings.bankKtb,
-        "BBL" to strings.bankBbl,
-        "GSB" to strings.bankGsb,
-        "BAY" to strings.bankBay,
-        "TTB" to strings.bankTtb,
-        "PROMPTPAY" to strings.bankPromptPay,
-        "CIMB" to strings.bankCimb,
-        "KKP" to strings.bankKkp,
-        "LH" to strings.bankLh,
-        "TISCO" to strings.bankTisco,
-        "UOB" to strings.bankUob,
-        "ICBC" to strings.bankIcbc,
-        "BAAC" to strings.bankBaac
-    )
-
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    strings.assignBank,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = AppColors.GoldAccent
-                )
-
-                OutlinedTextField(
-                    value = sender,
-                    onValueChange = { sender = it },
-                    label = { Text(strings.senderAddressLabel) },
-                    singleLine = true,
+            // === Filter Chips ===
+            item(key = "filters") {
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    leadingIcon = { Icon(Icons.Default.Sms, contentDescription = null) }
-                )
-
-                // Bank selector dropdown
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = !expanded }
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedTextField(
-                        value = banks.find { it.first == selectedBank }?.let { "${it.first} - ${it.second}" } ?: "",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text(strings.selectBankLabel) },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    FilterChip(
+                        selected = state.filter == TransactionFilter.ALL,
+                        onClick = { viewModel.setFilter(TransactionFilter.ALL) },
+                        label = { Text(strings.allTypes) },
+                        leadingIcon = if (state.filter == TransactionFilter.ALL) {
+                            { Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                        } else null
+                    )
+                    FilterChip(
+                        selected = state.filter == TransactionFilter.CREDIT,
+                        onClick = { viewModel.setFilter(TransactionFilter.CREDIT) },
+                        label = { Text(strings.creditOnly) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = AppColors.CreditGreen.copy(alpha = 0.2f)
+                        ),
+                        leadingIcon = if (state.filter == TransactionFilter.CREDIT) {
+                            { Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                        } else null
+                    )
+                    FilterChip(
+                        selected = state.filter == TransactionFilter.DEBIT,
+                        onClick = { viewModel.setFilter(TransactionFilter.DEBIT) },
+                        label = { Text(strings.debitOnly) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = AppColors.DebitRed.copy(alpha = 0.2f)
+                        ),
+                        leadingIcon = if (state.filter == TransactionFilter.DEBIT) {
+                            { Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                        } else null
+                    )
+                }
+            }
+
+            // === Loading State ===
+            if (state.isLoading) {
+                item(key = "loading") {
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .menuAnchor(),
-                        leadingIcon = {
-                            if (selectedBank.isNotEmpty()) {
-                                BankLogoCircle(bankCode = selectedBank, size = 24.dp)
-                            } else {
-                                Icon(Icons.Default.AccountBalance, contentDescription = null)
-                            }
-                        }
-                    )
-                    ExposedDropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false }
+                            .padding(vertical = 48.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        banks.forEach { (code, name) ->
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        BankLogoCircle(bankCode = code, size = 24.dp)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("$code - $name")
-                                    }
-                                },
-                                onClick = {
-                                    selectedBank = code
-                                    expanded = false
-                                }
+                        CircularProgressIndicator(color = AppColors.GoldAccent)
+                    }
+                }
+            }
+
+            // === Empty State ===
+            if (!state.isLoading && state.transactions.isEmpty()) {
+                item(key = "empty") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 48.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Default.Inbox,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                strings.noTransactionsYet,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                             )
                         }
                     }
                 }
+            }
 
-                OutlinedTextField(
-                    value = sampleMessage,
-                    onValueChange = { sampleMessage = it },
-                    label = { Text(strings.sampleMessageLabel) },
-                    maxLines = 3,
-                    modifier = Modifier.fillMaxWidth(),
-                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Message, contentDescription = null) }
+            // === Transaction List ===
+            val txList = remember(state.transactions) { state.transactions.toList() }
+            items(
+                items = txList,
+                key = { "tx_${it.id}" }
+            ) { transaction ->
+                TransactionCard(
+                    transaction = transaction,
+                    dateFormat = dateFormat,
+                    strings = strings
+                )
+            }
+
+            // Bottom spacer
+            item(key = "spacer") {
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    value: String,
+    label: String,
+    color: Color
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            value,
+            fontWeight = FontWeight.Bold,
+            fontSize = 20.sp,
+            color = color
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun TransactionCard(
+    transaction: BankTransaction,
+    dateFormat: SimpleDateFormat,
+    strings: AppStrings
+) {
+    val isCredit = transaction.type == TransactionType.CREDIT
+    val amountColor = if (isCredit) AppColors.CreditGreen else AppColors.DebitRed
+    val typeIcon = if (isCredit) Icons.Default.CallReceived else Icons.Default.CallMade
+    val typePrefix = if (isCredit) "+" else "-"
+
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Bank Logo
+            BankLogoCircle(
+                bankCode = transaction.bank,
+                size = 40.dp
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Transaction Info
+            Column(modifier = Modifier.weight(1f)) {
+                // Bank + Type row
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        transaction.bank,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        typeIcon,
+                        contentDescription = null,
+                        tint = amountColor,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+
+                // Raw message preview
+                Text(
+                    transaction.rawMessage,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
 
+                // Tags row
+                Spacer(modifier = Modifier.height(4.dp))
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(onClick = onDismiss) {
-                        Text(strings.cancelButton)
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = { onConfirm(sender, selectedBank, sampleMessage) },
-                        enabled = sender.isNotBlank() && selectedBank.isNotBlank(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = AppColors.GoldAccent,
-                            contentColor = Color.Black
-                        )
+                    // Source badge
+                    val sourceText = if (transaction.sourceType == TransactionSource.NOTIFICATION) "NOTIF" else "SMS"
+                    val sourceColor = if (transaction.sourceType == TransactionSource.NOTIFICATION)
+                        Color(0xFF7C4DFF) else AppColors.InfoBlue
+                    Badge(
+                        containerColor = sourceColor.copy(alpha = 0.15f),
+                        contentColor = sourceColor
                     ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(strings.saveButton)
+                        Text(
+                            sourceText,
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
                     }
+
+                    // Sync badge
+                    val syncText = if (transaction.isSynced) strings.syncedLabel else strings.pendingLabel
+                    val syncColor = if (transaction.isSynced) AppColors.CreditGreen else AppColors.WarningOrange
+                    Badge(
+                        containerColor = syncColor.copy(alpha = 0.15f),
+                        contentColor = syncColor
+                    ) {
+                        Text(
+                            syncText,
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+                    }
+
+                    // Time
+                    Text(
+                        dateFormat.format(Date(transaction.timestamp)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
                 }
             }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Amount
+            Text(
+                "$typePrefix${transaction.getFormattedAmount()}",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                color = amountColor
+            )
         }
     }
 }

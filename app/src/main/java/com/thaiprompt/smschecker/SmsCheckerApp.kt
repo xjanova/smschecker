@@ -1,6 +1,7 @@
 package com.thaiprompt.smschecker
 
 import android.app.Application
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
@@ -38,6 +39,7 @@ class SmsCheckerApp : Application() {
             ).apply {
                 description = "Alerts for incoming/outgoing bank transactions"
                 enableVibration(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
 
             manager.createNotificationChannel(processingChannel)

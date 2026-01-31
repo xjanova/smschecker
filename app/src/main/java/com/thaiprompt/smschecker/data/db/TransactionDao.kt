@@ -65,4 +65,13 @@ interface TransactionDao {
 
     @Query("SELECT * FROM bank_transactions WHERE sourceType = 'NOTIFICATION' ORDER BY timestamp DESC LIMIT 100")
     suspend fun getRecentNotificationTransactions(): List<BankTransaction>
+
+    @Query("SELECT * FROM bank_transactions ORDER BY timestamp DESC LIMIT 200")
+    fun getRecentTransactions(): Flow<List<BankTransaction>>
+
+    @Query("SELECT COUNT(*) FROM bank_transactions")
+    fun getTotalCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM bank_transactions WHERE isSynced = 1")
+    fun getSyncedCount(): Flow<Int>
 }

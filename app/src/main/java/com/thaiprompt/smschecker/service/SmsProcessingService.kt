@@ -59,6 +59,10 @@ class SmsProcessingService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    // Session counters for notification display
+    private var sessionDetectedCount = 0
+    private var sessionMatchedCount = 0
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -134,9 +138,10 @@ class SmsProcessingService : Service() {
                 // Save to local database
                 val savedId = repository.saveTransaction(transaction)
                 val savedTransaction = transaction.copy(id = savedId)
+                sessionDetectedCount++
 
-                // Update notification
-                updateNotification("${transaction.bank}: ${transaction.getFormattedAmount()}")
+                // Update foreground notification with counters
+                updateNotification("กำลังทำงาน | ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
 
                 // Try to match with orders (by amount for credit transactions)
                 var matchedOrderNumber: String? = null
@@ -150,7 +155,9 @@ class SmsProcessingService : Service() {
                             }
                             matchedOrderNumber = match?.orderNumber
                             if (match != null) {
+                                sessionMatchedCount++
                                 Log.d(TAG, "Matched transaction with order: ${match.orderNumber}")
+                                updateNotification("กำลังทำงาน | ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
                             }
                         }
                     } catch (e: Exception) {
@@ -231,9 +238,10 @@ class SmsProcessingService : Service() {
                 // Save to local database
                 val savedId = repository.saveTransaction(notifTransaction)
                 val savedTransaction = notifTransaction.copy(id = savedId)
+                sessionDetectedCount++
 
-                // Update notification
-                updateNotification("${notifTransaction.bank}: ${notifTransaction.getFormattedAmount()} (Notif)")
+                // Update foreground notification with counters
+                updateNotification("กำลังทำงาน | ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
 
                 // Try to match with orders (by amount for credit transactions)
                 var matchedOrderNumber: String? = null
@@ -247,7 +255,9 @@ class SmsProcessingService : Service() {
                             }
                             matchedOrderNumber = match?.orderNumber
                             if (match != null) {
+                                sessionMatchedCount++
                                 Log.d(TAG, "Matched notification with order: ${match.orderNumber}")
+                                updateNotification("กำลังทำงาน | ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
                             }
                         }
                     } catch (e: Exception) {
@@ -306,7 +316,9 @@ class SmsProcessingService : Service() {
         val notification = NotificationCompat.Builder(this, SmsCheckerApp.NOTIFICATION_CHANNEL_TRANSACTION)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
-            .setContentText("${transaction.getFormattedAmount()} | ซิงค์แล้ว")
+            .setContentText(transaction.getFormattedAmount())
+            .setSubText("ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(createPendingIntent())
