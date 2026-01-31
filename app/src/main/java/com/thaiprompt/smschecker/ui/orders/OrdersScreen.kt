@@ -61,12 +61,12 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                             strings.ordersTitle,
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
+                            color = Color.White
                         )
                         Text(
                             strings.approvalManagement,
                             style = MaterialTheme.typography.bodySmall,
-                            color = AppColors.GoldAccent
+                            color = Color(0xFF66BB6A) // Light green accent
                         )
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -90,10 +90,10 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(20.dp),
                                     strokeWidth = 2.dp,
-                                    color = AppColors.GoldAccent
+                                    color = Color(0xFF66BB6A)
                                 )
                             } else {
-                                Icon(Icons.Default.Refresh, contentDescription = strings.refresh, tint = AppColors.GoldAccent)
+                                Icon(Icons.Default.Refresh, contentDescription = strings.refresh, tint = Color(0xFF66BB6A))
                             }
                         }
                     }

@@ -54,6 +54,7 @@ class DashboardViewModel @Inject constructor(
     init {
         loadDashboardData()
         loadOrderStats()
+        loadServerHealth()
     }
 
     private fun loadDashboardData() {
@@ -133,7 +134,12 @@ class DashboardViewModel @Inject constructor(
                 } catch (_: Exception) {
                     // Server unreachable or not configured
                 }
+                // Also try to sync unsynced transactions
+                try {
+                    repository.syncAllUnsynced()
+                } catch (_: Exception) { }
                 loadOrderStats()
+                loadServerHealth()
             } catch (_: Exception) {
                 // Prevent crash on refresh
             } finally {
@@ -169,6 +175,25 @@ class DashboardViewModel @Inject constructor(
             } catch (_: Exception) {
                 // Stats fetch failed, keep defaults
             }
+        }
+    }
+
+    private fun loadServerHealth() {
+        viewModelScope.launch {
+            try {
+                repository.getAllServerConfigs().collect { servers ->
+                    val healthList = servers.map { server ->
+                        ServerHealth(
+                            serverName = server.name,
+                            isReachable = server.lastSyncStatus == "success",
+                            latencyMs = if (server.lastSyncAt != null)
+                                System.currentTimeMillis() - server.lastSyncAt
+                            else 0
+                        )
+                    }
+                    _state.update { it.copy(serverHealthList = healthList) }
+                }
+            } catch (_: Exception) { }
         }
     }
 

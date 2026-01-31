@@ -54,12 +54,12 @@ fun TransactionListScreen(viewModel: TransactionListViewModel = hiltViewModel())
                 strings.transactionsTitle,
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
+                color = Color.White
             )
             Text(
                 strings.paymentHistory,
                 style = MaterialTheme.typography.bodySmall,
-                color = AppColors.GoldAccent
+                color = Color(0xFF66BB6A) // Light green accent
             )
         }
 

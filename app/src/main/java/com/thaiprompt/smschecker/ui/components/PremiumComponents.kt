@@ -1,5 +1,6 @@
 package com.thaiprompt.smschecker.ui.components
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -10,9 +11,12 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -35,19 +39,46 @@ fun isEffectivelyDark(): Boolean {
 }
 
 /**
- * A gradient header banner with gold accent line at the bottom.
+ * A gradient header banner with green gradient shades.
+ * When isMonitoring = true, shows a rainbow RGB animated accent line.
  */
 @Composable
 fun GradientHeader(
     modifier: Modifier = Modifier,
+    isMonitoring: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val isDark = isEffectivelyDark()
+    // Green gradient shades
     val gradientColors = if (isDark) {
-        listOf(Color(0xFF1A1F35), Color(0xFF141824), Color(0xFF0D1117))
+        listOf(Color(0xFF0A2E1A), Color(0xFF0D3B22), Color(0xFF062013))
     } else {
-        listOf(Color(0xFF1A237E), Color(0xFF283593), Color(0xFF3949AB))
+        listOf(Color(0xFF1B5E20), Color(0xFF2E7D32), Color(0xFF43A047))
     }
+
+    // Rainbow animation for monitoring mode
+    val infiniteTransition = rememberInfiniteTransition(label = "rainbow")
+    val rainbowOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rainbowShift"
+    )
+
+    // Full rainbow colors
+    val rainbowColors = listOf(
+        Color(0xFFFF0000), // Red
+        Color(0xFFFF7700), // Orange
+        Color(0xFFFFFF00), // Yellow
+        Color(0xFF00FF00), // Green
+        Color(0xFF0077FF), // Blue
+        Color(0xFF8B00FF), // Violet
+        Color(0xFFFF00FF), // Magenta
+        Color(0xFFFF0000)  // Red (loop back)
+    )
 
     Box(
         modifier = modifier
@@ -55,22 +86,38 @@ fun GradientHeader(
             .clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp))
             .background(Brush.verticalGradient(colors = gradientColors))
     ) {
-        // Gold accent line at bottom
+        // Accent line at bottom — rainbow when monitoring, green when idle
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(3.dp)
                 .align(Alignment.BottomCenter)
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            AppColors.GoldAccent.copy(alpha = 0.6f),
-                            AppColors.GoldLight.copy(alpha = 0.8f),
-                            AppColors.GoldAccent.copy(alpha = 0.6f),
-                            Color.Transparent
+                .then(
+                    if (isMonitoring) {
+                        Modifier.drawBehind {
+                            val shiftedColors = rainbowColors.mapIndexed { index, color ->
+                                val shift = (rainbowOffset + index.toFloat() / rainbowColors.size) % 1f
+                                shift to color
+                            }.sortedBy { it.first }
+                            drawRect(
+                                brush = Brush.horizontalGradient(
+                                    colors = shiftedColors.map { it.second }
+                                )
+                            )
+                        }
+                    } else {
+                        Modifier.background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    AppColors.CreditGreen.copy(alpha = 0.6f),
+                                    Color(0xFF81C784).copy(alpha = 0.8f),
+                                    AppColors.CreditGreen.copy(alpha = 0.6f),
+                                    Color.Transparent
+                                )
+                            )
                         )
-                    )
+                    }
                 )
         )
 

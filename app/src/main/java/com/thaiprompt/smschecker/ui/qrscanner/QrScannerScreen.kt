@@ -137,7 +137,7 @@ fun QrScannerScreen(
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = strings.backButton,
-                        tint = MaterialTheme.colorScheme.onBackground
+                        tint = Color.White
                     )
                 }
                 Spacer(modifier = Modifier.width(8.dp))
@@ -146,12 +146,12 @@ fun QrScannerScreen(
                         strings.qrScannerTitle,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground
+                        color = Color.White
                     )
                     Text(
                         strings.qrScannerSubtitle,
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppColors.GoldAccent
+                        color = Color(0xFF66BB6A) // Light green accent
                     )
                 }
             }

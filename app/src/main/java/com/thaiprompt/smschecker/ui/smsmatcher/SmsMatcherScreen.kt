@@ -1,6 +1,10 @@
 package com.thaiprompt.smschecker.ui.smsmatcher
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,11 +24,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.thaiprompt.smschecker.data.model.SmsSenderRule
 import com.thaiprompt.smschecker.data.model.TransactionType
@@ -51,6 +57,28 @@ fun SmsMatcherScreen(
     Log.d(TAG, "SmsMatcherScreen composable entered")
     val state by viewModel.state.collectAsState()
     val strings = LocalAppStrings.current
+    val context = LocalContext.current
+
+    // SMS permission request launcher
+    val smsPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            viewModel.scanInbox()
+        }
+    }
+
+    // Helper to check SMS permission before scanning
+    val scanWithPermission: () -> Unit = {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.READ_SMS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            viewModel.scanInbox()
+        } else {
+            smsPermissionLauncher.launch(Manifest.permission.READ_SMS)
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -79,7 +107,7 @@ fun SmsMatcherScreen(
                         Text(
                             strings.smsMatcherSubtitle,
                             style = MaterialTheme.typography.bodySmall,
-                            color = AppColors.GoldAccent
+                            color = Color(0xFF66BB6A) // Light green accent
                         )
                     }
                 }
@@ -159,7 +187,7 @@ fun SmsMatcherScreen(
                         }
                     }
                     FilledTonalButton(
-                        onClick = { viewModel.scanInbox() },
+                        onClick = scanWithPermission,
                         enabled = !state.isScanning,
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = AppColors.GoldAccent.copy(alpha = 0.2f),

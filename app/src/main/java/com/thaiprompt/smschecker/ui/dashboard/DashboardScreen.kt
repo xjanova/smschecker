@@ -1,5 +1,6 @@
 package com.thaiprompt.smschecker.ui.dashboard
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -16,10 +17,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.thaiprompt.smschecker.R
 import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.DashboardStats
 import com.thaiprompt.smschecker.data.model.TransactionType
@@ -51,25 +54,38 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
     ) {
         // Gradient Header
         item {
-            GradientHeader {
+            GradientHeader(isMonitoring = state.isMonitoring) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            "SMS Payment",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Logo
+                        Image(
+                            painter = painterResource(id = R.drawable.logo),
+                            contentDescription = "Logo",
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(12.dp))
                         )
-                        Text(
-                            "Checker",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = AppColors.GoldAccent
-                        )
+                        Column {
+                            Text(
+                                "SMS Payment",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                "Checker",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF66BB6A) // Light green accent
+                            )
+                        }
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -78,13 +94,13 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(20.dp),
                                     strokeWidth = 2.dp,
-                                    color = AppColors.GoldAccent
+                                    color = Color(0xFF66BB6A)
                                 )
                             } else {
                                 Icon(
                                     Icons.Default.Refresh,
                                     contentDescription = strings.refresh,
-                                    tint = AppColors.GoldAccent
+                                    tint = Color(0xFF66BB6A)
                                 )
                             }
                         }

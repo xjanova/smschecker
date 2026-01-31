@@ -338,7 +338,7 @@ val ThaiStrings = AppStrings(
     bankBbl = "ธนาคารกรุงเทพ",
     bankGsb = "ธนาคารออมสิน",
     bankBay = "ธนาคารกรุงศรีอยุธยา",
-    bankTtb = "ธนาคารทีทีบี",
+    bankTtb = "ธนาคารทหารไทยธนชาต",
     bankPromptPay = "พร้อมเพย์",
 
     // SMS Auto Scan

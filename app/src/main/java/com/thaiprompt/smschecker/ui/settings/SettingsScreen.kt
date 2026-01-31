@@ -34,6 +34,7 @@ import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
 import com.thaiprompt.smschecker.ui.theme.AppColors
 import com.thaiprompt.smschecker.ui.theme.LanguageMode
 import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
+import com.thaiprompt.smschecker.ui.theme.LocalLanguageMode
 import com.thaiprompt.smschecker.ui.theme.ThemeMode
 import java.text.SimpleDateFormat
 import java.util.*
@@ -82,12 +83,12 @@ fun SettingsScreen(
                     strings.settingsTitle,
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
+                    color = Color.White
                 )
                 Text(
                     strings.configAndSettings,
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppColors.GoldAccent
+                    color = Color(0xFF66BB6A) // Light green accent
                 )
             }
         }
@@ -404,8 +405,16 @@ fun SettingsScreen(
                     }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
+                val langMode = LocalLanguageMode.current
+                val isThai = when (langMode) {
+                    LanguageMode.THAI -> true
+                    LanguageMode.ENGLISH -> false
+                    LanguageMode.SYSTEM -> java.util.Locale.getDefault().language == "th"
+                }
                 ApprovalMode.entries.forEach { mode ->
                     val isSelected = state.approvalMode == mode
+                    val modeName = if (isThai) mode.displayNameTh else mode.displayNameEn
+                    val modeDesc = if (isThai) mode.descriptionTh else mode.descriptionEn
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -436,14 +445,14 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
-                                mode.displayName,
+                                modeName,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                 color = if (isSelected) AppColors.GoldAccent
                                     else MaterialTheme.colorScheme.onBackground
                             )
                             Text(
-                                mode.description,
+                                modeDesc,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 11.sp

@@ -111,6 +111,14 @@ class SettingsViewModel @Inject constructor(
                     isDefault = isDefault
                 )
                 _state.update { it.copy(showAddDialog = false) }
+
+                // Auto-sync immediately after adding server
+                try {
+                    orderRepository.fetchOrders()
+                    repository.syncAllUnsynced()
+                } catch (_: Exception) {
+                    // Sync failed, will retry on next schedule
+                }
             } catch (_: Exception) { }
         }
     }
