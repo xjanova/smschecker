@@ -525,6 +525,25 @@ private fun parseQrConfig(raw: String): QrConfigResult? {
             return null
         }
 
+        // SECURITY: ตรวจสอบ URL format — ต้องเป็น HTTPS เท่านั้น (ยกเว้น debug build สำหรับ localhost)
+        val normalizedUrl = url.trim().lowercase()
+        val isSecureUrl = normalizedUrl.startsWith("https://")
+        val isLocalDebug = com.thaiprompt.smschecker.BuildConfig.DEBUG && (
+            normalizedUrl.startsWith("http://localhost") ||
+            normalizedUrl.startsWith("http://10.0.2.2") ||
+            normalizedUrl.startsWith("http://192.168.")
+        )
+        if (!isSecureUrl && !isLocalDebug) {
+            Log.w(TAG, "SECURITY: Rejected insecure URL from QR: $url")
+            return null
+        }
+
+        // SECURITY: ตรวจสอบ key format — ต้องมีความยาวเพียงพอ (อย่างน้อย 16 ตัวอักษร)
+        if (apiKey.length < 16 || secretKey.length < 16) {
+            Log.w(TAG, "SECURITY: API key or secret key too short (min 16 chars)")
+            return null
+        }
+
         val deviceId = obj.optString("deviceId", "").ifBlank { null }
 
         QrConfigResult(

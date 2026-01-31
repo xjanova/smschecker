@@ -57,10 +57,11 @@
             </intent-filter>
         </receiver>
 
-        <!-- Boot Receiver -->
+        <!-- Boot Receiver (exported=false เพียงพอเพราะ system BOOT_COMPLETED broadcast
+             ถูกส่งถึง implicit receivers ที่ declared ใน manifest โดยไม่ต้อง exported=true ตั้งแต่ API 26+) -->
         <receiver
             android:name=".receiver.BootReceiver"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>

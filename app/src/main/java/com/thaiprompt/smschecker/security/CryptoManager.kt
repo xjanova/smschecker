@@ -5,7 +5,9 @@ import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.Mac
 import javax.crypto.SecretKey
+import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
@@ -20,6 +22,17 @@ class CryptoManager {
         private const val GCM_IV_LENGTH = 12  // 96 bits
         private const val GCM_TAG_LENGTH = 128 // bits
         private const val AES_KEY_LENGTH = 32  // 256 bits
+
+        // PBKDF2 parameters for key derivation
+        private const val PBKDF2_ALGORITHM = "PBKDF2WithHmacSHA256"
+        private const val PBKDF2_ITERATIONS = 100_000
+        private const val PBKDF2_KEY_LENGTH = 256 // bits
+
+        // Fixed salt derived from app identifier (ไม่ต้องส่งไป server เพราะ server ใช้ salt เดียวกัน)
+        private const val KEY_DERIVATION_SALT = "thaiprompt-smschecker-v1"
+        // แยก context สำหรับ encrypt key กับ HMAC key เพื่อไม่ใช้ key เดียวกัน
+        private const val ENCRYPT_KEY_CONTEXT = "encryption"
+        private const val HMAC_KEY_CONTEXT = "hmac-signing"
     }
 
     /**
@@ -64,11 +77,12 @@ class CryptoManager {
 
     /**
      * Generate HMAC-SHA256 signature for request integrity.
+     * Uses a dedicated HMAC key derived from the secret (separate from encryption key).
      */
     fun generateHmac(data: String, secretKey: String): String {
         val mac = Mac.getInstance(HMAC_ALGORITHM)
-        val keySpec = SecretKeySpec(secretKey.toByteArray(Charsets.UTF_8), HMAC_ALGORITHM)
-        mac.init(keySpec)
+        val hmacKey = deriveKey(secretKey, HMAC_KEY_CONTEXT)
+        mac.init(hmacKey)
         val hmacBytes = mac.doFinal(data.toByteArray(Charsets.UTF_8))
         return Base64.encodeToString(hmacBytes, Base64.NO_WRAP)
     }
@@ -90,12 +104,19 @@ class CryptoManager {
         return Base64.encodeToString(bytes, Base64.NO_WRAP)
     }
 
-    private fun deriveKey(secret: String): SecretKey {
-        // Use first 32 bytes of secret (or pad if shorter)
-        val keyBytes = secret.toByteArray(Charsets.UTF_8)
-        val adjustedKey = ByteArray(AES_KEY_LENGTH)
-        System.arraycopy(keyBytes, 0, adjustedKey, 0, minOf(keyBytes.size, AES_KEY_LENGTH))
-        return SecretKeySpec(adjustedKey, "AES")
+    /**
+     * Derive a strong AES-256 key from the secret using PBKDF2.
+     *
+     * @param secret The secret key string (any length)
+     * @param context Purpose context to derive separate keys for encryption vs HMAC
+     */
+    private fun deriveKey(secret: String, context: String = ENCRYPT_KEY_CONTEXT): SecretKey {
+        val salt = "$KEY_DERIVATION_SALT:$context".toByteArray(Charsets.UTF_8)
+        val spec = PBEKeySpec(secret.toCharArray(), salt, PBKDF2_ITERATIONS, PBKDF2_KEY_LENGTH)
+        val factory = SecretKeyFactory.getInstance(PBKDF2_ALGORITHM)
+        val keyBytes = factory.generateSecret(spec).encoded
+        spec.clearPassword()
+        return SecretKeySpec(keyBytes, "AES")
     }
 
     private fun generateIv(): ByteArray {

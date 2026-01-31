@@ -1,5 +1,6 @@
 package com.thaiprompt.smschecker.data.api
 
+import com.thaiprompt.smschecker.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -23,7 +24,12 @@ class ApiClientFactory @Inject constructor() {
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .addInterceptor(HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.HEADERS
+                // SECURITY: ปิด logging ใน release build เพื่อป้องกัน API key หลุดใน Logcat
+                level = if (BuildConfig.DEBUG) {
+                    HttpLoggingInterceptor.Level.HEADERS
+                } else {
+                    HttpLoggingInterceptor.Level.NONE
+                }
             })
             .addInterceptor { chain ->
                 val request = chain.request().newBuilder()
