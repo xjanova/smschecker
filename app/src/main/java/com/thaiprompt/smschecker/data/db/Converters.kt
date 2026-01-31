@@ -5,6 +5,7 @@ import com.thaiprompt.smschecker.data.model.ApprovalStatus
 import com.thaiprompt.smschecker.data.model.MatchConfidence
 import com.thaiprompt.smschecker.data.model.PendingAction
 import com.thaiprompt.smschecker.data.model.SyncStatus
+import com.thaiprompt.smschecker.data.model.TransactionSource
 import com.thaiprompt.smschecker.data.model.TransactionType
 
 class Converters {
@@ -38,4 +39,10 @@ class Converters {
 
     @TypeConverter
     fun toPendingAction(value: String?): PendingAction? = value?.let { PendingAction.valueOf(it) }
+
+    @TypeConverter
+    fun fromTransactionSource(value: TransactionSource): String = value.name
+
+    @TypeConverter
+    fun toTransactionSource(value: String): TransactionSource = TransactionSource.valueOf(value)
 }

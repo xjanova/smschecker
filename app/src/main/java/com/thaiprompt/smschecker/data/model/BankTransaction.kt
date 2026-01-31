@@ -20,6 +20,7 @@ data class BankTransaction(
     val isSynced: Boolean = false,
     val syncedServerId: Long? = null, // Server ID that confirmed sync
     val syncResponse: String? = null,
+    val sourceType: TransactionSource = TransactionSource.SMS,
     val createdAt: Long = System.currentTimeMillis()
 ) {
     fun getAmountAsBigDecimal(): BigDecimal = try {
@@ -51,4 +52,9 @@ data class BankTransaction(
 enum class TransactionType {
     CREDIT,  // เงินเข้า
     DEBIT    // เงินออก
+}
+
+enum class TransactionSource {
+    SMS,          // จาก SMS
+    NOTIFICATION  // จากแจ้งเตือนแอปธนาคาร
 }

@@ -54,4 +54,15 @@ interface TransactionDao {
 
     @Query("DELETE FROM bank_transactions WHERE timestamp < :beforeTimestamp")
     suspend fun deleteOlderThan(beforeTimestamp: Long): Int
+
+    @Query("""
+        SELECT * FROM bank_transactions
+        WHERE bank = :bank AND amount = :amount AND type = :type
+        AND ABS(timestamp - :timestamp) < :windowMs
+        LIMIT 1
+    """)
+    suspend fun findDuplicate(bank: String, amount: String, type: TransactionType, timestamp: Long, windowMs: Long): BankTransaction?
+
+    @Query("SELECT * FROM bank_transactions WHERE sourceType = 'NOTIFICATION' ORDER BY timestamp DESC LIMIT 100")
+    suspend fun getRecentNotificationTransactions(): List<BankTransaction>
 }

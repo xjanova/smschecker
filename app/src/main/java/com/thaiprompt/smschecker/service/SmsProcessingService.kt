@@ -12,6 +12,7 @@ import androidx.core.app.NotificationCompat
 import com.thaiprompt.smschecker.R
 import com.thaiprompt.smschecker.SmsCheckerApp
 import com.thaiprompt.smschecker.data.db.SmsSenderRuleDao
+import com.thaiprompt.smschecker.data.model.TransactionSource
 import com.thaiprompt.smschecker.data.model.TransactionType
 import com.thaiprompt.smschecker.data.repository.OrderRepository
 import com.thaiprompt.smschecker.data.repository.TransactionRepository
@@ -28,14 +29,17 @@ class SmsProcessingService : Service() {
 
     companion object {
         const val ACTION_PROCESS_SMS = "com.thaiprompt.smschecker.PROCESS_SMS"
+        const val ACTION_PROCESS_NOTIFICATION = "com.thaiprompt.smschecker.PROCESS_NOTIFICATION"
         const val ACTION_START_MONITORING = "com.thaiprompt.smschecker.START_MONITORING"
         const val ACTION_SYNC_ALL = "com.thaiprompt.smschecker.SYNC_ALL"
         const val EXTRA_SENDER = "sender"
         const val EXTRA_MESSAGE = "message"
         const val EXTRA_TIMESTAMP = "timestamp"
+        const val EXTRA_SOURCE_PACKAGE = "source_package"
 
         private const val TAG = "SmsProcessingService"
         private const val NOTIFICATION_ID = 1001
+        private const val DEDUP_WINDOW_MS = 60_000L // 60 seconds dedup window
 
         fun enqueueWork(context: Context, intent: Intent) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -71,6 +75,14 @@ class SmsProcessingService : Service() {
 
                 processSms(sender, message, timestamp)
             }
+            ACTION_PROCESS_NOTIFICATION -> {
+                val sender = intent.getStringExtra(EXTRA_SENDER) ?: return START_STICKY
+                val message = intent.getStringExtra(EXTRA_MESSAGE) ?: return START_STICKY
+                val timestamp = intent.getLongExtra(EXTRA_TIMESTAMP, System.currentTimeMillis())
+                val sourcePackage = intent.getStringExtra(EXTRA_SOURCE_PACKAGE) ?: ""
+
+                processNotification(sender, message, timestamp, sourcePackage)
+            }
             ACTION_SYNC_ALL -> {
                 syncAllUnsynced()
             }
@@ -105,6 +117,19 @@ class SmsProcessingService : Service() {
                 }
 
                 Log.d(TAG, "Parsed transaction: ${transaction.bank} ${transaction.type} ${transaction.amount}")
+
+                // Deduplication: check if same transaction was already saved (e.g. from notification)
+                val isDuplicate = repository.findDuplicate(
+                    bank = transaction.bank,
+                    amount = transaction.amount,
+                    type = transaction.type,
+                    timestamp = timestamp,
+                    windowMs = DEDUP_WINDOW_MS
+                )
+                if (isDuplicate) {
+                    Log.d(TAG, "Duplicate SMS transaction detected, skipping: ${transaction.bank} ${transaction.amount}")
+                    return@launch
+                }
 
                 // Save to local database
                 val savedId = repository.saveTransaction(transaction)
@@ -156,6 +181,103 @@ class SmsProcessingService : Service() {
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing SMS", e)
+            }
+        }
+    }
+
+    private fun processNotification(sender: String, message: String, timestamp: Long, sourcePackage: String) {
+        if (!secureStorage.isNotificationListeningEnabled()) return
+
+        serviceScope.launch {
+            try {
+                // Load custom rules
+                val rules = smsSenderRuleDao.getActiveRules()
+                parser.setCustomRules(rules)
+
+                // Check if this is a bank transaction notification
+                if (!parser.isBankTransactionSms(sender, message)) {
+                    Log.d(TAG, "Not a bank notification from: $sender ($sourcePackage)")
+                    return@launch
+                }
+
+                // Parse the notification
+                val transaction = parser.parse(sender, message, timestamp)
+                if (transaction == null) {
+                    Log.w(TAG, "Failed to parse bank notification from: $sender")
+                    return@launch
+                }
+
+                // Mark as notification source and include package info
+                val notifTransaction = transaction.copy(
+                    sourceType = TransactionSource.NOTIFICATION,
+                    senderAddress = "$sender ($sourcePackage)"
+                )
+
+                Log.d(TAG, "Parsed notification: ${notifTransaction.bank} ${notifTransaction.type} ${notifTransaction.amount}")
+
+                // Deduplication: check if same transaction was already saved (e.g. from SMS)
+                val isDuplicate = repository.findDuplicate(
+                    bank = notifTransaction.bank,
+                    amount = notifTransaction.amount,
+                    type = notifTransaction.type,
+                    timestamp = timestamp,
+                    windowMs = DEDUP_WINDOW_MS
+                )
+                if (isDuplicate) {
+                    Log.d(TAG, "Duplicate notification transaction detected, skipping: ${notifTransaction.bank} ${notifTransaction.amount}")
+                    return@launch
+                }
+
+                // Save to local database
+                val savedId = repository.saveTransaction(notifTransaction)
+                val savedTransaction = notifTransaction.copy(id = savedId)
+
+                // Update notification
+                updateNotification("${notifTransaction.bank}: ${notifTransaction.getFormattedAmount()} (Notif)")
+
+                // Try to match with orders (by amount for credit transactions)
+                var matchedOrderNumber: String? = null
+                if (notifTransaction.type == TransactionType.CREDIT) {
+                    try {
+                        val amountDouble = notifTransaction.amount.toDoubleOrNull()
+                        if (amountDouble != null) {
+                            val ordersList = orderRepository.getAllOrders().first()
+                            val match = ordersList.find { order ->
+                                kotlin.math.abs(order.amount - amountDouble) < 0.01
+                            }
+                            matchedOrderNumber = match?.orderNumber
+                            if (match != null) {
+                                Log.d(TAG, "Matched notification with order: ${match.orderNumber}")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Order matching failed for notification", e)
+                    }
+                }
+
+                // Sync to servers
+                val synced = repository.syncTransaction(savedTransaction)
+                if (synced) {
+                    Log.d(TAG, "Notification transaction synced successfully")
+                    showTransactionNotification(savedTransaction)
+                } else {
+                    Log.w(TAG, "Notification transaction saved locally but sync failed")
+                }
+
+                // TTS announcement
+                try {
+                    ttsManager.speakTransaction(
+                        bankName = notifTransaction.bank,
+                        amount = notifTransaction.amount,
+                        isCredit = notifTransaction.type == TransactionType.CREDIT,
+                        orderNumber = matchedOrderNumber
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "TTS announcement failed for notification", e)
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing notification", e)
             }
         }
     }

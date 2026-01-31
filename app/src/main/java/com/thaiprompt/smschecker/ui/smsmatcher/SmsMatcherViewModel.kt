@@ -13,6 +13,7 @@ import com.thaiprompt.smschecker.data.model.OrderApproval
 import com.thaiprompt.smschecker.data.model.SmsSenderRule
 import com.thaiprompt.smschecker.data.model.TransactionType
 import com.thaiprompt.smschecker.data.repository.OrderRepository
+import com.thaiprompt.smschecker.data.repository.TransactionRepository
 import com.thaiprompt.smschecker.domain.scanner.DetectionMethod
 import com.thaiprompt.smschecker.domain.scanner.ScannedSms
 import com.thaiprompt.smschecker.domain.scanner.SmsInboxScanner
@@ -47,7 +48,8 @@ class SmsMatcherViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val smsSenderRuleDao: SmsSenderRuleDao,
     private val smsInboxScanner: SmsInboxScanner,
-    private val orderRepository: OrderRepository
+    private val orderRepository: OrderRepository,
+    private val transactionRepository: TransactionRepository
 ) : ViewModel() {
 
     companion object {
@@ -125,7 +127,7 @@ class SmsMatcherViewModel @Inject constructor(
 
                 Log.d(TAG, "Scanned ${scanned.size} messages")
 
-                val detected = scanned.filter {
+                var detected = scanned.filter {
                     it.detectionMethod == DetectionMethod.AUTO_DETECTED ||
                     it.detectionMethod == DetectionMethod.CUSTOM_RULE
                 }
@@ -134,6 +136,27 @@ class SmsMatcherViewModel @Inject constructor(
                 }
                 val other = scanned.filter {
                     it.detectionMethod == DetectionMethod.OTHER
+                }
+
+                // Also load notification-sourced transactions from DB
+                try {
+                    val notifTransactions = transactionRepository.getRecentNotificationTransactions()
+                    if (notifTransactions.isNotEmpty()) {
+                        val notifScanned = notifTransactions.map { tx ->
+                            ScannedSms(
+                                sender = tx.senderAddress,
+                                body = tx.rawMessage,
+                                timestamp = tx.timestamp,
+                                detectedBank = tx.bank,
+                                detectionMethod = DetectionMethod.NOTIFICATION,
+                                parsedTransaction = tx
+                            )
+                        }
+                        detected = detected + notifScanned
+                        Log.d(TAG, "Added ${notifScanned.size} notification transactions")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not load notification transactions", e)
                 }
 
                 // Step 2: Show scan results IMMEDIATELY (before network calls)

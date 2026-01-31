@@ -1,5 +1,7 @@
 package com.thaiprompt.smschecker.ui.settings
 
+import android.content.Context
+import android.provider.Settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.thaiprompt.smschecker.data.model.ApprovalMode
@@ -25,7 +27,9 @@ data class SettingsState(
     val offlineQueueCount: Int = 0,
     val themeMode: ThemeMode = ThemeMode.DARK,
     val languageMode: LanguageMode = LanguageMode.THAI,
-    val ttsEnabled: Boolean = false
+    val ttsEnabled: Boolean = false,
+    val isNotificationListening: Boolean = false,
+    val isNotificationAccessGranted: Boolean = false
 )
 
 @HiltViewModel
@@ -58,7 +62,8 @@ class SettingsViewModel @Inject constructor(
                     approvalMode = ApprovalMode.fromApiValue(secureStorage.getApprovalMode()),
                     themeMode = ThemeMode.fromKey(secureStorage.getThemeMode()),
                     languageMode = LanguageMode.fromKey(secureStorage.getLanguage()),
-                    ttsEnabled = secureStorage.isTtsEnabled()
+                    ttsEnabled = secureStorage.isTtsEnabled(),
+                    isNotificationListening = secureStorage.isNotificationListeningEnabled()
                 )
             }
         } catch (_: Exception) {
@@ -173,5 +178,25 @@ class SettingsViewModel @Inject constructor(
     fun setTtsEnabled(enabled: Boolean) {
         secureStorage.setTtsEnabled(enabled)
         _state.update { it.copy(ttsEnabled = enabled) }
+    }
+
+    fun checkNotificationAccess(context: Context) {
+        try {
+            val enabledListeners = Settings.Secure.getString(
+                context.contentResolver,
+                "enabled_notification_listeners"
+            ) ?: ""
+            val packageName = context.packageName
+            val isGranted = enabledListeners.contains(packageName)
+            _state.update { it.copy(isNotificationAccessGranted = isGranted) }
+        } catch (_: Exception) { }
+    }
+
+    fun toggleNotificationListening() {
+        try {
+            val newValue = !_state.value.isNotificationListening
+            secureStorage.setNotificationListeningEnabled(newValue)
+            _state.update { it.copy(isNotificationListening = newValue) }
+        } catch (_: Exception) { }
     }
 }

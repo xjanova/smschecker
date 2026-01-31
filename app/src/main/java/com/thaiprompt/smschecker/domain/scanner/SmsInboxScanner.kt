@@ -24,6 +24,7 @@ data class ScannedSms(
 enum class DetectionMethod {
     AUTO_DETECTED,   // Matched via BankSmsParser patterns
     CUSTOM_RULE,     // Matched via SmsSenderRule
+    NOTIFICATION,    // Detected from bank app push notification
     UNKNOWN,         // Looks like financial SMS but sender not recognized
     OTHER            // Any other SMS (not financial)
 }
@@ -108,9 +109,10 @@ class SmsInboxScanner @Inject constructor(
         return results.sortedWith(compareBy<ScannedSms> {
             when (it.detectionMethod) {
                 DetectionMethod.AUTO_DETECTED -> 0
-                DetectionMethod.CUSTOM_RULE -> 1
-                DetectionMethod.UNKNOWN -> 2
-                DetectionMethod.OTHER -> 3
+                DetectionMethod.NOTIFICATION -> 1
+                DetectionMethod.CUSTOM_RULE -> 2
+                DetectionMethod.UNKNOWN -> 3
+                DetectionMethod.OTHER -> 4
             }
         }.thenByDescending { it.timestamp })
     }

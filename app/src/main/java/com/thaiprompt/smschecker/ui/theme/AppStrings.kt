@@ -186,6 +186,13 @@ data class AppStrings(
     val ttsDebitAnnounce: String,  // "เงินออก {bank} จำนวน {amount} บาท"
     val ttsOrderMatch: String,     // "ตรงกับออเดอร์ {order}"
 
+    // === Notification Listening ===
+    val notificationListeningTitle: String,
+    val notificationListeningActive: String,
+    val notificationListeningPaused: String,
+    val notificationAccessRequired: String,
+    val notificationBadge: String,
+
     // === Common ===
     val backButton: String,
 )
@@ -374,6 +381,13 @@ val ThaiStrings = AppStrings(
     ttsDebitAnnounce = "เงินออก %s จำนวน %s บาท",
     ttsOrderMatch = "ตรงกับออเดอร์ %s",
 
+    // Notification Listening
+    notificationListeningTitle = "ตรวจจับแจ้งเตือนธนาคาร",
+    notificationListeningActive = "ทำงานอยู่ - รับแจ้งเตือนจากแอปธนาคาร",
+    notificationListeningPaused = "ปิดอยู่",
+    notificationAccessRequired = "ต้องเปิดสิทธิ์การเข้าถึงการแจ้งเตือนในตั้งค่าระบบ",
+    notificationBadge = "แจ้งเตือน",
+
     // Common
     backButton = "กลับ",
 )
@@ -561,6 +575,13 @@ val EnglishStrings = AppStrings(
     ttsCreditAnnounce = "Income from %s, amount %s baht",
     ttsDebitAnnounce = "Expense from %s, amount %s baht",
     ttsOrderMatch = "Matched with order %s",
+
+    // Notification Listening
+    notificationListeningTitle = "Bank Notification Listener",
+    notificationListeningActive = "Active - listening for bank app notifications",
+    notificationListeningPaused = "Disabled",
+    notificationAccessRequired = "Enable Notification Access in system settings",
+    notificationBadge = "Notification",
 
     // Common
     backButton = "Back",

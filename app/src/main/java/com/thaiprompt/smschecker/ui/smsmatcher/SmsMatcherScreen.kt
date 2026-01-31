@@ -631,12 +631,14 @@ private fun DetectedSmsCard(
                     val badgeText = when (sms.detectionMethod) {
                         DetectionMethod.AUTO_DETECTED -> strings.autoDetected
                         DetectionMethod.CUSTOM_RULE -> strings.customRule
+                        DetectionMethod.NOTIFICATION -> strings.notificationBadge
                         DetectionMethod.UNKNOWN -> "?"
                         DetectionMethod.OTHER -> "SMS"
                     }
                     val badgeColor = when (sms.detectionMethod) {
                         DetectionMethod.AUTO_DETECTED -> AppColors.CreditGreen
                         DetectionMethod.CUSTOM_RULE -> AppColors.GoldAccent
+                        DetectionMethod.NOTIFICATION -> AppColors.InfoBlue
                         DetectionMethod.UNKNOWN -> AppColors.WarningOrange
                         DetectionMethod.OTHER -> AppColors.InfoBlue
                     }

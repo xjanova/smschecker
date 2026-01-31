@@ -216,4 +216,20 @@ class TransactionRepository @Inject constructor(
 
     // Sync logs
     fun getRecentSyncLogs(): Flow<List<SyncLog>> = syncLogDao.getRecentLogs()
+
+    // Deduplication: check if a similar transaction was saved within a time window
+    suspend fun findDuplicate(
+        bank: String,
+        amount: String,
+        type: TransactionType,
+        timestamp: Long,
+        windowMs: Long = 60_000L
+    ): Boolean {
+        return transactionDao.findDuplicate(bank, amount, type, timestamp, windowMs) != null
+    }
+
+    // Get recent transactions from bank app notifications
+    suspend fun getRecentNotificationTransactions(): List<BankTransaction> {
+        return transactionDao.getRecentNotificationTransactions()
+    }
 }

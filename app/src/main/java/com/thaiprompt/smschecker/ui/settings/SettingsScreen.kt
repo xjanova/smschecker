@@ -1,5 +1,7 @@
 package com.thaiprompt.smschecker.ui.settings
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -17,6 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -25,6 +29,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.thaiprompt.smschecker.data.model.ApprovalMode
 import com.thaiprompt.smschecker.data.model.ServerConfig
 import com.thaiprompt.smschecker.ui.components.GlassCard
@@ -56,6 +62,15 @@ fun SettingsScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val strings = LocalAppStrings.current
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Check notification access permission when screen resumes
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.checkNotificationAccess(context)
+        }
+    }
 
     // Handle QR scan result
     LaunchedEffect(qrServerName, qrServerUrl, qrApiKey, qrSecretKey) {
@@ -186,6 +201,101 @@ fun SettingsScreen(
                             checkedTrackColor = AppColors.CreditGreen.copy(alpha = 0.3f)
                         )
                     )
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(12.dp)) }
+
+        // Notification Listening Toggle
+        item {
+            GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (state.isNotificationListening) AppColors.GoldAccent.copy(alpha = 0.15f)
+                                        else MaterialTheme.colorScheme.surfaceVariant
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Notifications,
+                                    contentDescription = null,
+                                    tint = if (state.isNotificationListening) AppColors.GoldAccent
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    strings.notificationListeningTitle,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                                Text(
+                                    if (state.isNotificationListening) strings.notificationListeningActive
+                                    else strings.notificationListeningPaused,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = state.isNotificationListening,
+                            onCheckedChange = {
+                                if (!state.isNotificationAccessGranted) {
+                                    // Open Android notification access settings
+                                    val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                                    context.startActivity(intent)
+                                } else {
+                                    viewModel.toggleNotificationListening()
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = AppColors.GoldAccent,
+                                checkedTrackColor = AppColors.GoldAccent.copy(alpha = 0.3f)
+                            )
+                        )
+                    }
+                    // Warning if permission not granted
+                    if (!state.isNotificationAccessGranted) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(AppColors.WarningOrange.copy(alpha = 0.1f))
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = AppColors.WarningOrange,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                strings.notificationAccessRequired,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AppColors.WarningOrange
+                            )
+                        }
+                    }
                 }
             }
         }

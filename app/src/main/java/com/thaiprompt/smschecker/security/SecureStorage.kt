@@ -96,4 +96,12 @@ class SecureStorage @Inject constructor(
     fun setTtsEnabled(enabled: Boolean) {
         prefs.edit().putBoolean("tts_enabled", enabled).apply()
     }
+
+    fun isNotificationListeningEnabled(): Boolean {
+        return prefs.getBoolean("notification_listening_enabled", false)
+    }
+
+    fun setNotificationListeningEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("notification_listening_enabled", enabled).apply()
+    }
 }

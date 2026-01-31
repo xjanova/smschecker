@@ -3,6 +3,8 @@ package com.thaiprompt.smschecker.data.db
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.OrderApproval
 import com.thaiprompt.smschecker.data.model.ServerConfig
@@ -17,7 +19,7 @@ import com.thaiprompt.smschecker.data.model.SyncLog
         OrderApproval::class,
         SmsSenderRule::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -27,4 +29,12 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun syncLogDao(): SyncLogDao
     abstract fun orderApprovalDao(): OrderApprovalDao
     abstract fun smsSenderRuleDao(): SmsSenderRuleDao
+
+    companion object {
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE bank_transactions ADD COLUMN sourceType TEXT NOT NULL DEFAULT 'SMS'")
+            }
+        }
+    }
 }
