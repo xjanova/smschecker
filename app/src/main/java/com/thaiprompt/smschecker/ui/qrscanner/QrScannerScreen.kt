@@ -2,12 +2,15 @@ package com.thaiprompt.smschecker.ui.qrscanner
 
 import android.Manifest
 import android.util.Log
+import android.util.Size
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.core.*
@@ -59,9 +62,10 @@ data class QrConfigResult(
     val deviceName: String
 )
 
-// Singleton scanner with QR_CODE format only — faster and more accurate
+// Scanner options: QR_CODE format + enableAllPotentialBarcodes for dense/large QR codes
 private val scannerOptions = BarcodeScannerOptions.Builder()
     .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+    .enableAllPotentialBarcodes()
     .build()
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -180,7 +184,18 @@ fun QrScannerScreen(
                                             it.setSurfaceProvider(previewView.surfaceProvider)
                                         }
 
+                                        // Use high resolution for dense QR codes with lots of data
+                                        val resolutionSelector = ResolutionSelector.Builder()
+                                            .setResolutionStrategy(
+                                                ResolutionStrategy(
+                                                    Size(1920, 1080),
+                                                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
+                                                )
+                                            )
+                                            .build()
+
                                         val imageAnalysis = ImageAnalysis.Builder()
+                                            .setResolutionSelector(resolutionSelector)
                                             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                                             .build()
                                             .also { analysis ->
@@ -470,11 +485,26 @@ private fun processImage(
 }
 
 private fun parseQrConfig(raw: String): QrConfigResult? {
-    // Try parsing as JSON first
-    val json = raw.trim()
+    var json = raw.trim()
+
+    // If not JSON, try base64 decode (servers may encode config as base64 for dense QR)
     if (!json.startsWith("{")) {
-        Log.d(TAG, "Not JSON (starts with '${json.take(1)}')")
-        return null
+        try {
+            val decoded = String(
+                android.util.Base64.decode(json, android.util.Base64.DEFAULT),
+                Charsets.UTF_8
+            )
+            if (decoded.trimStart().startsWith("{")) {
+                Log.d(TAG, "Decoded base64 QR payload (${raw.length} -> ${decoded.length} chars)")
+                json = decoded.trim()
+            } else {
+                Log.d(TAG, "Not JSON after base64 decode (starts with '${decoded.take(1)}')")
+                return null
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "Not JSON and not valid base64 (starts with '${json.take(1)}')")
+            return null
+        }
     }
 
     return try {

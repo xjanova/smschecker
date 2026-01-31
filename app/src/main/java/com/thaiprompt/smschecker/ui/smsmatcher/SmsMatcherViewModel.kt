@@ -14,6 +14,7 @@ import com.thaiprompt.smschecker.domain.scanner.ScannedSms
 import com.thaiprompt.smschecker.domain.scanner.SmsInboxScanner
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -50,6 +51,9 @@ class SmsMatcherViewModel @Inject constructor(
     private val _state = MutableStateFlow(SmsMatcherState())
     val state: StateFlow<SmsMatcherState> = _state.asStateFlow()
 
+    // Prevent concurrent scan calls
+    private var scanJob: Job? = null
+
     init {
         Log.d(TAG, "ViewModel init started")
         try {
@@ -78,7 +82,9 @@ class SmsMatcherViewModel @Inject constructor(
     }
 
     fun scanInbox() {
-        viewModelScope.launch(Dispatchers.IO) {
+        // Cancel any in-progress scan to prevent concurrent scans
+        scanJob?.cancel()
+        scanJob = viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isScanning = true, errorMessage = null) }
             try {
                 Log.d(TAG, "Starting inbox scan...")

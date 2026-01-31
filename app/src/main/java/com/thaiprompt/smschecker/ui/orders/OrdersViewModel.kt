@@ -8,6 +8,7 @@ import com.thaiprompt.smschecker.data.model.ServerConfig
 import com.thaiprompt.smschecker.data.repository.OrderRepository
 import com.thaiprompt.smschecker.data.repository.TransactionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -38,6 +39,12 @@ class OrdersViewModel @Inject constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
+    // Track jobs to cancel before re-launching (prevents duplicate collectors)
+    private var ordersJob: Job? = null
+    private var pendingCountJob: Job? = null
+    private var offlineQueueJob: Job? = null
+    private var serversJob: Job? = null
+
     init {
         loadOrders()
         loadCounts()
@@ -45,7 +52,8 @@ class OrdersViewModel @Inject constructor(
     }
 
     private fun loadOrders() {
-        viewModelScope.launch {
+        ordersJob?.cancel()
+        ordersJob = viewModelScope.launch {
             try {
                 orderRepository.getFilteredOrders(
                     status = _state.value.statusFilter,
@@ -62,14 +70,16 @@ class OrdersViewModel @Inject constructor(
     }
 
     private fun loadCounts() {
-        viewModelScope.launch {
+        pendingCountJob?.cancel()
+        offlineQueueJob?.cancel()
+        pendingCountJob = viewModelScope.launch {
             try {
                 orderRepository.getPendingReviewCount().collect { count ->
                     _state.update { it.copy(pendingCount = count) }
                 }
             } catch (_: Exception) { }
         }
-        viewModelScope.launch {
+        offlineQueueJob = viewModelScope.launch {
             try {
                 orderRepository.getOfflineQueueCount().collect { count ->
                     _state.update { it.copy(offlineQueueCount = count) }
@@ -79,7 +89,8 @@ class OrdersViewModel @Inject constructor(
     }
 
     private fun loadServers() {
-        viewModelScope.launch {
+        serversJob?.cancel()
+        serversJob = viewModelScope.launch {
             try {
                 transactionRepository.getAllServerConfigs().collect { servers ->
                     _state.update { it.copy(servers = servers) }

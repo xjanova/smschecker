@@ -9,6 +9,7 @@ import com.thaiprompt.smschecker.data.repository.OrderRepository
 import com.thaiprompt.smschecker.data.repository.TransactionRepository
 import com.thaiprompt.smschecker.security.SecureStorage
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -44,6 +45,11 @@ class DashboardViewModel @Inject constructor(
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    // Track order stats jobs to cancel before re-launching
+    private var pendingCountJob: Job? = null
+    private var offlineQueueJob: Job? = null
+    private var dashboardStatsJob: Job? = null
 
     init {
         loadDashboardData()
@@ -137,21 +143,26 @@ class DashboardViewModel @Inject constructor(
     }
 
     private fun loadOrderStats() {
-        viewModelScope.launch {
+        // Cancel previous collectors to avoid duplicate coroutines on each refresh
+        pendingCountJob?.cancel()
+        offlineQueueJob?.cancel()
+        dashboardStatsJob?.cancel()
+
+        pendingCountJob = viewModelScope.launch {
             try {
                 orderRepository.getPendingReviewCount().collect { count ->
                     _state.update { it.copy(pendingApprovalCount = count) }
                 }
             } catch (_: Exception) { }
         }
-        viewModelScope.launch {
+        offlineQueueJob = viewModelScope.launch {
             try {
                 orderRepository.getOfflineQueueCount().collect { count ->
                     _state.update { it.copy(offlineQueueCount = count) }
                 }
             } catch (_: Exception) { }
         }
-        viewModelScope.launch {
+        dashboardStatsJob = viewModelScope.launch {
             try {
                 val stats = orderRepository.fetchDashboardStats()
                 _state.update { it.copy(orderStats = stats) }
