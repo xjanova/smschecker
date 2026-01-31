@@ -6,7 +6,6 @@ import android.provider.Telephony
 import android.util.Log
 import com.thaiprompt.smschecker.data.db.SmsSenderRuleDao
 import com.thaiprompt.smschecker.data.model.BankTransaction
-import com.thaiprompt.smschecker.data.model.TransactionType
 import com.thaiprompt.smschecker.domain.parser.BankSmsParser
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -88,7 +87,7 @@ class SmsInboxScanner @Inject constructor(
                     )
                 } else {
                     // Try to detect if it looks like a bank/financial message even without sender match
-                    val looksLikeBankSms = detectBankLikeContent(msg.body)
+                    val looksLikeBankSms = parser.looksLikeFinancialMessage(msg.body)
                     results.add(
                         ScannedSms(
                             sender = msg.sender,
@@ -124,28 +123,6 @@ class SmsInboxScanner @Inject constructor(
     suspend fun scanForTransactions(): List<BankTransaction> {
         val scanned = scanInbox()
         return scanned.mapNotNull { it.parsedTransaction }
-    }
-
-    /**
-     * Heuristic detection: does the message body look like a bank/financial notification?
-     * This catches senders we don't know about yet.
-     */
-    private fun detectBankLikeContent(body: String): Boolean {
-        val financialKeywords = listOf(
-            // Thai keywords
-            "เงินเข้า", "เงินออก", "โอนเงิน", "รับโอน", "ชำระเงิน",
-            "ยอดเงิน", "คงเหลือ", "บัญชี", "ถอนเงิน", "ฝากเงิน",
-            "พร้อมเพย์", "PromptPay", "บาท",
-            // English keywords
-            "Transfer", "Received", "Payment", "Balance", "Account",
-            "Deposit", "Withdraw", "Credit", "Debit", "THB"
-        )
-
-        val amountPattern = Regex("""\d{1,3}(,\d{3})*(\.\d{1,2})?""")
-        val hasAmount = amountPattern.containsMatchIn(body)
-        val hasKeyword = financialKeywords.any { body.contains(it, ignoreCase = true) }
-
-        return hasAmount && hasKeyword
     }
 
     private data class RawSms(val sender: String, val body: String, val timestamp: Long)
