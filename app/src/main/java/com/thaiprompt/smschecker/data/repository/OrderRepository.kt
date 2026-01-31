@@ -43,12 +43,18 @@ class OrderRepository @Inject constructor(
                 val client = apiClientFactory.getClient(server.baseUrl)
                 val response = client.getOrders(apiKey, deviceId)
                 if (response.isSuccessful) {
-                    val orders = response.body()?.data?.data ?: continue
-                    val localOrders = orders.map { it.toLocalEntity(server.id) }
-                    orderApprovalDao.insertAll(localOrders)
+                    val orders = response.body()?.data?.data ?: emptyList()
+                    if (orders.isNotEmpty()) {
+                        val localOrders = orders.map { it.toLocalEntity(server.id) }
+                        orderApprovalDao.insertAll(localOrders)
+                    }
+                    // อัพเดทสถานะ sync สำเร็จ
+                    serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "success")
+                } else {
+                    serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
                 }
-            } catch (_: Exception) {
-                // Silently skip failed servers
+            } catch (e: Exception) {
+                serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
             }
         }
     }
@@ -140,7 +146,7 @@ class OrderRepository @Inject constructor(
                 val client = apiClientFactory.getClient(server.baseUrl)
                 val response = client.syncOrders(apiKey, deviceId, sinceVersion)
                 if (response.isSuccessful) {
-                    val orders = response.body()?.data?.orders ?: continue
+                    val orders = response.body()?.data?.orders ?: emptyList()
                     for (remote in orders) {
                         val existing = orderApprovalDao.getByRemoteId(remote.id, server.id)
                         // Local pending action wins — don't overwrite
@@ -154,9 +160,12 @@ class OrderRepository @Inject constructor(
                             orderApprovalDao.insert(local)
                         }
                     }
+                    serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "success")
+                } else {
+                    serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
                 }
             } catch (_: Exception) {
-                // Skip failed server
+                serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
             }
         }
     }

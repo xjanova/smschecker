@@ -240,6 +240,24 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     state.serverHealthList.forEach { health ->
+                        val statusColor = when {
+                            health.neverSynced -> AppColors.GoldAccent
+                            health.isReachable -> AppColors.CreditGreen
+                            else -> AppColors.DebitRed
+                        }
+                        val statusText = when {
+                            health.neverSynced -> strings.serverWaiting
+                            health.isReachable -> {
+                                val elapsed = health.lastSyncAt?.let {
+                                    val mins = (System.currentTimeMillis() - it) / 60000
+                                    if (mins < 1) strings.serverJustNow
+                                    else if (mins < 60) "${mins}m ago"
+                                    else "${mins / 60}h ago"
+                                } ?: strings.serverConnected
+                                elapsed
+                            }
+                            else -> strings.serverOffline
+                        }
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -252,7 +270,7 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                                     modifier = Modifier
                                         .size(8.dp)
                                         .clip(CircleShape)
-                                        .background(if (health.isReachable) AppColors.CreditGreen else AppColors.DebitRed)
+                                        .background(statusColor)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
@@ -262,9 +280,9 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                                 )
                             }
                             Text(
-                                if (health.isReachable) "${health.latencyMs}ms" else strings.serverOffline,
+                                statusText,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (health.isReachable) AppColors.CreditGreen else AppColors.DebitRed,
+                                color = statusColor,
                                 fontSize = 11.sp
                             )
                         }

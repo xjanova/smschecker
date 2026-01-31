@@ -17,7 +17,8 @@ import javax.inject.Inject
 data class ServerHealth(
     val serverName: String,
     val isReachable: Boolean,
-    val latencyMs: Long = 0
+    val lastSyncAt: Long? = null,
+    val neverSynced: Boolean = false
 )
 
 data class DashboardState(
@@ -178,17 +179,25 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
+    private var serverHealthJob: Job? = null
+
     private fun loadServerHealth() {
-        viewModelScope.launch {
+        serverHealthJob?.cancel()
+        serverHealthJob = viewModelScope.launch {
             try {
                 repository.getAllServerConfigs().collect { servers ->
                     val healthList = servers.map { server ->
+                        val timeSinceSync = if (server.lastSyncAt != null)
+                            System.currentTimeMillis() - server.lastSyncAt
+                        else -1L
+
                         ServerHealth(
                             serverName = server.name,
+                            // เซิร์ฟเวอร์ที่ยังไม่เคย sync → แสดง "กำลังรอ" แทน "ไม่ผ่าน"
+                            // เซิร์ฟเวอร์ที่ sync สำเร็จภายใน 30 นาที → ถือว่า reachable
                             isReachable = server.lastSyncStatus == "success",
-                            latencyMs = if (server.lastSyncAt != null)
-                                System.currentTimeMillis() - server.lastSyncAt
-                            else 0
+                            lastSyncAt = server.lastSyncAt,
+                            neverSynced = server.lastSyncStatus == null
                         )
                     }
                     _state.update { it.copy(serverHealthList = healthList) }
