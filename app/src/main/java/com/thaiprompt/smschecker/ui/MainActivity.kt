@@ -257,7 +257,7 @@ fun MainApp(
                 navController = navController,
                 startDestination = Screen.Dashboard.route
             ) {
-                composable(Screen.Dashboard.route) { DashboardScreen() }
+                composable(Screen.Dashboard.route) { DashboardScreen(viewModel = dashboardViewModel) }
                 composable(Screen.Orders.route) { OrdersScreen() }
                 composable(Screen.Transactions.route) { TransactionListScreen() }
                 composable(Screen.Settings.route) { backStackEntry ->
@@ -267,6 +267,7 @@ fun MainApp(
                     val qrServerUrl = savedStateHandle.get<String>("qr_server_url")
                     val qrApiKey = savedStateHandle.get<String>("qr_api_key")
                     val qrSecretKey = savedStateHandle.get<String>("qr_secret_key")
+                    val qrDeviceId = savedStateHandle.get<String>("qr_device_id")
 
                     SettingsScreen(
                         onNavigateToQrScanner = {
@@ -281,11 +282,13 @@ fun MainApp(
                         qrServerUrl = qrServerUrl,
                         qrApiKey = qrApiKey,
                         qrSecretKey = qrSecretKey,
+                        qrDeviceId = qrDeviceId,
                         onQrResultConsumed = {
                             savedStateHandle.remove<String>("qr_server_name")
                             savedStateHandle.remove<String>("qr_server_url")
                             savedStateHandle.remove<String>("qr_api_key")
                             savedStateHandle.remove<String>("qr_secret_key")
+                            savedStateHandle.remove<String>("qr_device_id")
                         }
                     )
                 }
@@ -299,6 +302,9 @@ fun MainApp(
                                     set("qr_server_url", result.url)
                                     set("qr_api_key", result.apiKey)
                                     set("qr_secret_key", result.secretKey)
+                                    if (result.deviceId != null) {
+                                        set("qr_device_id", result.deviceId)
+                                    }
                                 }
                             navController.popBackStack()
                         },

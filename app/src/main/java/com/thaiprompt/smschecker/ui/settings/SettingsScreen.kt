@@ -50,6 +50,7 @@ fun SettingsScreen(
     qrServerUrl: String? = null,
     qrApiKey: String? = null,
     qrSecretKey: String? = null,
+    qrDeviceId: String? = null,
     onQrResultConsumed: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
@@ -64,7 +65,8 @@ fun SettingsScreen(
                 url = qrServerUrl,
                 apiKey = qrApiKey,
                 secretKey = qrSecretKey,
-                isDefault = true
+                isDefault = true,
+                deviceId = qrDeviceId
             )
             onQrResultConsumed()
         }

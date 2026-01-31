@@ -100,9 +100,16 @@ class SettingsViewModel @Inject constructor(
         _state.update { it.copy(showAddDialog = false) }
     }
 
-    fun addServer(name: String, url: String, apiKey: String, secretKey: String, isDefault: Boolean) {
+    fun addServer(name: String, url: String, apiKey: String, secretKey: String, isDefault: Boolean, deviceId: String? = null) {
         viewModelScope.launch {
             try {
+                // If QR code provided a device ID from the server, use it
+                // This ensures the device ID matches the server's records
+                if (deviceId != null) {
+                    secureStorage.saveDeviceId(deviceId)
+                    _state.update { it.copy(deviceId = deviceId) }
+                }
+
                 repository.saveServerConfig(
                     name = name,
                     baseUrl = url,

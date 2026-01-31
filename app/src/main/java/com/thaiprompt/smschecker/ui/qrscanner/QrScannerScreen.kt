@@ -59,6 +59,7 @@ data class QrConfigResult(
     val url: String,
     val apiKey: String,
     val secretKey: String,
+    val deviceId: String?,
     val deviceName: String
 )
 
@@ -524,15 +525,18 @@ private fun parseQrConfig(raw: String): QrConfigResult? {
             return null
         }
 
+        val deviceId = obj.optString("deviceId", "").ifBlank { null }
+
         QrConfigResult(
             type = type,
             version = obj.optInt("version", 1),
             url = url,
             apiKey = apiKey,
             secretKey = secretKey,
+            deviceId = deviceId,
             deviceName = obj.optString("deviceName", "\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C\u0E08\u0E32\u0E01 QR")
         ).also {
-            Log.d(TAG, "✓ Parsed config: url=${it.url}, device=${it.deviceName}")
+            Log.d(TAG, "✓ Parsed config: url=${it.url}, deviceId=${it.deviceId}, device=${it.deviceName}")
         }
     } catch (e: Exception) {
         Log.e(TAG, "JSON parse error: ${e.message}", e)
