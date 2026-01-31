@@ -32,6 +32,7 @@ data class SmsMatcherState(
     val rules: List<SmsSenderRule> = emptyList(),
     val detectedBankSms: List<ScannedSms> = emptyList(),
     val unknownFinancialSms: List<ScannedSms> = emptyList(),
+    val allOtherSms: List<ScannedSms> = emptyList(),
     val orderMatches: List<OrderMatch> = emptyList(),
     val isScanning: Boolean = false,
     val scanCount: Int = 0,
@@ -131,17 +132,21 @@ class SmsMatcherViewModel @Inject constructor(
                 val unknown = scanned.filter {
                     it.detectionMethod == DetectionMethod.UNKNOWN
                 }
+                val other = scanned.filter {
+                    it.detectionMethod == DetectionMethod.OTHER
+                }
 
                 // Step 2: Show scan results IMMEDIATELY (before network calls)
                 _state.update {
                     it.copy(
                         detectedBankSms = detected,
                         unknownFinancialSms = unknown,
+                        allOtherSms = other,
                         isScanning = false,
                         scanCount = scanned.size
                     )
                 }
-                Log.d(TAG, "Scan results displayed: ${detected.size} detected, ${unknown.size} unknown")
+                Log.d(TAG, "Scan results displayed: ${detected.size} detected, ${unknown.size} unknown, ${other.size} other")
 
                 // Step 3: Try to match with orders in background (don't block scan results)
                 val creditTransactions = detected.mapNotNull { it.parsedTransaction }

@@ -24,7 +24,8 @@ data class ScannedSms(
 enum class DetectionMethod {
     AUTO_DETECTED,   // Matched via BankSmsParser patterns
     CUSTOM_RULE,     // Matched via SmsSenderRule
-    UNKNOWN          // Not recognized
+    UNKNOWN,         // Looks like financial SMS but sender not recognized
+    OTHER            // Any other SMS (not financial)
 }
 
 @Singleton
@@ -87,30 +88,29 @@ class SmsInboxScanner @Inject constructor(
                 } else {
                     // Try to detect if it looks like a bank/financial message even without sender match
                     val looksLikeBankSms = detectBankLikeContent(msg.body)
-                    if (looksLikeBankSms) {
-                        results.add(
-                            ScannedSms(
-                                sender = msg.sender,
-                                body = msg.body,
-                                timestamp = msg.timestamp,
-                                detectedBank = null,
-                                detectionMethod = DetectionMethod.UNKNOWN,
-                                parsedTransaction = null
-                            )
+                    results.add(
+                        ScannedSms(
+                            sender = msg.sender,
+                            body = msg.body,
+                            timestamp = msg.timestamp,
+                            detectedBank = null,
+                            detectionMethod = if (looksLikeBankSms) DetectionMethod.UNKNOWN else DetectionMethod.OTHER,
+                            parsedTransaction = null
                         )
-                    }
+                    )
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Error processing message from ${msg.sender}", e)
             }
         }
 
-        // Sort: detected bank SMS first (by timestamp desc), then unknown
+        // Sort: detected bank SMS first, then unknown financial, then other
         return results.sortedWith(compareBy<ScannedSms> {
             when (it.detectionMethod) {
                 DetectionMethod.AUTO_DETECTED -> 0
                 DetectionMethod.CUSTOM_RULE -> 1
                 DetectionMethod.UNKNOWN -> 2
+                DetectionMethod.OTHER -> 3
             }
         }.thenByDescending { it.timestamp })
     }

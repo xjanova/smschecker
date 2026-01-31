@@ -390,6 +390,97 @@ fun SmsMatcherScreen(
             }
         }
 
+        // All Other SMS Section
+        if (state.allOtherSms.isNotEmpty()) {
+            item { Spacer(modifier = Modifier.height(16.dp)) }
+            item {
+                SectionTitle(
+                    strings.allOtherSms,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+            item {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    strings.tapToAssignBank,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+            item { Spacer(modifier = Modifier.height(8.dp)) }
+
+            items(state.allOtherSms.take(50)) { sms ->
+                val dateFormat = remember { SimpleDateFormat("HH:mm dd/MM", Locale.getDefault()) }
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 3.dp)
+                        .clickable { viewModel.showAddRuleDialog(sms.sender, sms.body) },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(AppColors.InfoBlue.copy(alpha = 0.1f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Message,
+                                contentDescription = null,
+                                tint = AppColors.InfoBlue,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                sms.sender,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Text(
+                                sms.body,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                dateFormat.format(Date(sms.timestamp)),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 10.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Icon(
+                                Icons.Default.ChevronRight,
+                                contentDescription = strings.tapToAssignBank,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // Active Rules Section
         item { Spacer(modifier = Modifier.height(16.dp)) }
         item {
@@ -541,11 +632,13 @@ private fun DetectedSmsCard(
                         DetectionMethod.AUTO_DETECTED -> strings.autoDetected
                         DetectionMethod.CUSTOM_RULE -> strings.customRule
                         DetectionMethod.UNKNOWN -> "?"
+                        DetectionMethod.OTHER -> "SMS"
                     }
                     val badgeColor = when (sms.detectionMethod) {
                         DetectionMethod.AUTO_DETECTED -> AppColors.CreditGreen
                         DetectionMethod.CUSTOM_RULE -> AppColors.GoldAccent
                         DetectionMethod.UNKNOWN -> AppColors.WarningOrange
+                        DetectionMethod.OTHER -> AppColors.InfoBlue
                     }
                     Box(
                         modifier = Modifier
