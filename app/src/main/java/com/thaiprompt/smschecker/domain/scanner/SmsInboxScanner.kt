@@ -173,6 +173,8 @@ class SmsInboxScanner @Inject constructor(
                     count++
                 }
             }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SMS permission not granted, cannot read inbox", e)
         } catch (e: Exception) {
             Log.e(TAG, "Error reading SMS inbox", e)
         }

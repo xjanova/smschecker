@@ -80,6 +80,16 @@ fun SmsMatcherScreen(
         }
     }
 
+    // Auto-request SMS permission when entering this screen
+    LaunchedEffect(Unit) {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.READ_SMS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasPermission) {
+            smsPermissionLauncher.launch(Manifest.permission.READ_SMS)
+        }
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()

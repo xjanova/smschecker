@@ -1,8 +1,12 @@
 package com.thaiprompt.smschecker.ui.smsmatcher
 
+import android.content.Context
+import android.content.pm.PackageManager
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.qualifiers.ApplicationContext
 import com.thaiprompt.smschecker.data.db.SmsSenderRuleDao
 import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.OrderApproval
@@ -39,6 +43,7 @@ data class SmsMatcherState(
 
 @HiltViewModel
 class SmsMatcherViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val smsSenderRuleDao: SmsSenderRuleDao,
     private val smsInboxScanner: SmsInboxScanner,
     private val orderRepository: OrderRepository
@@ -61,12 +66,23 @@ class SmsMatcherViewModel @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start loadRules", e)
         }
-        try {
-            scanInbox()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start scanInbox", e)
+        // Only auto-scan if SMS permission is already granted
+        if (hasSmsPermission()) {
+            try {
+                scanInbox()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start scanInbox", e)
+            }
+        } else {
+            Log.d(TAG, "SMS permission not granted, skipping auto-scan")
         }
         Log.d(TAG, "ViewModel init completed")
+    }
+
+    private fun hasSmsPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            appContext, android.Manifest.permission.READ_SMS
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun loadRules() {
