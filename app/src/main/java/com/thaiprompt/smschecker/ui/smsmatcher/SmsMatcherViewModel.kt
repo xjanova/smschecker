@@ -164,11 +164,15 @@ class SmsMatcherViewModel @Inject constructor(
                 }
 
                 // Step 2: Show scan results IMMEDIATELY (before network calls)
+                // สร้าง immutable copy เพื่อป้องกัน Compose crash จาก concurrent list modification
+                val detectedCopy = detected.toList()
+                val unknownCopy = unknown.toList()
+                val otherCopy = other.toList()
                 _state.update {
                     it.copy(
-                        detectedBankSms = detected,
-                        unknownFinancialSms = unknown,
-                        allOtherSms = other,
+                        detectedBankSms = detectedCopy,
+                        unknownFinancialSms = unknownCopy,
+                        allOtherSms = otherCopy,
                         isScanning = false,
                         scanProgress = "",
                         scanCount = scanned.size

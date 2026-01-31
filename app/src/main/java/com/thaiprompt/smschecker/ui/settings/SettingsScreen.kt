@@ -87,6 +87,20 @@ fun SettingsScreen(
         }
     }
 
+    // Show error dialog when add server fails (e.g., duplicate URL from QR scan)
+    if (state.addServerError != null && !state.showAddDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearAddServerError() },
+            title = { Text("Server Error") },
+            text = { Text(state.addServerError ?: "") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearAddServerError() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -806,10 +820,14 @@ fun SettingsScreen(
     // Add Server Dialog
     if (state.showAddDialog) {
         AddServerDialog(
-            onDismiss = { viewModel.hideAddServerDialog() },
+            onDismiss = {
+                viewModel.clearAddServerError()
+                viewModel.hideAddServerDialog()
+            },
             onConfirm = { name, url, apiKey, secretKey, isDefault ->
                 viewModel.addServer(name, url, apiKey, secretKey, isDefault)
-            }
+            },
+            errorMessage = state.addServerError
         )
     }
 }
@@ -1005,7 +1023,8 @@ fun ServerCard(
 @Composable
 fun AddServerDialog(
     onDismiss: () -> Unit,
-    onConfirm: (name: String, url: String, apiKey: String, secretKey: String, isDefault: Boolean) -> Unit
+    onConfirm: (name: String, url: String, apiKey: String, secretKey: String, isDefault: Boolean) -> Unit,
+    errorMessage: String? = null
 ) {
     val strings = LocalAppStrings.current
     var name by remember { mutableStateOf("") }
@@ -1122,6 +1141,36 @@ fun AddServerDialog(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                }
+
+                // Error message (duplicate server, etc.)
+                if (errorMessage != null) {
+                    Card(
+                        shape = RoundedCornerShape(8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFFFFEBEE)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = Color(0xFFD32F2F),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                errorMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFD32F2F)
+                            )
+                        }
+                    }
                 }
 
                 Row(

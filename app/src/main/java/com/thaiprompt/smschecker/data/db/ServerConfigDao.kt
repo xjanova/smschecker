@@ -33,4 +33,7 @@ interface ServerConfigDao {
 
     @Query("UPDATE server_configs SET lastSyncAt = :syncTime, lastSyncStatus = :status WHERE id = :id")
     suspend fun updateSyncStatus(id: Long, syncTime: Long, status: String)
+
+    @Query("SELECT * FROM server_configs WHERE LOWER(TRIM(baseUrl, '/')) = LOWER(TRIM(:baseUrl, '/')) LIMIT 1")
+    suspend fun findByBaseUrl(baseUrl: String): ServerConfig?
 }

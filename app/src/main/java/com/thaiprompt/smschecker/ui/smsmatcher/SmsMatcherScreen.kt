@@ -59,6 +59,13 @@ fun SmsMatcherScreen(
     val strings = LocalAppStrings.current
     val context = LocalContext.current
 
+    // Snapshot lists เพื่อป้องกัน Compose อ่านค่าที่เปลี่ยนระหว่าง recomposition
+    val orderMatches = remember(state.orderMatches) { state.orderMatches.toList() }
+    val detectedBankSms = remember(state.detectedBankSms) { state.detectedBankSms.toList() }
+    val unknownFinancialSms = remember(state.unknownFinancialSms) { state.unknownFinancialSms.toList() }
+    val allOtherSms = remember(state.allOtherSms) { state.allOtherSms.toList() }
+    val rules = remember(state.rules) { state.rules.toList() }
+
     // SMS permission request launcher
     val smsPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -218,7 +225,7 @@ fun SmsMatcherScreen(
         }
 
         // Order Matches Section
-        if (state.orderMatches.isNotEmpty()) {
+        if (orderMatches.isNotEmpty()) {
             item { Spacer(modifier = Modifier.height(16.dp)) }
             item {
                 SectionTitle(
@@ -228,7 +235,10 @@ fun SmsMatcherScreen(
             }
             item { Spacer(modifier = Modifier.height(8.dp)) }
 
-            items(state.orderMatches) { match ->
+            items(
+                items = orderMatches,
+                key = { "order_${it.order.id}_${it.transaction.timestamp}" }
+            ) { match ->
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -289,7 +299,7 @@ fun SmsMatcherScreen(
         }
 
         // Detected Bank SMS Section
-        if (state.detectedBankSms.isNotEmpty()) {
+        if (detectedBankSms.isNotEmpty()) {
             item { Spacer(modifier = Modifier.height(16.dp)) }
             item {
                 SectionTitle(
@@ -299,7 +309,10 @@ fun SmsMatcherScreen(
             }
             item { Spacer(modifier = Modifier.height(8.dp)) }
 
-            items(state.detectedBankSms.take(20)) { sms ->
+            items(
+                items = detectedBankSms.take(20),
+                key = { "det_${it.sender}_${it.timestamp}" }
+            ) { sms ->
                 DetectedSmsCard(
                     sms = sms,
                     onClick = { viewModel.showAddRuleDialog(sms.sender, sms.body) }
@@ -308,7 +321,7 @@ fun SmsMatcherScreen(
         }
 
         // Unknown Financial SMS Section
-        if (state.unknownFinancialSms.isNotEmpty()) {
+        if (unknownFinancialSms.isNotEmpty()) {
             item { Spacer(modifier = Modifier.height(16.dp)) }
             item {
                 SectionTitle(
@@ -318,7 +331,10 @@ fun SmsMatcherScreen(
             }
             item { Spacer(modifier = Modifier.height(8.dp)) }
 
-            items(state.unknownFinancialSms.take(15)) { sms ->
+            items(
+                items = unknownFinancialSms.take(15),
+                key = { "unk_${it.sender}_${it.timestamp}" }
+            ) { sms ->
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -395,7 +411,7 @@ fun SmsMatcherScreen(
         }
 
         // All Other SMS Section
-        if (state.allOtherSms.isNotEmpty()) {
+        if (allOtherSms.isNotEmpty()) {
             item { Spacer(modifier = Modifier.height(16.dp)) }
             item {
                 SectionTitle(
@@ -415,7 +431,10 @@ fun SmsMatcherScreen(
             }
             item { Spacer(modifier = Modifier.height(8.dp)) }
 
-            items(state.allOtherSms.take(50)) { sms ->
+            items(
+                items = allOtherSms.take(50),
+                key = { "other_${it.sender}_${it.timestamp}" }
+            ) { sms ->
                 val dateFormat = remember { SimpleDateFormat("HH:mm dd/MM", Locale.getDefault()) }
                 Card(
                     modifier = Modifier
@@ -513,7 +532,7 @@ fun SmsMatcherScreen(
 
         item { Spacer(modifier = Modifier.height(8.dp)) }
 
-        if (state.rules.isEmpty()) {
+        if (rules.isEmpty()) {
             item {
                 GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
                     Column(
@@ -552,7 +571,10 @@ fun SmsMatcherScreen(
             }
         }
 
-        items(state.rules) { rule ->
+        items(
+            items = rules,
+            key = { "rule_${it.id}" }
+        ) { rule ->
             RuleCard(
                 rule = rule,
                 onToggle = { viewModel.toggleRule(rule) },
@@ -814,7 +836,14 @@ private fun AddRuleDialog(
         "GSB" to strings.bankGsb,
         "BAY" to strings.bankBay,
         "TTB" to strings.bankTtb,
-        "PROMPTPAY" to strings.bankPromptPay
+        "PROMPTPAY" to strings.bankPromptPay,
+        "CIMB" to "CIMB Thai",
+        "KKP" to "Kiatnakin Phatra",
+        "LH" to "LH Bank",
+        "TISCO" to "TISCO Bank",
+        "UOB" to "UOB Thailand",
+        "ICBC" to "ICBC Thai",
+        "BAAC" to "ธกส."
     )
 
     Dialog(onDismissRequest = onDismiss) {

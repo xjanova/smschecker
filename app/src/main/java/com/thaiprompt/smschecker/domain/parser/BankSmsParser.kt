@@ -88,6 +88,10 @@ class BankSmsParser {
             "ICBC" to listOf(
                 "ICBC", "ICBCThai"
             ),
+            "BAAC" to listOf(
+                "BAAC", "ธกส", "ธ.ก.ส.", "BAAC-SMS", "BankBAACThai",
+                "ธนาคารเพื่อการเกษตร"
+            ),
         )
 
         // =====================================================================

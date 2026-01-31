@@ -22,6 +22,7 @@ data class SettingsState(
     val isMonitoring: Boolean = true,
     val deviceId: String = "",
     val showAddDialog: Boolean = false,
+    val addServerError: String? = null,
     val isLoading: Boolean = true,
     val approvalMode: ApprovalMode = ApprovalMode.AUTO,
     val offlineQueueCount: Int = 0,
@@ -108,6 +109,9 @@ class SettingsViewModel @Inject constructor(
     fun addServer(name: String, url: String, apiKey: String, secretKey: String, isDefault: Boolean, deviceId: String? = null) {
         viewModelScope.launch {
             try {
+                // Clear any previous error
+                _state.update { it.copy(addServerError = null) }
+
                 // If QR code provided a device ID from the server, use it
                 // This ensures the device ID matches the server's records
                 if (deviceId != null) {
@@ -122,7 +126,7 @@ class SettingsViewModel @Inject constructor(
                     secretKey = secretKey,
                     isDefault = isDefault
                 )
-                _state.update { it.copy(showAddDialog = false) }
+                _state.update { it.copy(showAddDialog = false, addServerError = null) }
 
                 // Auto-sync immediately after adding server
                 try {
@@ -131,8 +135,17 @@ class SettingsViewModel @Inject constructor(
                 } catch (_: Exception) {
                     // Sync failed, will retry on next schedule
                 }
-            } catch (_: Exception) { }
+            } catch (e: IllegalStateException) {
+                // Duplicate server URL
+                _state.update { it.copy(addServerError = e.message ?: "Server URL already exists") }
+            } catch (e: Exception) {
+                _state.update { it.copy(addServerError = "Error: ${e.message}") }
+            }
         }
+    }
+
+    fun clearAddServerError() {
+        _state.update { it.copy(addServerError = null) }
     }
 
     fun deleteServer(config: ServerConfig) {

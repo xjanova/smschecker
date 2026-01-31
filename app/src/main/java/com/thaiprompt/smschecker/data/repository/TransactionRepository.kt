@@ -176,6 +176,10 @@ class TransactionRepository @Inject constructor(
     // Server config management
     fun getAllServerConfigs(): Flow<List<ServerConfig>> = serverConfigDao.getAllConfigs()
 
+    /**
+     * Save server config. Returns the server ID.
+     * Throws IllegalStateException if a server with the same base URL already exists.
+     */
     suspend fun saveServerConfig(
         name: String,
         baseUrl: String,
@@ -183,13 +187,20 @@ class TransactionRepository @Inject constructor(
         secretKey: String,
         isDefault: Boolean = false
     ): Long {
+        // ป้องกัน URL ซ้ำ — normalize URL ก่อนเช็ค
+        val normalizedUrl = baseUrl.trimEnd('/')
+        val existing = serverConfigDao.findByBaseUrl(normalizedUrl)
+        if (existing != null) {
+            throw IllegalStateException("Server with URL '${normalizedUrl}' already exists (${existing.name})")
+        }
+
         if (isDefault) {
             serverConfigDao.clearDefaultFlag()
         }
 
         val config = ServerConfig(
             name = name,
-            baseUrl = baseUrl,
+            baseUrl = normalizedUrl,
             apiKey = "", // Stored separately in SecureStorage
             secretKey = "", // Stored separately in SecureStorage
             isDefault = isDefault
