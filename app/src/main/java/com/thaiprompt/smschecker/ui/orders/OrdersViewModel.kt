@@ -46,35 +46,45 @@ class OrdersViewModel @Inject constructor(
 
     private fun loadOrders() {
         viewModelScope.launch {
-            orderRepository.getFilteredOrders(
-                status = _state.value.statusFilter,
-                serverId = _state.value.serverFilter,
-                startTime = _state.value.dateFrom,
-                endTime = _state.value.dateTo
-            ).collect { orders ->
-                _state.update { it.copy(orders = orders, isLoading = false) }
+            try {
+                orderRepository.getFilteredOrders(
+                    status = _state.value.statusFilter,
+                    serverId = _state.value.serverFilter,
+                    startTime = _state.value.dateFrom,
+                    endTime = _state.value.dateTo
+                ).collect { orders ->
+                    _state.update { it.copy(orders = orders, isLoading = false) }
+                }
+            } catch (_: Exception) {
+                _state.update { it.copy(isLoading = false) }
             }
         }
     }
 
     private fun loadCounts() {
         viewModelScope.launch {
-            orderRepository.getPendingReviewCount().collect { count ->
-                _state.update { it.copy(pendingCount = count) }
-            }
+            try {
+                orderRepository.getPendingReviewCount().collect { count ->
+                    _state.update { it.copy(pendingCount = count) }
+                }
+            } catch (_: Exception) { }
         }
         viewModelScope.launch {
-            orderRepository.getOfflineQueueCount().collect { count ->
-                _state.update { it.copy(offlineQueueCount = count) }
-            }
+            try {
+                orderRepository.getOfflineQueueCount().collect { count ->
+                    _state.update { it.copy(offlineQueueCount = count) }
+                }
+            } catch (_: Exception) { }
         }
     }
 
     private fun loadServers() {
         viewModelScope.launch {
-            transactionRepository.getAllServerConfigs().collect { servers ->
-                _state.update { it.copy(servers = servers) }
-            }
+            try {
+                transactionRepository.getAllServerConfigs().collect { servers ->
+                    _state.update { it.copy(servers = servers) }
+                }
+            } catch (_: Exception) { }
         }
     }
 
@@ -82,7 +92,11 @@ class OrdersViewModel @Inject constructor(
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
-                orderRepository.fetchOrders()
+                try {
+                    orderRepository.fetchOrders()
+                } catch (_: Exception) {
+                    // Server unreachable or not configured
+                }
             } finally {
                 _isRefreshing.value = false
             }
@@ -111,22 +125,28 @@ class OrdersViewModel @Inject constructor(
 
     fun approveOrder(order: OrderApproval) {
         viewModelScope.launch {
-            orderRepository.approveOrder(order)
+            try {
+                orderRepository.approveOrder(order)
+            } catch (_: Exception) { }
         }
     }
 
     fun rejectOrder(order: OrderApproval) {
         viewModelScope.launch {
-            orderRepository.rejectOrder(order)
+            try {
+                orderRepository.rejectOrder(order)
+            } catch (_: Exception) { }
         }
     }
 
     fun bulkApproveAll() {
         viewModelScope.launch {
-            val pending = _state.value.orders.filter { it.approvalStatus == ApprovalStatus.PENDING_REVIEW }
-            for (order in pending) {
-                orderRepository.approveOrder(order)
-            }
+            try {
+                val pending = _state.value.orders.filter { it.approvalStatus == ApprovalStatus.PENDING_REVIEW }
+                for (order in pending) {
+                    orderRepository.approveOrder(order)
+                }
+            } catch (_: Exception) { }
         }
     }
 }

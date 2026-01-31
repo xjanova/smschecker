@@ -43,41 +43,53 @@ class SettingsViewModel @Inject constructor(
     }
 
     private fun loadSettings() {
-        // Ensure device ID exists
-        var deviceId = secureStorage.getDeviceId()
-        if (deviceId == null) {
-            deviceId = "SMSCHK-${UUID.randomUUID().toString().take(8).uppercase()}"
-            secureStorage.saveDeviceId(deviceId)
-        }
+        try {
+            // Ensure device ID exists
+            var deviceId = secureStorage.getDeviceId()
+            if (deviceId == null) {
+                deviceId = "SMSCHK-${UUID.randomUUID().toString().take(8).uppercase()}"
+                secureStorage.saveDeviceId(deviceId)
+            }
 
-        _state.update {
-            it.copy(
-                isMonitoring = secureStorage.isMonitoringEnabled(),
-                deviceId = deviceId,
-                approvalMode = ApprovalMode.fromApiValue(secureStorage.getApprovalMode()),
-                themeMode = ThemeMode.fromKey(secureStorage.getThemeMode()),
-                languageMode = LanguageMode.fromKey(secureStorage.getLanguage()),
-                ttsEnabled = secureStorage.isTtsEnabled()
-            )
+            _state.update {
+                it.copy(
+                    isMonitoring = secureStorage.isMonitoringEnabled(),
+                    deviceId = deviceId,
+                    approvalMode = ApprovalMode.fromApiValue(secureStorage.getApprovalMode()),
+                    themeMode = ThemeMode.fromKey(secureStorage.getThemeMode()),
+                    languageMode = LanguageMode.fromKey(secureStorage.getLanguage()),
+                    ttsEnabled = secureStorage.isTtsEnabled()
+                )
+            }
+        } catch (_: Exception) {
+            // SecureStorage initialization may fail on first launch
         }
 
         viewModelScope.launch {
-            repository.getAllServerConfigs().collect { servers ->
-                _state.update { it.copy(servers = servers, isLoading = false) }
+            try {
+                repository.getAllServerConfigs().collect { servers ->
+                    _state.update { it.copy(servers = servers, isLoading = false) }
+                }
+            } catch (_: Exception) {
+                _state.update { it.copy(isLoading = false) }
             }
         }
 
         viewModelScope.launch {
-            orderRepository.getOfflineQueueCount().collect { count ->
-                _state.update { it.copy(offlineQueueCount = count) }
-            }
+            try {
+                orderRepository.getOfflineQueueCount().collect { count ->
+                    _state.update { it.copy(offlineQueueCount = count) }
+                }
+            } catch (_: Exception) { }
         }
     }
 
     fun toggleMonitoring() {
-        val newValue = !_state.value.isMonitoring
-        secureStorage.setMonitoringEnabled(newValue)
-        _state.update { it.copy(isMonitoring = newValue) }
+        try {
+            val newValue = !_state.value.isMonitoring
+            secureStorage.setMonitoringEnabled(newValue)
+            _state.update { it.copy(isMonitoring = newValue) }
+        } catch (_: Exception) { }
     }
 
     fun showAddServerDialog() {
@@ -90,32 +102,40 @@ class SettingsViewModel @Inject constructor(
 
     fun addServer(name: String, url: String, apiKey: String, secretKey: String, isDefault: Boolean) {
         viewModelScope.launch {
-            repository.saveServerConfig(
-                name = name,
-                baseUrl = url,
-                apiKey = apiKey,
-                secretKey = secretKey,
-                isDefault = isDefault
-            )
-            _state.update { it.copy(showAddDialog = false) }
+            try {
+                repository.saveServerConfig(
+                    name = name,
+                    baseUrl = url,
+                    apiKey = apiKey,
+                    secretKey = secretKey,
+                    isDefault = isDefault
+                )
+                _state.update { it.copy(showAddDialog = false) }
+            } catch (_: Exception) { }
         }
     }
 
     fun deleteServer(config: ServerConfig) {
         viewModelScope.launch {
-            repository.deleteServerConfig(config)
+            try {
+                repository.deleteServerConfig(config)
+            } catch (_: Exception) { }
         }
     }
 
     fun toggleServerActive(config: ServerConfig) {
         viewModelScope.launch {
-            repository.toggleServerActive(config)
+            try {
+                repository.toggleServerActive(config)
+            } catch (_: Exception) { }
         }
     }
 
     fun setApprovalMode(mode: ApprovalMode) {
-        secureStorage.setApprovalMode(mode.apiValue)
-        _state.update { it.copy(approvalMode = mode) }
+        try {
+            secureStorage.setApprovalMode(mode.apiValue)
+            _state.update { it.copy(approvalMode = mode) }
+        } catch (_: Exception) { }
         viewModelScope.launch {
             try {
                 orderRepository.updateApprovalMode(mode)

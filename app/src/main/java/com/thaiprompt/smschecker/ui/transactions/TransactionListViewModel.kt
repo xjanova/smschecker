@@ -31,6 +31,9 @@ class TransactionListViewModel @Inject constructor(
                     )
                 }
             }
+            .catch { _ ->
+                _state.update { it.copy(isLoading = false) }
+            }
             .launchIn(viewModelScope)
     }
 }

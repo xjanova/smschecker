@@ -55,50 +55,66 @@ class DashboardViewModel @Inject constructor(
 
         // Collect today's credit total
         viewModelScope.launch {
-            repository.getTotalCredit(todayStart).collect { total ->
-                _state.update { it.copy(todayCredit = total) }
-            }
+            try {
+                repository.getTotalCredit(todayStart).collect { total ->
+                    _state.update { it.copy(todayCredit = total) }
+                }
+            } catch (_: Exception) { }
         }
 
         // Collect today's debit total
         viewModelScope.launch {
-            repository.getTotalDebit(todayStart).collect { total ->
-                _state.update { it.copy(todayDebit = total) }
-            }
+            try {
+                repository.getTotalDebit(todayStart).collect { total ->
+                    _state.update { it.copy(todayDebit = total) }
+                }
+            } catch (_: Exception) { }
         }
 
         // Collect unsynced count
         viewModelScope.launch {
-            repository.getUnsyncedCount().collect { count ->
-                _state.update { it.copy(unsyncedCount = count) }
-            }
+            try {
+                repository.getUnsyncedCount().collect { count ->
+                    _state.update { it.copy(unsyncedCount = count) }
+                }
+            } catch (_: Exception) { }
         }
 
         // Collect recent transactions
         viewModelScope.launch {
-            repository.getAllTransactions().collect { transactions ->
-                _state.update {
-                    it.copy(
-                        recentTransactions = transactions.take(10),
-                        isLoading = false
-                    )
+            try {
+                repository.getAllTransactions().collect { transactions ->
+                    _state.update {
+                        it.copy(
+                            recentTransactions = transactions.take(10),
+                            isLoading = false
+                        )
+                    }
                 }
+            } catch (_: Exception) {
+                _state.update { it.copy(isLoading = false) }
             }
         }
 
         // Check monitoring status
-        _state.update { it.copy(isMonitoring = secureStorage.isMonitoringEnabled()) }
+        try {
+            _state.update { it.copy(isMonitoring = secureStorage.isMonitoringEnabled()) }
+        } catch (_: Exception) { }
     }
 
     fun toggleMonitoring() {
-        val newValue = !_state.value.isMonitoring
-        secureStorage.setMonitoringEnabled(newValue)
-        _state.update { it.copy(isMonitoring = newValue) }
+        try {
+            val newValue = !_state.value.isMonitoring
+            secureStorage.setMonitoringEnabled(newValue)
+            _state.update { it.copy(isMonitoring = newValue) }
+        } catch (_: Exception) { }
     }
 
     fun syncAll() {
         viewModelScope.launch {
-            repository.syncAllUnsynced()
+            try {
+                repository.syncAllUnsynced()
+            } catch (_: Exception) { }
         }
     }
 
@@ -106,8 +122,14 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
-                orderRepository.fetchOrders()
+                try {
+                    orderRepository.fetchOrders()
+                } catch (_: Exception) {
+                    // Server unreachable or not configured
+                }
                 loadOrderStats()
+            } catch (_: Exception) {
+                // Prevent crash on refresh
             } finally {
                 _isRefreshing.value = false
             }
@@ -116,14 +138,18 @@ class DashboardViewModel @Inject constructor(
 
     private fun loadOrderStats() {
         viewModelScope.launch {
-            orderRepository.getPendingReviewCount().collect { count ->
-                _state.update { it.copy(pendingApprovalCount = count) }
-            }
+            try {
+                orderRepository.getPendingReviewCount().collect { count ->
+                    _state.update { it.copy(pendingApprovalCount = count) }
+                }
+            } catch (_: Exception) { }
         }
         viewModelScope.launch {
-            orderRepository.getOfflineQueueCount().collect { count ->
-                _state.update { it.copy(offlineQueueCount = count) }
-            }
+            try {
+                orderRepository.getOfflineQueueCount().collect { count ->
+                    _state.update { it.copy(offlineQueueCount = count) }
+                }
+            } catch (_: Exception) { }
         }
         viewModelScope.launch {
             try {

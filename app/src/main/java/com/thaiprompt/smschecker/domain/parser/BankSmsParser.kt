@@ -190,7 +190,7 @@ class BankSmsParser {
         for (pattern in ACCOUNT_PATTERNS) {
             val match = pattern.find(message)
             if (match != null) {
-                return match.groupValues.last { it.isNotEmpty() && it.all { c -> c.isDigit() } }
+                return match.groupValues.lastOrNull { it.isNotEmpty() && it.all { c -> c.isDigit() } } ?: ""
             }
         }
         return ""

@@ -458,41 +458,47 @@ fun SettingsScreen(
 
         // Server Connections Header
         item {
+            SectionTitle(
+                strings.serverConnections,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+        }
+        item { Spacer(modifier = Modifier.height(8.dp)) }
+        // Server action buttons — full width row
+        item {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                SectionTitle(strings.serverConnections, showDivider = false)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // QR Code Scanner button
-                    FilledTonalButton(
-                        onClick = onNavigateToQrScanner,
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = AppColors.GoldAccent.copy(alpha = 0.2f),
-                            contentColor = AppColors.GoldAccent
-                        ),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(strings.scanQr, fontSize = 12.sp)
-                    }
-                    // Manual add button
-                    FilledTonalButton(
-                        onClick = { viewModel.showAddServerDialog() },
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = AppColors.GoldAccent.copy(alpha = 0.2f),
-                            contentColor = AppColors.GoldAccent
-                        ),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(strings.addManual, fontSize = 12.sp)
-                    }
+                // QR Code Scanner button
+                FilledTonalButton(
+                    onClick = onNavigateToQrScanner,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = AppColors.GoldAccent.copy(alpha = 0.2f),
+                        contentColor = AppColors.GoldAccent
+                    ),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(strings.scanQr, fontSize = 13.sp)
+                }
+                // Manual add button
+                FilledTonalButton(
+                    onClick = { viewModel.showAddServerDialog() },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = AppColors.GoldAccent.copy(alpha = 0.2f),
+                        contentColor = AppColors.GoldAccent
+                    ),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(strings.addManual, fontSize = 13.sp)
                 }
             }
         }
