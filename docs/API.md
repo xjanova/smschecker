@@ -643,25 +643,47 @@ Return the device configuration as JSON. This is the data encoded in the QR code
 
 ## Signature Algorithm
 
+### Key Derivation
+
+Both encryption and HMAC use keys derived from the device secret via PBKDF2. The secret key is **never used directly**.
+
+```
+encryption_key = PBKDF2(secret, "thaiprompt-smschecker-v1:encryption", 100000, 32)
+hmac_key       = PBKDF2(secret, "thaiprompt-smschecker-v1:hmac-signing", 100000, 32)
+```
+
+See [SECURITY.md](SECURITY.md) for full PBKDF2 parameters.
+
 ### How to compute X-Signature
 
 ```
+hmac_key = PBKDF2(secret_key, "thaiprompt-smschecker-v1:hmac-signing", 100000, 32)
 signature_data = encrypted_payload + nonce + timestamp
-signature = Base64(HMAC-SHA256(signature_data, secret_key))
+signature = Base64(HMAC-SHA256(signature_data, hmac_key))
 ```
 
 ### PHP Example
 
 ```php
+// Derive HMAC key
+$hmacKey = hash_pbkdf2('sha256', $secretKey, 'thaiprompt-smschecker-v1:hmac-signing', 100000, 32, true);
+
 $signatureData = $encryptedData . $nonce . $timestamp;
-$signature = base64_encode(hash_hmac('sha256', $signatureData, $secretKey, true));
+$signature = base64_encode(hash_hmac('sha256', $signatureData, $hmacKey, true));
 ```
 
 ### Kotlin Example
 
 ```kotlin
+// Derive HMAC key
+val salt = "thaiprompt-smschecker-v1:hmac-signing".toByteArray(Charsets.UTF_8)
+val spec = PBEKeySpec(secretKey.toCharArray(), salt, 100_000, 256)
+val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+val hmacKey = SecretKeySpec(factory.generateSecret(spec).encoded, "HmacSHA256")
+spec.clearPassword()
+
 val signatureData = "$encryptedData$nonce$timestamp"
 val mac = Mac.getInstance("HmacSHA256")
-mac.init(SecretKeySpec(secretKey.toByteArray(), "HmacSHA256"))
+mac.init(hmacKey)
 val signature = Base64.encodeToString(mac.doFinal(signatureData.toByteArray()), Base64.NO_WRAP)
 ```

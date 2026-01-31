@@ -289,7 +289,21 @@ When the app launches for the first time, it will request the following permissi
 | **Notifications** (Post Notifications) | Show transaction alerts and sync status |
 | **Camera** | Scan QR codes for server configuration |
 
-All three permissions are required for full functionality. On some Android skins (MIUI, ColorOS, One UI), you may also need to:
+All three permissions are required for full functionality.
+
+### Step 5: Enable Notification Access (for bank app push notifications)
+
+To capture push notifications from banking apps (K PLUS, SCB EASY, etc.):
+
+1. Go to **Android Settings > Apps & notifications > Special app access > Notification access**
+2. Enable **SMS Checker** in the list
+3. Confirm the security prompt
+
+This grants the app's `NotificationListenerService` access to read notifications from banking apps. Only notifications from known banking packages are processed (see [BANKS.md](BANKS.md) for the full list).
+
+> **Note**: This permission is optional. SMS detection works without it. Notification access adds a second detection channel for cases where banks send push notifications instead of (or in addition to) SMS.
+
+On some Android skins (MIUI, ColorOS, One UI), you may also need to:
 
 - Exempt the app from **battery optimization** (Settings > Battery > App battery management)
 - Allow the app to **auto-start** on boot
@@ -557,20 +571,28 @@ $configPayload = json_encode([
 
 ## Part 6: Supported Banks
 
-The system recognizes SMS from the following Thai banks by default (configured in `config/smschecker.php`):
+The system recognizes SMS from 14 Thai banks and intercepts push notifications from 7 banking apps:
 
-| Code | Bank Name |
-|------|-----------|
-| `KBANK` | Kasikorn Bank |
-| `SCB` | Siam Commercial Bank |
-| `KTB` | Krungthai Bank |
-| `BBL` | Bangkok Bank |
-| `GSB` | Government Savings Bank |
-| `BAY` | Bank of Ayudhya (Krungsri) |
-| `TTB` | TMBThanachart Bank |
-| `PROMPTPAY` | PromptPay |
+| Code | Bank Name | SMS | Push Notif |
+|------|-----------|:---:|:----------:|
+| `KBANK` | Kasikorn Bank (K PLUS) | yes | yes |
+| `SCB` | Siam Commercial Bank (SCB EASY) | yes | yes |
+| `KTB` | Krungthai Bank (Krungthai NEXT) | yes | yes |
+| `BBL` | Bangkok Bank (Bualuang) | yes | yes |
+| `GSB` | Government Savings Bank (MyMo) | yes | yes |
+| `BAY` | Bank of Ayudhya (KMA) | yes | yes |
+| `TTB` | TMBThanachart Bank (ttb touch) | yes | yes |
+| `PROMPTPAY` | PromptPay | yes | -- |
+| `CIMB` | CIMB Thai | yes | -- |
+| `KKP` | Kiatnakin Phatra Bank | yes | -- |
+| `LH` | Land and Houses Bank | yes | -- |
+| `TISCO` | TISCO Bank | yes | -- |
+| `UOB` | United Overseas Bank (Thailand) | yes | -- |
+| `ICBC` | ICBC (Thai) | yes | -- |
 
-The Android app uses pattern matching on the SMS body and sender to identify the bank. You can extend the bank list in the config file.
+The Android app uses pattern matching on the SMS body and sender to identify the bank. Unknown senders are processed with heuristic detection (keyword + amount pattern matching). You can extend the bank list in `BankSmsParser.kt` and `config/smschecker.php`.
+
+See [BANKS.md](BANKS.md) for detailed SMS formats and notification packages.
 
 ---
 
@@ -586,6 +608,13 @@ The Android app uses pattern matching on the SMS body and sender to identify the
 ---
 
 ## Troubleshooting
+
+### App Not Receiving Bank Push Notifications
+
+- **Notification Access:** Go to Android Settings > Apps & notifications > Special app access > Notification access and enable SMS Checker.
+- **Banking app installed:** The banking app (K PLUS, SCB EASY, etc.) must be installed on the same device.
+- **App in background:** The `NotificationListenerService` runs automatically when Notification Access is granted. No need to keep the app in foreground.
+- **Notification content:** Some banking apps use minimal notification text. If the notification does not contain an amount and financial keywords, it will not be detected.
 
 ### App Not Receiving SMS
 

@@ -11,7 +11,7 @@
 
 Real-time SMS payment verification system for Thai banks. An Android app intercepts bank SMS notifications, encrypts them with AES-256-GCM, and forwards them to a Laravel backend that auto-matches transactions to pending orders using unique decimal amounts.
 
-Supports **8 Thai banks**: KBANK, SCB, KTB, BBL, GSB, BAY, TTB, and PromptPay.
+Supports **14 Thai banks**: KBANK, SCB, KTB, BBL, GSB, BAY, TTB, PromptPay, CIMB, KKP, LH, TISCO, UOB, and ICBC. Also intercepts **bank app push notifications** via NotificationListenerService.
 
 ---
 
@@ -20,15 +20,21 @@ Supports **8 Thai banks**: KBANK, SCB, KTB, BBL, GSB, BAY, TTB, and PromptPay.
 ```
 +------------------+       SMS        +---------------------+
 |   Thai Bank      | ───────────────> |   Android Device    |
-|   (KBANK, SCB,   |                  |                     |
-|    KTB, BBL,     |                  |  +--------------+   |
-|    GSB, BAY,     |                  |  | SMS Receiver |   |
-|    TTB, Prompt)  |                  |  +------+-------+   |
-+------------------+                  |         |           |
+|   (14 banks +    |                  |                     |
+|    PromptPay)    |   Push Notif     |  +--------------+   |
+|                  | ───────────────> |  | SMS Receiver |   |
+|  KBANK, SCB,     |                  |  +------+-------+   |
+|  KTB, BBL, GSB,  |                  |         |           |
+|  BAY, TTB, CIMB, |                  |         v           |
+|  KKP, LH, TISCO, |                  |  +--------------+   |
+|  UOB, ICBC       |                  |  | Notification |   |
++------------------+                  |  | Listener     |   |
+                                      |  +------+-------+   |
+                                      |         |           |
                                       |         v           |
                                       |  +--------------+   |
                                       |  | Bank Parser  |   |
-                                      |  | (8 banks +   |   |
+                                      |  | (14 banks +  |   |
                                       |  |  heuristic)  |   |
                                       |  +------+-------+   |
                                       |         |           |
@@ -37,17 +43,18 @@ Supports **8 Thai banks**: KBANK, SCB, KTB, BBL, GSB, BAY, TTB, and PromptPay.
                                       |  | AES-256-GCM  |   |
 +------------------+                  |  | Encrypt +    |   |
 |   Laravel API    | <── HTTPS ────── |  | HMAC Sign    |   |
-|                  |                  |  +--------------+   |
-|  +-----------+   |                  |         |           |
-|  | Decrypt & |   |                  |         v           |
-|  | Verify    |   |                  |  +--------------+   |
-|  +-----+-----+   |                  |  | TTS Voice    |   |
-|        |         |                  |  | Alert        |   |
-|        v         |                  |  +--------------+   |
-|  +-----------+   |                  +---------------------+
-|  | Amount    |   |
+|                  |                  |  | (PBKDF2 key) |   |
+|  +-----------+   |                  |  +--------------+   |
+|  | Decrypt & |   |                  |         |           |
+|  | Verify    |   |                  |         v           |
+|  +-----+-----+   |                  |  +--------------+   |
+|        |         |                  |  | TTS Voice    |   |
+|        v         |                  |  | Alert        |   |
+|  +-----------+   |                  |  +--------------+   |
+|  | Amount    |   |                  +---------------------+
 |  | Matcher   |   |        QR Scan
-|  +-----+-----+   |  <─────────────  Device Setup
+|  | (locked)  |   |  <─────────────  Device Setup
+|  +-----+-----+   |
 |        |         |
 |        v         |
 |  +-----------+   |
@@ -74,16 +81,19 @@ Supports **8 Thai banks**: KBANK, SCB, KTB, BBL, GSB, BAY, TTB, and PromptPay.
 
 ## Features
 
-- **Real-time SMS interception** from 8 Thai banks with intelligent heuristic detection for unknown senders
-- **AES-256-GCM encryption** with HMAC-SHA256 request signing and nonce-based replay protection
-- **QR code device setup** -- Laravel generates a QR code, the Android app scans it to auto-configure server URL, API key, and secret key
-- **Unique decimal amount matching** -- transforms round amounts (500.00) into unique decimals (500.37) so each transaction can be matched unambiguously
+- **Real-time SMS interception** from 14 Thai banks with intelligent heuristic detection for unknown senders
+- **Bank app push notification capture** via `NotificationListenerService` -- intercepts notifications from banking apps (K PLUS, SCB EASY, Krungthai NEXT, etc.) using the same processing pipeline as SMS
+- **AES-256-GCM encryption** with HMAC-SHA256 request signing, nonce-based replay protection, and **PBKDF2 key derivation** (100K iterations, separate keys for encryption and HMAC)
+- **QR code device setup** -- Laravel generates a QR code, the Android app scans it to auto-configure server URL, API key, and secret key (HTTPS + minimum key length enforced)
+- **Unique decimal amount matching** -- transforms round amounts (500.00) into unique decimals (500.37) so each transaction can be matched unambiguously, with **pessimistic locking** to prevent race conditions
+- **Bank account verification** -- server verifies SMS sender account against registered bank accounts before auto-matching
 - **Order approval system** with auto, manual, and smart approval modes, plus bulk approve
 - **Dashboard with statistics** -- transaction counts, success rates, bank breakdowns
 - **Multi-server support** -- one Android device can report to multiple Laravel servers
-- **Dark/Light theme toggle** with Material 3 dynamic theming
+- **Dark/Light theme toggle** with Material 3 dynamic theming (green gradient)
 - **Thai/English language support** (full i18n)
 - **TTS voice alerts** using Android TextToSpeech with Thai locale
+- **SMS inbox scan** with progress indicator, optimized for large inboxes (coroutine yielding, keyword-first filtering)
 - **SMS auto-scan** with background service and boot receiver for 24/7 operation
 
 ## Project Structure
@@ -93,17 +103,25 @@ SmsChecker/
 |-- app/                          # Android application
 |   |-- src/main/java/com/thaiprompt/smschecker/
 |   |   |-- data/
-|   |   |   |-- api/              # Retrofit API client & services
+|   |   |   |-- api/              # Retrofit API client, services, ApiClientFactory
 |   |   |   |-- db/               # Room database, DAOs, converters
 |   |   |   |-- model/            # Data classes (BankTransaction, OrderApproval, etc.)
 |   |   |   |-- repository/       # Transaction & Order repositories
+|   |   |-- domain/
+|   |   |   |-- parser/           # BankSmsParser (14 banks + heuristic)
+|   |   |   |-- scanner/          # SmsInboxScanner (batch scan with progress)
 |   |   |-- receiver/             # SmsBroadcastReceiver, BootReceiver
-|   |   |-- security/             # CryptoManager (AES-256-GCM, HMAC-SHA256)
-|   |   |-- service/              # SmsProcessingService, OrderSyncWorker
+|   |   |-- security/             # CryptoManager (AES-256-GCM, HMAC-SHA256, PBKDF2)
+|   |   |-- service/
+|   |   |   |-- SmsProcessingService.kt         # SMS/notification processing pipeline
+|   |   |   |-- BankNotificationListenerService.kt  # Push notification interceptor
+|   |   |   |-- OrderSyncWorker.kt               # Background order sync
 |   |   |-- ui/                   # Jetpack Compose screens
 |   |   |   |-- components/       # Charts, DateRangePicker
 |   |   |   |-- dashboard/        # Dashboard screen + ViewModel
 |   |   |   |-- orders/           # Orders screen + ViewModel
+|   |   |   |-- qrscanner/        # QR scanner with URL/key validation
+|   |   |   |-- smsmatcher/       # SMS matcher screen + ViewModel (scan progress)
 |   |   |   |-- transactions/     # Transaction list + ViewModel
 |   |   |-- SmsCheckerApp.kt      # Hilt Application class
 |   |-- src/main/res/             # Resources, themes, strings (EN/TH)
@@ -113,8 +131,8 @@ SmsChecker/
 |   |   |-- Http/
 |   |   |   |-- Controllers/Api/V1/SmsPaymentController.php
 |   |   |   |-- Middleware/VerifySmsCheckerDevice.php
-|   |   |-- Models/               # SmsCheckerDevice, SmsPaymentNotification, etc.
-|   |   |-- Services/             # SmsPaymentService
+|   |   |-- Models/               # SmsCheckerDevice, SmsPaymentNotification, UniquePaymentAmount
+|   |   |-- Services/             # SmsPaymentService (PBKDF2 key derivation), PaymentService
 |   |-- config/smschecker.php     # Configuration file
 |   |-- database/migrations/      # DB migrations
 |   |-- routes/sms_payment_api.php
@@ -280,29 +298,42 @@ All endpoints are prefixed with `/api/v1/sms-payment/`.
 
 Communication between the Android app and Laravel API is secured with multiple layers:
 
-- **AES-256-GCM** -- All SMS payloads are encrypted with a 256-bit key. GCM mode provides both confidentiality and authentication (96-bit IV, 128-bit auth tag).
-- **HMAC-SHA256** -- Every request includes a signature computed over the payload, timestamp, and nonce. The server verifies this before processing.
+- **PBKDF2 Key Derivation** -- Secret keys are never used directly. Both Android and Laravel derive separate encryption and HMAC keys using PBKDF2WithHmacSHA256 (100,000 iterations, context-specific salts).
+- **AES-256-GCM** -- All SMS payloads are encrypted with derived 256-bit keys. GCM mode provides both confidentiality and authentication (96-bit IV, 128-bit auth tag).
+- **HMAC-SHA256** -- Every request includes a signature computed over the payload, timestamp, and nonce using a **dedicated HMAC key** (separate from the encryption key). The server verifies this before processing.
 - **Nonce + Timestamp** -- Each request carries a unique nonce and timestamp. The server rejects replayed or expired requests (default tolerance: 300 seconds).
+- **Race condition protection** -- Unique amount generation and payment matching use `DB::transaction` with pessimistic locking (`lockForUpdate()`) to prevent double-spend and amount collisions.
+- **Bank account verification** -- Server verifies that SMS sender account matches registered bank accounts before auto-matching payments.
 - **Constant-time comparison** -- HMAC verification uses constant-time string comparison to prevent timing attacks.
-- **HTTPS only** -- The app enforces TLS for all API communication.
+- **HTTPS only** -- The app enforces TLS for all API communication. QR code URLs are validated (HTTPS required, minimum key length).
 - **Per-device keys** -- Each device has its own API key and secret key, generated server-side.
+- **Secure local storage** -- Keys stored in `EncryptedSharedPreferences` backed by Android Keystore (hardware-backed TEE/Strongbox).
+- **Production hardening** -- HTTP logging disabled in release builds, BootReceiver not exported.
 
 See [docs/SECURITY.md](docs/SECURITY.md) for the full specification.
 
 ## Supported Banks
 
-| Code       | Bank Name                  |
-|------------|---------------------------|
-| KBANK      | Kasikorn Bank             |
-| SCB        | Siam Commercial Bank      |
-| KTB        | Krungthai Bank            |
-| BBL        | Bangkok Bank              |
-| GSB        | Government Savings Bank   |
-| BAY        | Bank of Ayudhya (Krungsri)|
-| TTB        | TMBThanachart Bank        |
-| PROMPTPAY  | PromptPay                 |
+| Code       | Bank Name                   | SMS | Push Notification |
+|------------|-----------------------------|:---:|:-----------------:|
+| KBANK      | Kasikorn Bank (K PLUS)      | yes | yes |
+| SCB        | Siam Commercial Bank (SCB EASY) | yes | yes |
+| KTB        | Krungthai Bank (Krungthai NEXT) | yes | yes |
+| BBL        | Bangkok Bank (Bualuang)     | yes | yes |
+| GSB        | Government Savings Bank (MyMo) | yes | yes |
+| BAY        | Bank of Ayudhya (KMA/Krungsri) | yes | yes |
+| TTB        | TMBThanachart Bank (ttb touch) | yes | yes |
+| PROMPTPAY  | PromptPay                   | yes | -- |
+| CIMB       | CIMB Thai                   | yes | -- |
+| KKP        | Kiatnakin Phatra Bank       | yes | -- |
+| LH         | Land and Houses Bank (LH Bank) | yes | -- |
+| TISCO      | TISCO Bank                  | yes | -- |
+| UOB        | United Overseas Bank (Thailand) | yes | -- |
+| ICBC       | ICBC (Thai)                 | yes | -- |
 
 The app also includes **heuristic detection** for unknown SMS senders, parsing amount and transfer keywords from message body even when the sender is not in the known bank list.
+
+**Push notifications** are captured via Android `NotificationListenerService` from banking app packages listed above. The notification text is fed through the same `BankSmsParser` pipeline as SMS messages.
 
 See [docs/BANKS.md](docs/BANKS.md) for SMS format details per bank.
 
