@@ -183,9 +183,8 @@ fun SmsMatcherScreen(
             }
 
             // === Transaction List ===
-            val txList = remember(state.transactions) { state.transactions.toList() }
             items(
-                items = txList,
+                items = state.transactions,
                 key = { "tx_${it.id}" }
             ) { transaction ->
                 TransactionCard(
@@ -241,7 +240,6 @@ private fun TransactionCard(
     val isCredit = transaction.type == TransactionType.CREDIT
     val amountColor = if (isCredit) AppColors.CreditGreen else AppColors.DebitRed
     val typeIcon = if (isCredit) Icons.Default.CallReceived else Icons.Default.CallMade
-    val typePrefix = if (isCredit) "+" else "-"
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -334,7 +332,7 @@ private fun TransactionCard(
 
             // Amount
             Text(
-                "$typePrefix${transaction.getFormattedAmount()}",
+                transaction.getFormattedAmount(),
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,
                 color = amountColor

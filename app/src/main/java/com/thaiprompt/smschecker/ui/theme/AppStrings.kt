@@ -318,7 +318,7 @@ val ThaiStrings = AppStrings(
     secretKeyLabel = "Secret Key (สำหรับเข้ารหัส)",
     setAsDefault = "ตั้งเป็นเซิร์ฟเวอร์หลัก",
     saveButton = "บันทึก",
-    versionInfo = "SMS Payment Checker v1.1.0\n\u00A9 2025 Xman Studio",
+    versionInfo = "SMS Payment Checker v1.5.1\n\u00A9 2025 Xman Studio",
 
     // Theme
     themeMode = "ธีม",
@@ -528,7 +528,7 @@ val EnglishStrings = AppStrings(
     secretKeyLabel = "Secret Key (encryption)",
     setAsDefault = "Set as default server",
     saveButton = "Save",
-    versionInfo = "SMS Payment Checker v1.1.0\n\u00A9 2025 Xman Studio",
+    versionInfo = "SMS Payment Checker v1.5.1\n\u00A9 2025 Xman Studio",
 
     // Theme
     themeMode = "Theme",
