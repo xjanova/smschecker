@@ -160,6 +160,13 @@ data class AppStrings(
     val bankBay: String,
     val bankTtb: String,
     val bankPromptPay: String,
+    val bankCimb: String,
+    val bankKkp: String,
+    val bankLh: String,
+    val bankTisco: String,
+    val bankUob: String,
+    val bankIcbc: String,
+    val bankBaac: String,
 
     // === SMS Auto Scan ===
     val autoScanTitle: String,
@@ -355,6 +362,13 @@ val ThaiStrings = AppStrings(
     bankBay = "ธนาคารกรุงศรีอยุธยา",
     bankTtb = "ธนาคารทหารไทยธนชาต",
     bankPromptPay = "พร้อมเพย์",
+    bankCimb = "ธนาคารซีไอเอ็มบีไทย",
+    bankKkp = "ธนาคารเกียรตินาคินภัทร",
+    bankLh = "ธนาคารแลนด์ แอนด์ เฮ้าส์",
+    bankTisco = "ธนาคารทิสโก้",
+    bankUob = "ธนาคารยูโอบี",
+    bankIcbc = "ธนาคารไอซีบีซี (ไทย)",
+    bankBaac = "ธ.ก.ส.",
 
     // SMS Auto Scan
     autoScanTitle = "สแกน SMS อัตโนมัติ",
@@ -550,6 +564,13 @@ val EnglishStrings = AppStrings(
     bankBay = "Bank of Ayudhya",
     bankTtb = "TMBThanachart Bank",
     bankPromptPay = "PromptPay",
+    bankCimb = "CIMB Thai",
+    bankKkp = "Kiatnakin Phatra Bank",
+    bankLh = "Land and Houses Bank",
+    bankTisco = "TISCO Bank",
+    bankUob = "United Overseas Bank",
+    bankIcbc = "ICBC (Thai)",
+    bankBaac = "BAAC",
 
     // SMS Auto Scan
     autoScanTitle = "Auto Scan SMS",

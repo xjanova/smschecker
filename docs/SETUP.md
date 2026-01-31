@@ -571,7 +571,7 @@ $configPayload = json_encode([
 
 ## Part 6: Supported Banks
 
-The system recognizes SMS from 14 Thai banks and intercepts push notifications from 7 banking apps:
+The system recognizes SMS from 15 Thai banks and intercepts push notifications from 7 banking apps:
 
 | Code | Bank Name | SMS | Push Notif |
 |------|-----------|:---:|:----------:|
@@ -589,6 +589,7 @@ The system recognizes SMS from 14 Thai banks and intercepts push notifications f
 | `TISCO` | TISCO Bank | yes | -- |
 | `UOB` | United Overseas Bank (Thailand) | yes | -- |
 | `ICBC` | ICBC (Thai) | yes | -- |
+| `BAAC` | ธ.ก.ส. (Bank for Agriculture) | yes | -- |
 
 The Android app uses pattern matching on the SMS body and sender to identify the bank. Unknown senders are processed with heuristic detection (keyword + amount pattern matching). You can extend the bank list in `BankSmsParser.kt` and `config/smschecker.php`.
 

@@ -837,13 +837,13 @@ private fun AddRuleDialog(
         "BAY" to strings.bankBay,
         "TTB" to strings.bankTtb,
         "PROMPTPAY" to strings.bankPromptPay,
-        "CIMB" to "CIMB Thai",
-        "KKP" to "Kiatnakin Phatra",
-        "LH" to "LH Bank",
-        "TISCO" to "TISCO Bank",
-        "UOB" to "UOB Thailand",
-        "ICBC" to "ICBC Thai",
-        "BAAC" to "ธกส."
+        "CIMB" to strings.bankCimb,
+        "KKP" to strings.bankKkp,
+        "LH" to strings.bankLh,
+        "TISCO" to strings.bankTisco,
+        "UOB" to strings.bankUob,
+        "ICBC" to strings.bankIcbc,
+        "BAAC" to strings.bankBaac
     )
 
     Dialog(onDismissRequest = onDismiss) {

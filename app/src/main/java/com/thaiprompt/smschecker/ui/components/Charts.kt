@@ -188,6 +188,13 @@ fun BankLogoCircle(
         "BAY" -> Color(0xFFFFC107)
         "TTB" -> Color(0xFF0066FF)
         "PROMPTPAY" -> Color(0xFF003B71)
+        "CIMB" -> Color(0xFFED1C24)
+        "KKP" -> Color(0xFF004B87)
+        "LH" -> Color(0xFF00833E)
+        "TISCO" -> Color(0xFF1A237E)
+        "UOB" -> Color(0xFF0033A0)
+        "ICBC" -> Color(0xFFC8102E)
+        "BAAC" -> Color(0xFF006B3F)
         else -> Color.Gray
     }
 
@@ -200,6 +207,13 @@ fun BankLogoCircle(
         "BAY" -> "AY"
         "TTB" -> "TB"
         "PROMPTPAY" -> "PP"
+        "CIMB" -> "CI"
+        "KKP" -> "KK"
+        "LH" -> "LH"
+        "TISCO" -> "TI"
+        "UOB" -> "UO"
+        "ICBC" -> "IC"
+        "BAAC" -> "กส"
         else -> bankCode.take(2).uppercase()
     }
 

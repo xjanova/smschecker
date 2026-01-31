@@ -11,7 +11,7 @@
 
 Real-time SMS payment verification system for Thai banks. An Android app intercepts bank SMS notifications, encrypts them with AES-256-GCM, and forwards them to a Laravel backend that auto-matches transactions to pending orders using unique decimal amounts.
 
-Supports **14 Thai banks**: KBANK, SCB, KTB, BBL, GSB, BAY, TTB, PromptPay, CIMB, KKP, LH, TISCO, UOB, and ICBC. Also intercepts **bank app push notifications** via NotificationListenerService.
+Supports **15 Thai banks**: KBANK, SCB, KTB, BBL, GSB, BAY, TTB, PromptPay, CIMB, KKP, LH, TISCO, UOB, ICBC, and BAAC. Also intercepts **bank app push notifications** via NotificationListenerService.
 
 ---
 
@@ -20,21 +20,21 @@ Supports **14 Thai banks**: KBANK, SCB, KTB, BBL, GSB, BAY, TTB, PromptPay, CIMB
 ```
 +------------------+       SMS        +---------------------+
 |   Thai Bank      | ───────────────> |   Android Device    |
-|   (14 banks +    |                  |                     |
+|   (15 banks +    |                  |                     |
 |    PromptPay)    |   Push Notif     |  +--------------+   |
 |                  | ───────────────> |  | SMS Receiver |   |
 |  KBANK, SCB,     |                  |  +------+-------+   |
 |  KTB, BBL, GSB,  |                  |         |           |
 |  BAY, TTB, CIMB, |                  |         v           |
 |  KKP, LH, TISCO, |                  |  +--------------+   |
-|  UOB, ICBC       |                  |  | Notification |   |
+|  UOB, ICBC, BAAC |                  |  | Notification |   |
 +------------------+                  |  | Listener     |   |
                                       |  +------+-------+   |
                                       |         |           |
                                       |         v           |
                                       |  +--------------+   |
                                       |  | Bank Parser  |   |
-                                      |  | (14 banks +  |   |
+                                      |  | (15 banks +  |   |
                                       |  |  heuristic)  |   |
                                       |  +------+-------+   |
                                       |         |           |
@@ -81,7 +81,7 @@ Supports **14 Thai banks**: KBANK, SCB, KTB, BBL, GSB, BAY, TTB, PromptPay, CIMB
 
 ## Features
 
-- **Real-time SMS interception** from 14 Thai banks with intelligent heuristic detection for unknown senders
+- **Real-time SMS interception** from 15 Thai banks with intelligent heuristic detection for unknown senders
 - **Bank app push notification capture** via `NotificationListenerService` -- intercepts notifications from banking apps (K PLUS, SCB EASY, Krungthai NEXT, etc.) using the same processing pipeline as SMS
 - **AES-256-GCM encryption** with HMAC-SHA256 request signing, nonce-based replay protection, and **PBKDF2 key derivation** (100K iterations, separate keys for encryption and HMAC)
 - **QR code device setup** -- Laravel generates a QR code, the Android app scans it to auto-configure server URL, API key, and secret key (HTTPS + minimum key length enforced)
@@ -108,7 +108,7 @@ SmsChecker/
 |   |   |   |-- model/            # Data classes (BankTransaction, OrderApproval, etc.)
 |   |   |   |-- repository/       # Transaction & Order repositories
 |   |   |-- domain/
-|   |   |   |-- parser/           # BankSmsParser (14 banks + heuristic)
+|   |   |   |-- parser/           # BankSmsParser (15 banks + heuristic)
 |   |   |   |-- scanner/          # SmsInboxScanner (batch scan with progress)
 |   |   |-- receiver/             # SmsBroadcastReceiver, BootReceiver
 |   |   |-- security/             # CryptoManager (AES-256-GCM, HMAC-SHA256, PBKDF2)
@@ -330,6 +330,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) for the full specification.
 | TISCO      | TISCO Bank                  | yes | -- |
 | UOB        | United Overseas Bank (Thailand) | yes | -- |
 | ICBC       | ICBC (Thai)                 | yes | -- |
+| BAAC       | Bank for Agriculture and Agricultural Cooperatives (ธ.ก.ส.) | yes | -- |
 
 The app also includes **heuristic detection** for unknown SMS senders, parsing amount and transfer keywords from message body even when the sender is not in the known bank list.
 

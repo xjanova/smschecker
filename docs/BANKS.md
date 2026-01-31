@@ -6,7 +6,7 @@ This document describes the SMS and push notification parsing patterns for each 
 
 ## Supported Banks
 
-### SMS Detection (14 banks)
+### SMS Detection (15 banks)
 
 | Code | Bank Name (EN) | Bank Name (TH) | SMS Senders |
 |------|----------------|-----------------|-------------|
@@ -24,6 +24,7 @@ This document describes the SMS and push notification parsing patterns for each 
 | `TISCO` | TISCO Bank | ธนาคารทิสโก้ | TISCO, TISCOBank, TISCO-BANK |
 | `UOB` | United Overseas Bank (Thailand) | ยูโอบี | UOB, UOBThailand, UOB-TH |
 | `ICBC` | ICBC (Thai) | ไอซีบีซี (ไทย) | ICBC, ICBCThai, ICBC-THAI |
+| `BAAC` | Bank for Agriculture and Agricultural Cooperatives | ธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.) | BAAC, ธกส, ธ.ก.ส., BAAC-SMS, BankBAACThai |
 
 ### Push Notification Detection (7 banking apps)
 
@@ -266,6 +267,18 @@ ICBC: เงินเข้า THB 10,000.00 บช xxx3456 จาก บริ�
 **Debit:**
 ```
 ICBC: ชำระเงิน THB 3,000.00 บช xxx3456 ไปยัง ร้านค้า Ref.ICBC002
+```
+
+### BAAC (Bank for Agriculture and Agricultural Cooperatives / ธ.ก.ส.)
+
+**Credit:**
+```
+ธกส: รับโอน 5,000.00 บ. บช xxx7890 จาก นายทดสอบ Ref.BAAC001
+```
+
+**Debit:**
+```
+ธกส: โอนเงิน 2,000.00 บ. บช xxx7890 ไปยัง นายรับเงิน Ref.BAAC002
 ```
 
 ---
