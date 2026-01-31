@@ -426,16 +426,13 @@ If a credit is detected as debit (or vice versa):
 - Check for unusual separators (some banks use spaces in amounts)
 - Amounts must be positive and greater than 0.01
 
-### SMS Inbox Scan Is Slow
+### Transaction History
 
-The inbox scan has been optimized for performance:
-- Maximum scan count is limited to 200 messages (configurable)
-- Keywords are checked before regex patterns (fast-fail)
-- Amount regex pattern is cached as a lazy companion property
-- Coroutine `yield()` is called every 20 messages to prevent UI freeze
-- Progress is displayed as "50/200" in the scanning UI
-
-If scanning still feels slow, the heuristic detection (keyword + amount pattern) filters out most non-financial messages before expensive regex evaluation.
+The app provides a read-only transaction history (Settings > SMS History) showing the last 200 detected bank messages from the local database. Features:
+- Filter by All / Credit / Debit
+- Stats summary: total detected, synced, pending
+- Each entry shows: bank logo, amount, SMS preview, source (SMS/Notification), sync status, timestamp
+- Data is loaded from Room database (no SMS inbox scanning required)
 
 ### Push Notifications Not Detected
 

@@ -93,7 +93,8 @@ Supports **15 Thai banks**: KBANK, SCB, KTB, BBL, GSB, BAY, TTB, PromptPay, CIMB
 - **Dark/Light theme toggle** with Material 3 dynamic theming (green gradient)
 - **Thai/English language support** (full i18n)
 - **TTS voice alerts** using Android TextToSpeech with Thai locale
-- **SMS inbox scan** with progress indicator, optimized for large inboxes (coroutine yielding, keyword-first filtering)
+- **Transaction history** -- browse last 200 detected bank messages with filter (All/Credit/Debit), stats summary, and sync status
+- **Lock screen notifications** -- heads-up floating alerts visible on lock screen showing transaction details and session counters (detected/matched)
 - **SMS auto-scan** with background service and boot receiver for 24/7 operation
 
 ## Project Structure
@@ -121,7 +122,7 @@ SmsChecker/
 |   |   |   |-- dashboard/        # Dashboard screen + ViewModel
 |   |   |   |-- orders/           # Orders screen + ViewModel
 |   |   |   |-- qrscanner/        # QR scanner with URL/key validation
-|   |   |   |-- smsmatcher/       # SMS matcher screen + ViewModel (scan progress)
+|   |   |   |-- smsmatcher/       # SMS history screen + ViewModel (read-only, last 200)
 |   |   |   |-- transactions/     # Transaction list + ViewModel
 |   |   |-- SmsCheckerApp.kt      # Hilt Application class
 |   |-- src/main/res/             # Resources, themes, strings (EN/TH)
