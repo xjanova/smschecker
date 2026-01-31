@@ -725,7 +725,14 @@ fun SettingsScreen(
                     "GSB" to strings2.bankGsb,
                     "BAY" to strings2.bankBay,
                     "TTB" to strings2.bankTtb,
-                    "PromptPay" to strings2.bankPromptPay
+                    "PROMPTPAY" to strings2.bankPromptPay,
+                    "CIMB" to strings2.bankCimb,
+                    "KKP" to strings2.bankKkp,
+                    "LH" to strings2.bankLh,
+                    "TISCO" to strings2.bankTisco,
+                    "UOB" to strings2.bankUob,
+                    "ICBC" to strings2.bankIcbc,
+                    "BAAC" to strings2.bankBaac
                 )
                 banks.forEachIndexed { index, (code, name) ->
                     Row(
