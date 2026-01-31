@@ -177,7 +177,11 @@ fun SmsMatcherScreen(
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                strings.scanning,
+                                if (state.scanProgress.isNotEmpty()) {
+                                    "${strings.scanning} ${state.scanProgress}"
+                                } else {
+                                    strings.scanning
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onBackground
                             )

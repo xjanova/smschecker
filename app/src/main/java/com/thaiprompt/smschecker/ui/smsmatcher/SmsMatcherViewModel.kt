@@ -36,6 +36,7 @@ data class SmsMatcherState(
     val allOtherSms: List<ScannedSms> = emptyList(),
     val orderMatches: List<OrderMatch> = emptyList(),
     val isScanning: Boolean = false,
+    val scanProgress: String = "",
     val scanCount: Int = 0,
     val showAddDialog: Boolean = false,
     val selectedSender: String = "",
@@ -104,23 +105,25 @@ class SmsMatcherViewModel @Inject constructor(
         // Cancel any in-progress scan to prevent concurrent scans
         scanJob?.cancel()
         scanJob = viewModelScope.launch(Dispatchers.IO) {
-            _state.update { it.copy(isScanning = true, errorMessage = null) }
+            _state.update { it.copy(isScanning = true, scanProgress = "", errorMessage = null) }
             try {
                 Log.d(TAG, "Starting inbox scan...")
 
-                // Step 1: Scan SMS inbox first (this is the main purpose)
+                // Step 1: Scan SMS inbox with progress reporting
                 val scanned = try {
-                    smsInboxScanner.scanInbox()
+                    smsInboxScanner.scanInbox { processed, total ->
+                        _state.update { it.copy(scanProgress = "$processed/$total") }
+                    }
                 } catch (e: SecurityException) {
                     Log.w(TAG, "SMS permission denied", e)
                     _state.update {
-                        it.copy(isScanning = false, scanCount = 0, errorMessage = "SMS permission required")
+                        it.copy(isScanning = false, scanProgress = "", scanCount = 0, errorMessage = "SMS permission required")
                     }
                     return@launch
                 } catch (e: Exception) {
                     Log.e(TAG, "Inbox scan failed", e)
                     _state.update {
-                        it.copy(isScanning = false, scanCount = 0, errorMessage = "Scan failed: ${e.message}")
+                        it.copy(isScanning = false, scanProgress = "", scanCount = 0, errorMessage = "Scan failed: ${e.message}")
                     }
                     return@launch
                 }
@@ -134,9 +137,10 @@ class SmsMatcherViewModel @Inject constructor(
                 val unknown = scanned.filter {
                     it.detectionMethod == DetectionMethod.UNKNOWN
                 }
+                // จำกัด "Other" ให้เก็บแค่ 50 ล่าสุด เพื่อลด memory
                 val other = scanned.filter {
                     it.detectionMethod == DetectionMethod.OTHER
-                }
+                }.take(50)
 
                 // Also load notification-sourced transactions from DB
                 try {
@@ -166,6 +170,7 @@ class SmsMatcherViewModel @Inject constructor(
                         unknownFinancialSms = unknown,
                         allOtherSms = other,
                         isScanning = false,
+                        scanProgress = "",
                         scanCount = scanned.size
                     )
                 }

@@ -254,6 +254,11 @@ class BankSmsParser {
             "Transaction", "a/c", "Paid", "Purchase", "Incoming",
             "Outgoing", "Spend", "Available", "PromptPay"
         )
+
+        // Cached regex for looksLikeFinancialMessage (ป้องกันสร้างใหม่ทุกครั้ง)
+        private val AMOUNT_HEURISTIC_PATTERN: Regex by lazy {
+            Regex("""\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?""")
+        }
     }
 
     // === Instance state ===
@@ -344,11 +349,11 @@ class BankSmsParser {
      * Used by SmsInboxScanner for unknown senders.
      */
     fun looksLikeFinancialMessage(body: String): Boolean {
-        val amountPattern = Regex("""\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?""")
-        val hasAmount = amountPattern.containsMatchIn(body)
+        // เช็ค keyword ก่อน (เร็วกว่า regex) — ถ้าไม่มี keyword ไม่ต้องเช็ค amount
         val hasKeyword = FINANCIAL_KEYWORDS_TH.any { body.contains(it, ignoreCase = true) } ||
                 FINANCIAL_KEYWORDS_EN.any { body.contains(it, ignoreCase = true) }
-        return hasAmount && hasKeyword
+        if (!hasKeyword) return false
+        return AMOUNT_HEURISTIC_PATTERN.containsMatchIn(body)
     }
 
     // =====================================================================

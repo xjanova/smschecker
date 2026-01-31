@@ -8,6 +8,7 @@ import com.thaiprompt.smschecker.data.db.SmsSenderRuleDao
 import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.domain.parser.BankSmsParser
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.yield
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -37,14 +38,20 @@ class SmsInboxScanner @Inject constructor(
 
     companion object {
         private const val TAG = "SmsInboxScanner"
-        private const val MAX_SCAN_COUNT = 500
+        private const val MAX_SCAN_COUNT = 200 // ลดจาก 500 เพื่อป้องกันค้าง
+        private const val YIELD_EVERY = 20     // yield ทุก 20 ข้อความเพื่อให้ coroutine ไม่ block
     }
 
     /**
      * Scans the SMS inbox and returns all messages with bank detection info.
      * Messages that are detected as bank transactions come first.
+     *
+     * @param onProgress callback รายงานความคืบหน้า (processed, total)
      */
-    suspend fun scanInbox(maxMessages: Int = MAX_SCAN_COUNT): List<ScannedSms> {
+    suspend fun scanInbox(
+        maxMessages: Int = MAX_SCAN_COUNT,
+        onProgress: ((processed: Int, total: Int) -> Unit)? = null
+    ): List<ScannedSms> {
         // Load custom rules into parser
         val customRules = try {
             smsSenderRuleDao.getActiveRules()
@@ -57,9 +64,16 @@ class SmsInboxScanner @Inject constructor(
         val allMessages = readInboxMessages(maxMessages)
         Log.d(TAG, "Read ${allMessages.size} inbox messages")
         val results = mutableListOf<ScannedSms>()
+        val total = allMessages.size
 
-        for (msg in allMessages) {
+        for ((index, msg) in allMessages.withIndex()) {
             try {
+                // yield ทุก N ข้อความเพื่อไม่ให้ coroutine block IO dispatcher นานเกินไป
+                if (index > 0 && index % YIELD_EVERY == 0) {
+                    yield()
+                    onProgress?.invoke(index, total)
+                }
+
                 val bank = parser.identifyBank(msg.sender)
 
                 if (bank != null) {
@@ -103,6 +117,8 @@ class SmsInboxScanner @Inject constructor(
                 Log.w(TAG, "Error processing message from ${msg.sender}", e)
             }
         }
+
+        onProgress?.invoke(total, total)
 
         // Sort: detected bank SMS first, then unknown financial, then other
         return results.sortedWith(compareBy<ScannedSms> {
