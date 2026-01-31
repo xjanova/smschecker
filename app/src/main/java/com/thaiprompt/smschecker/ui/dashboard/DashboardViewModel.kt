@@ -1,5 +1,6 @@
 package com.thaiprompt.smschecker.ui.dashboard
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.thaiprompt.smschecker.data.model.BankTransaction
@@ -53,9 +54,10 @@ class DashboardViewModel @Inject constructor(
     private var dashboardStatsJob: Job? = null
 
     init {
-        loadDashboardData()
-        loadOrderStats()
-        loadServerHealth()
+        Log.d(TAG, "DashboardViewModel init")
+        try { loadDashboardData() } catch (e: Exception) { Log.e(TAG, "loadDashboardData failed", e) }
+        try { loadOrderStats() } catch (e: Exception) { Log.e(TAG, "loadOrderStats failed", e) }
+        try { loadServerHealth() } catch (e: Exception) { Log.e(TAG, "loadServerHealth failed", e) }
     }
 
     private fun loadDashboardData() {
@@ -132,21 +134,34 @@ class DashboardViewModel @Inject constructor(
             try {
                 try {
                     orderRepository.fetchOrders()
-                } catch (_: Exception) {
-                    // Server unreachable or not configured
+                } catch (e: Exception) {
+                    Log.w(TAG, "fetchOrders failed", e)
                 }
-                // Also try to sync unsynced transactions
                 try {
                     repository.syncAllUnsynced()
-                } catch (_: Exception) { }
-                loadOrderStats()
-                loadServerHealth()
-            } catch (_: Exception) {
-                // Prevent crash on refresh
+                } catch (e: Exception) {
+                    Log.w(TAG, "syncAllUnsynced failed", e)
+                }
+                try {
+                    loadOrderStats()
+                } catch (e: Exception) {
+                    Log.e(TAG, "loadOrderStats failed", e)
+                }
+                try {
+                    loadServerHealth()
+                } catch (e: Exception) {
+                    Log.e(TAG, "loadServerHealth failed", e)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Refresh failed", e)
             } finally {
                 _isRefreshing.value = false
             }
         }
+    }
+
+    companion object {
+        private const val TAG = "DashboardVM"
     }
 
     private fun loadOrderStats() {
@@ -160,21 +175,25 @@ class DashboardViewModel @Inject constructor(
                 orderRepository.getPendingReviewCount().collect { count ->
                     _state.update { it.copy(pendingApprovalCount = count) }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                Log.w(TAG, "pendingCountJob failed", e)
+            }
         }
         offlineQueueJob = viewModelScope.launch {
             try {
                 orderRepository.getOfflineQueueCount().collect { count ->
                     _state.update { it.copy(offlineQueueCount = count) }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                Log.w(TAG, "offlineQueueJob failed", e)
+            }
         }
         dashboardStatsJob = viewModelScope.launch {
             try {
                 val stats = orderRepository.fetchDashboardStats()
                 _state.update { it.copy(orderStats = stats) }
-            } catch (_: Exception) {
-                // Stats fetch failed, keep defaults
+            } catch (e: Exception) {
+                Log.w(TAG, "fetchDashboardStats failed", e)
             }
         }
     }
@@ -186,23 +205,23 @@ class DashboardViewModel @Inject constructor(
         serverHealthJob = viewModelScope.launch {
             try {
                 repository.getAllServerConfigs().collect { servers ->
-                    val healthList = servers.map { server ->
-                        val timeSinceSync = if (server.lastSyncAt != null)
-                            System.currentTimeMillis() - server.lastSyncAt
-                        else -1L
-
-                        ServerHealth(
-                            serverName = server.name,
-                            // เซิร์ฟเวอร์ที่ยังไม่เคย sync → แสดง "กำลังรอ" แทน "ไม่ผ่าน"
-                            // เซิร์ฟเวอร์ที่ sync สำเร็จภายใน 30 นาที → ถือว่า reachable
-                            isReachable = server.lastSyncStatus == "success",
-                            lastSyncAt = server.lastSyncAt,
-                            neverSynced = server.lastSyncStatus == null
-                        )
+                    try {
+                        val healthList = servers.map { server ->
+                            ServerHealth(
+                                serverName = server.name,
+                                isReachable = server.lastSyncStatus == "success",
+                                lastSyncAt = server.lastSyncAt,
+                                neverSynced = server.lastSyncStatus == null
+                            )
+                        }
+                        _state.update { it.copy(serverHealthList = healthList) }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error mapping server health", e)
                     }
-                    _state.update { it.copy(serverHealthList = healthList) }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                Log.w(TAG, "serverHealthJob failed", e)
+            }
         }
     }
 

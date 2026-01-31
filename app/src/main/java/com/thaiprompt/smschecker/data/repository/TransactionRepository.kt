@@ -72,13 +72,19 @@ class TransactionRepository @Inject constructor(
      * Sync all unsynced transactions.
      */
     suspend fun syncAllUnsynced(): Int {
-        val unsynced = transactionDao.getUnsyncedTransactions()
+        val unsynced = try {
+            transactionDao.getUnsyncedTransactions()
+        } catch (_: Exception) {
+            return 0
+        }
         var syncedCount = 0
 
         for (transaction in unsynced) {
-            if (syncTransaction(transaction)) {
-                syncedCount++
-            }
+            try {
+                if (syncTransaction(transaction)) {
+                    syncedCount++
+                }
+            } catch (_: Exception) { }
         }
 
         return syncedCount

@@ -104,6 +104,8 @@ class SmsMatcherViewModel @Inject constructor(
             _state.update { it.copy(isScanning = true, errorMessage = null) }
             try {
                 Log.d(TAG, "Starting inbox scan...")
+
+                // Step 1: Scan SMS inbox first (this is the main purpose)
                 val scanned = try {
                     smsInboxScanner.scanInbox()
                 } catch (e: SecurityException) {
@@ -130,50 +132,62 @@ class SmsMatcherViewModel @Inject constructor(
                     it.detectionMethod == DetectionMethod.UNKNOWN
                 }
 
-                // Try to match credit transactions with pending orders
-                val matches = mutableListOf<OrderMatch>()
-                val creditTransactions = detected.mapNotNull { it.parsedTransaction }
-                    .filter { it.type == TransactionType.CREDIT }
-
-                // Get all orders safely
-                var orders: List<OrderApproval> = emptyList()
-                try {
-                    orderRepository.fetchOrders()
-                } catch (e: Exception) {
-                    Log.w(TAG, "Could not fetch orders from server", e)
-                }
-
-                try {
-                    orders = orderRepository.getAllOrders().first()
-                } catch (e: Exception) {
-                    Log.w(TAG, "Could not load local orders", e)
-                }
-
-                for (tx in creditTransactions) {
-                    try {
-                        val amountDouble = tx.amount.toDoubleOrNull() ?: continue
-                        // Find orders with matching amount (within 0.01 tolerance)
-                        val matchingOrder = orders.find { order ->
-                            kotlin.math.abs(order.amount - amountDouble) < 0.01
-                        }
-                        if (matchingOrder != null) {
-                            matches.add(OrderMatch(order = matchingOrder, transaction = tx))
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Error matching transaction", e)
-                    }
-                }
-
+                // Step 2: Show scan results IMMEDIATELY (before network calls)
                 _state.update {
                     it.copy(
                         detectedBankSms = detected,
                         unknownFinancialSms = unknown,
-                        orderMatches = matches,
                         isScanning = false,
                         scanCount = scanned.size
                     )
                 }
-                Log.d(TAG, "Scan complete: ${detected.size} detected, ${unknown.size} unknown, ${matches.size} matches")
+                Log.d(TAG, "Scan results displayed: ${detected.size} detected, ${unknown.size} unknown")
+
+                // Step 3: Try to match with orders in background (don't block scan results)
+                val creditTransactions = detected.mapNotNull { it.parsedTransaction }
+                    .filter { it.type == TransactionType.CREDIT }
+
+                if (creditTransactions.isNotEmpty()) {
+                    try {
+                        // Fetch orders from server (best effort, don't hang)
+                        try {
+                            orderRepository.fetchOrders()
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Could not fetch orders from server", e)
+                        }
+
+                        // Load local orders
+                        var orders: List<OrderApproval> = emptyList()
+                        try {
+                            orders = orderRepository.getAllOrders().first()
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Could not load local orders", e)
+                        }
+
+                        // Match credit transactions with pending orders
+                        val matches = mutableListOf<OrderMatch>()
+                        for (tx in creditTransactions) {
+                            try {
+                                val amountDouble = tx.amount.toDoubleOrNull() ?: continue
+                                val matchingOrder = orders.find { order ->
+                                    kotlin.math.abs(order.amount - amountDouble) < 0.01
+                                }
+                                if (matchingOrder != null) {
+                                    matches.add(OrderMatch(order = matchingOrder, transaction = tx))
+                                }
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Error matching transaction", e)
+                            }
+                        }
+
+                        if (matches.isNotEmpty()) {
+                            _state.update { it.copy(orderMatches = matches) }
+                            Log.d(TAG, "Found ${matches.size} order matches")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Order matching failed (scan results still shown)", e)
+                    }
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error scanning inbox", e)
                 _state.update { it.copy(isScanning = false, scanCount = 0, errorMessage = "Error: ${e.message}") }

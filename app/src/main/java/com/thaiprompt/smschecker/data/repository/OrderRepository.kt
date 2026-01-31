@@ -34,7 +34,11 @@ class OrderRepository @Inject constructor(
     fun getOfflineQueueCount(): Flow<Int> = orderApprovalDao.getOfflineQueueCount()
 
     suspend fun fetchOrders() {
-        val activeServers = serverConfigDao.getActiveConfigs()
+        val activeServers = try {
+            serverConfigDao.getActiveConfigs()
+        } catch (e: Exception) {
+            return
+        }
         val deviceId = secureStorage.getDeviceId() ?: return
 
         for (server in activeServers) {
@@ -48,13 +52,14 @@ class OrderRepository @Inject constructor(
                         val localOrders = orders.map { it.toLocalEntity(server.id) }
                         orderApprovalDao.insertAll(localOrders)
                     }
-                    // อัพเดทสถานะ sync สำเร็จ
                     serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "success")
                 } else {
                     serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
                 }
-            } catch (e: Exception) {
-                serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
+            } catch (_: Exception) {
+                try {
+                    serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
+                } catch (_: Exception) { }
             }
         }
     }
@@ -171,7 +176,11 @@ class OrderRepository @Inject constructor(
     }
 
     suspend fun fetchDashboardStats(days: Int = 7): DashboardStats {
-        val activeServers = serverConfigDao.getActiveConfigs()
+        val activeServers = try {
+            serverConfigDao.getActiveConfigs()
+        } catch (_: Exception) {
+            return DashboardStats()
+        }
         val deviceId = secureStorage.getDeviceId() ?: return DashboardStats()
 
         var combined = DashboardStats()
@@ -202,7 +211,7 @@ class OrderRepository @Inject constructor(
                     )
                 }
             } catch (_: Exception) {
-                // Skip failed server
+                // Skip failed server - network error, parse error, etc.
             }
         }
 
