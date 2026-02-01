@@ -2,17 +2,10 @@ package com.thaiprompt.smschecker.ui.smshistory
 
 import android.util.Log
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import com.thaiprompt.smschecker.data.db.TransactionDao
 import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.TransactionType
-import com.thaiprompt.smschecker.data.repository.TransactionRepository
-import com.thaiprompt.smschecker.domain.scanner.SmsInboxScanner
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 private const val TAG = "SmsHistoryVM"
@@ -27,10 +20,10 @@ data class SmsHistoryUiState(
     val filter: HistoryFilter = HistoryFilter.ALL,
     val totalDetected: Int = 0,
     val totalSynced: Int = 0,
-    val isLoading: Boolean = true,
+    val isLoading: Boolean = false,
     val editingTransaction: BankTransaction? = null,
     val isSaving: Boolean = false,
-    // Scanning state
+    // Scanning state — disabled for now (debugging crash)
     val isScanning: Boolean = false,
     val scanProgress: Int = 0,
     val scanTotal: Int = 0,
@@ -39,184 +32,27 @@ data class SmsHistoryUiState(
     val scanError: String? = null
 )
 
+/**
+ * Minimal ViewModel — NO dependencies except Hilt injection.
+ * This is to isolate the crash: if this still crashes, the problem
+ * is NOT in ViewModel dependencies but somewhere else (navigation, Screen, etc.)
+ */
 @HiltViewModel
-class SmsHistoryViewModel @Inject constructor(
-    private val transactionDao: TransactionDao,
-    private val repository: TransactionRepository,
-    private val smsInboxScanner: SmsInboxScanner
-) : ViewModel() {
+class SmsHistoryViewModel @Inject constructor() : ViewModel() {
 
     private val _state = MutableStateFlow(SmsHistoryUiState())
     val state: StateFlow<SmsHistoryUiState> = _state.asStateFlow()
 
-    private var transactionsJob: Job? = null
-    private var scanJob: Job? = null
-
     init {
-        Log.d(TAG, "SmsHistoryViewModel init")
-        loadTransactions()
-        loadCounts()
+        Log.d(TAG, "SmsHistoryViewModel init — MINIMAL VERSION (no deps)")
     }
 
-    /**
-     * Start scanning SMS inbox for bank transactions.
-     * Called from UI when user opens the screen and DB is empty,
-     * or manually via a "scan" button.
-     */
     fun startInboxScan() {
-        if (_state.value.isScanning) return
-        scanJob?.cancel()
-
-        _state.update {
-            it.copy(
-                isScanning = true,
-                scanProgress = 0,
-                scanTotal = 0,
-                scanFoundCount = 0,
-                scanComplete = false,
-                scanError = null
-            )
-        }
-
-        scanJob = viewModelScope.launch {
-            try {
-                Log.d(TAG, "Starting SMS inbox scan...")
-                var foundCount = 0
-
-                val scannedMessages = smsInboxScanner.scanInbox(
-                    maxMessages = 200,
-                    onProgress = { processed, total ->
-                        _state.update {
-                            it.copy(scanProgress = processed, scanTotal = total)
-                        }
-                    }
-                )
-
-                // Filter only successfully parsed bank transactions
-                val bankTransactions = scannedMessages.mapNotNull { it.parsedTransaction }
-                Log.d(TAG, "Scan complete: ${scannedMessages.size} messages, ${bankTransactions.size} bank transactions found")
-
-                // Save each transaction to DB (skip duplicates)
-                for (tx in bankTransactions) {
-                    try {
-                        val isDuplicate = repository.findDuplicate(
-                            bank = tx.bank,
-                            amount = tx.amount,
-                            type = tx.type,
-                            timestamp = tx.timestamp,
-                            windowMs = 60_000L
-                        )
-                        if (!isDuplicate) {
-                            repository.saveTransaction(tx)
-                            foundCount++
-                            _state.update { it.copy(scanFoundCount = foundCount) }
-                        }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Error saving scanned transaction", e)
-                    }
-                }
-
-                _state.update {
-                    it.copy(
-                        isScanning = false,
-                        scanComplete = true,
-                        scanFoundCount = foundCount,
-                        scanProgress = _state.value.scanTotal,
-                        scanTotal = _state.value.scanTotal
-                    )
-                }
-                Log.d(TAG, "Inbox scan finished. Saved $foundCount new transactions.")
-
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: SecurityException) {
-                Log.e(TAG, "SMS permission not granted", e)
-                _state.update {
-                    it.copy(
-                        isScanning = false,
-                        scanError = "ไม่ได้รับสิทธิ์อ่าน SMS กรุณาอนุญาตในตั้งค่า"
-                    )
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Inbox scan failed", e)
-                _state.update {
-                    it.copy(
-                        isScanning = false,
-                        scanError = "สแกนไม่สำเร็จ: ${e.message}"
-                    )
-                }
-            }
-        }
-    }
-
-    private fun loadTransactions() {
-        transactionsJob?.cancel()
-        transactionsJob = viewModelScope.launch {
-            try {
-                transactionDao.getRecentTransactions()
-                    .catch { e ->
-                        Log.e(TAG, "getRecentTransactions flow error", e)
-                        emit(emptyList())
-                    }
-                    .collect { transactions ->
-                        val filtered = applyFilter(transactions, _state.value.filter)
-                        _state.update {
-                            it.copy(
-                                allTransactions = transactions,
-                                transactions = filtered,
-                                isLoading = false
-                            )
-                        }
-                    }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e(TAG, "loadTransactions failed", e)
-                _state.update { it.copy(isLoading = false) }
-            }
-        }
-    }
-
-    private fun loadCounts() {
-        viewModelScope.launch {
-            try {
-                transactionDao.getTotalCount()
-                    .catch { e ->
-                        Log.e(TAG, "getTotalCount flow error", e)
-                        emit(0)
-                    }
-                    .collect { count ->
-                        _state.update { it.copy(totalDetected = count) }
-                    }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e(TAG, "loadCounts totalCount failed", e)
-            }
-        }
-        viewModelScope.launch {
-            try {
-                transactionDao.getSyncedCount()
-                    .catch { e ->
-                        Log.e(TAG, "getSyncedCount flow error", e)
-                        emit(0)
-                    }
-                    .collect { count ->
-                        _state.update { it.copy(totalSynced = count) }
-                    }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e(TAG, "loadCounts syncedCount failed", e)
-            }
-        }
+        Log.d(TAG, "startInboxScan called — skipped (minimal version)")
     }
 
     fun setFilter(filter: HistoryFilter) {
-        val filtered = applyFilter(_state.value.allTransactions, filter)
-        _state.update { it.copy(filter = filter, transactions = filtered) }
+        _state.update { it.copy(filter = filter) }
     }
 
     fun startEditing(transaction: BankTransaction) {
@@ -228,34 +64,6 @@ class SmsHistoryViewModel @Inject constructor(
     }
 
     fun saveEdit(bank: String, type: TransactionType, amount: String) {
-        val tx = _state.value.editingTransaction ?: return
-        _state.update { it.copy(isSaving = true) }
-        viewModelScope.launch {
-            try {
-                transactionDao.updateTransaction(
-                    id = tx.id,
-                    bank = bank,
-                    type = type,
-                    amount = amount
-                )
-                _state.update { it.copy(editingTransaction = null, isSaving = false) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e(TAG, "saveEdit failed", e)
-                _state.update { it.copy(isSaving = false) }
-            }
-        }
-    }
-
-    private fun applyFilter(
-        transactions: List<BankTransaction>,
-        filter: HistoryFilter
-    ): List<BankTransaction> {
-        return when (filter) {
-            HistoryFilter.ALL -> transactions
-            HistoryFilter.CREDIT -> transactions.filter { it.type == TransactionType.CREDIT }
-            HistoryFilter.DEBIT -> transactions.filter { it.type == TransactionType.DEBIT }
-        }
+        Log.d(TAG, "saveEdit called — skipped (minimal version)")
     }
 }
