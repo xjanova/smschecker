@@ -1,5 +1,8 @@
 package com.thaiprompt.smschecker.ui.smshistory
 
+import android.content.Context
+import android.net.Uri
+import android.provider.Telephony
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -9,10 +12,13 @@ import com.thaiprompt.smschecker.data.model.TransactionType
 import com.thaiprompt.smschecker.data.repository.TransactionRepository
 import com.thaiprompt.smschecker.domain.scanner.SmsInboxScanner
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 private const val TAG = "SmsHistoryVM"
@@ -40,14 +46,15 @@ data class SmsHistoryUiState(
 )
 
 /**
- * Step 4: Enable scanInbox() — called via manual button only (no auto-scan).
- * If crash on button press → scanner logic is the problem.
+ * Step 4c: Direct SMS read test — bypass SmsInboxScanner entirely.
+ * Read SMS inbox directly via ContentResolver to find exact crash point.
  */
 @HiltViewModel
 class SmsHistoryViewModel @Inject constructor(
     private val transactionDao: TransactionDao,
     private val repository: TransactionRepository,
-    private val smsInboxScanner: SmsInboxScanner
+    private val smsInboxScanner: SmsInboxScanner,
+    @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SmsHistoryUiState())
@@ -57,7 +64,7 @@ class SmsHistoryViewModel @Inject constructor(
     private var scanJob: Job? = null
 
     init {
-        Log.d(TAG, "SmsHistoryViewModel init — Step 4 (scanner enabled, manual only)")
+        Log.d(TAG, "SmsHistoryViewModel init — Step 4c (direct SMS read test)")
         loadTransactions()
         loadCounts()
     }
@@ -77,93 +84,100 @@ class SmsHistoryViewModel @Inject constructor(
             )
         }
 
-        scanJob = viewModelScope.launch {
+        scanJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                Log.d(TAG, "Starting SMS inbox scan...")
+                Log.d(TAG, "=== DIRECT SMS READ TEST ===")
 
-                // Step 1: scan inbox (read-only, no DB writes)
-                val scannedMessages = try {
-                    smsInboxScanner.scanInbox(
-                        maxMessages = 200,
-                        onProgress = { processed, total ->
-                            _state.update {
-                                it.copy(scanProgress = processed, scanTotal = total)
-                            }
-                        }
+                // Step A: Just read SMS inbox via ContentResolver (no parsing)
+                val messages = mutableListOf<Triple<String, String, Long>>() // sender, body, timestamp
+                try {
+                    val uri = Uri.parse("content://sms/inbox")
+                    val cursor = appContext.contentResolver.query(
+                        uri,
+                        arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE),
+                        null,
+                        null,
+                        "${Telephony.Sms.DATE} DESC"
                     )
+
+                    cursor?.use {
+                        val addressIdx = it.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
+                        val bodyIdx = it.getColumnIndexOrThrow(Telephony.Sms.BODY)
+                        val dateIdx = it.getColumnIndexOrThrow(Telephony.Sms.DATE)
+                        var count = 0
+                        while (it.moveToNext() && count < 10) { // only 10 messages!
+                            val address = it.getString(addressIdx) ?: "null"
+                            val body = it.getString(bodyIdx) ?: "null"
+                            val date = it.getLong(dateIdx)
+                            messages.add(Triple(address, body, date))
+                            count++
+                        }
+                    }
                 } catch (t: Throwable) {
-                    Log.e(TAG, "scanInbox() threw: ${t.javaClass.name}: ${t.message}", t)
-                    _state.update {
-                        it.copy(
-                            isScanning = false,
-                            scanError = "scanInbox error: ${t.javaClass.simpleName}: ${t.message}"
-                        )
+                    Log.e(TAG, "Step A FAILED: ${t.javaClass.name}: ${t.message}", t)
+                    withContext(Dispatchers.Main) {
+                        _state.update {
+                            it.copy(
+                                isScanning = false,
+                                scanError = "อ่าน SMS ไม่ได้: ${t.javaClass.simpleName}: ${t.message}"
+                            )
+                        }
                     }
                     return@launch
                 }
 
-                Log.d(TAG, "scanInbox returned ${scannedMessages.size} messages")
+                Log.d(TAG, "Step A OK: read ${messages.size} messages")
+                withContext(Dispatchers.Main) {
+                    _state.update { it.copy(scanProgress = messages.size, scanTotal = messages.size) }
+                }
 
-                // Step 2: filter bank transactions
-                val bankTransactions = try {
-                    scannedMessages.mapNotNull { it.parsedTransaction }
+                // Step B: Count how many are from banks (just identifyBank, no parse)
+                var bankCount = 0
+                try {
+                    val parser = smsInboxScanner // just to test that it's accessible
+                    Log.d(TAG, "Step B: smsInboxScanner accessible OK")
+                    // We won't call scanner here — just count messages
+                    bankCount = messages.size
                 } catch (t: Throwable) {
-                    Log.e(TAG, "mapNotNull threw: ${t.javaClass.name}: ${t.message}", t)
-                    _state.update {
-                        it.copy(
-                            isScanning = false,
-                            scanError = "filter error: ${t.javaClass.simpleName}: ${t.message}"
-                        )
+                    Log.e(TAG, "Step B FAILED: ${t.javaClass.name}: ${t.message}", t)
+                    withContext(Dispatchers.Main) {
+                        _state.update {
+                            it.copy(
+                                isScanning = false,
+                                scanError = "Step B: ${t.javaClass.simpleName}: ${t.message}"
+                            )
+                        }
                     }
                     return@launch
                 }
 
-                Log.d(TAG, "Found ${bankTransactions.size} bank transactions")
+                Log.d(TAG, "Step B OK")
 
-                // Step 3: save to DB (skip duplicates)
-                var foundCount = 0
-                for (tx in bankTransactions) {
-                    try {
-                        val isDuplicate = repository.findDuplicate(
-                            bank = tx.bank,
-                            amount = tx.amount,
-                            type = tx.type,
-                            timestamp = tx.timestamp,
-                            windowMs = 60_000L
+                // Step C: Done — report success with count
+                withContext(Dispatchers.Main) {
+                    _state.update {
+                        it.copy(
+                            isScanning = false,
+                            scanComplete = true,
+                            scanFoundCount = messages.size,
+                            scanProgress = messages.size,
+                            scanTotal = messages.size
                         )
-                        if (!isDuplicate) {
-                            repository.saveTransaction(tx)
-                            foundCount++
-                            _state.update { it.copy(scanFoundCount = foundCount) }
-                        }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (t: Throwable) {
-                        Log.w(TAG, "Error saving tx: ${t.javaClass.simpleName}: ${t.message}", t)
                     }
                 }
-
-                _state.update {
-                    it.copy(
-                        isScanning = false,
-                        scanComplete = true,
-                        scanFoundCount = foundCount,
-                        scanProgress = _state.value.scanTotal,
-                        scanTotal = _state.value.scanTotal
-                    )
-                }
-                Log.d(TAG, "Inbox scan finished. Saved $foundCount new transactions.")
+                Log.d(TAG, "=== DIRECT READ TEST COMPLETE: ${messages.size} messages read ===")
 
             } catch (e: CancellationException) {
                 throw e
             } catch (t: Throwable) {
-                // Catch EVERYTHING including Error (NoSuchMethodError, etc.)
-                Log.e(TAG, "SCAN CRASH: ${t.javaClass.name}: ${t.message}", t)
-                _state.update {
-                    it.copy(
-                        isScanning = false,
-                        scanError = "${t.javaClass.simpleName}: ${t.message}"
-                    )
+                Log.e(TAG, "OUTER CATCH: ${t.javaClass.name}: ${t.message}", t)
+                withContext(Dispatchers.Main) {
+                    _state.update {
+                        it.copy(
+                            isScanning = false,
+                            scanError = "OUTER: ${t.javaClass.simpleName}: ${t.message}"
+                        )
+                    }
                 }
             }
         }
