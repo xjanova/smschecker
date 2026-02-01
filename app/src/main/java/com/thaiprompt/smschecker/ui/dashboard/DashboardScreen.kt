@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.thaiprompt.smschecker.ui.dashboard
 
 import androidx.compose.foundation.Image
@@ -39,7 +41,6 @@ import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
@@ -343,7 +344,10 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
             }
         }
 
-        items(state.recentTransactions) { transaction ->
+        items(
+            items = state.recentTransactions,
+            key = { "dash_${it.id}" }
+        ) { transaction ->
             TransactionItem(
                 transaction = transaction,
                 modifier = Modifier.padding(horizontal = 16.dp)
@@ -355,7 +359,6 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun OrderApprovalSummaryCard(
     stats: DashboardStats,

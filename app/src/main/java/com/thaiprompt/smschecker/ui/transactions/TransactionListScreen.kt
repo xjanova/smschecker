@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.thaiprompt.smschecker.ui.transactions
 
 import androidx.compose.foundation.background
@@ -30,7 +32,6 @@ enum class TransactionFilter {
     ALL, CREDIT, DEBIT
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionListScreen(viewModel: TransactionListViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
@@ -184,7 +185,10 @@ fun TransactionListScreen(viewModel: TransactionListViewModel = hiltViewModel())
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(filteredTransactions) { transaction ->
+                items(
+                    items = filteredTransactions,
+                    key = { it.id }
+                ) { transaction ->
                     TransactionItem(transaction = transaction)
                 }
             }

@@ -97,6 +97,28 @@ class SecureStorage @Inject constructor(
         prefs.edit().putBoolean("tts_enabled", enabled).apply()
     }
 
+    // TTS language: "th", "en", or "auto" (follows app language)
+    fun getTtsLanguage(): String {
+        return prefs.getString("tts_language", "auto") ?: "auto"
+    }
+
+    fun setTtsLanguage(lang: String) {
+        prefs.edit().putString("tts_language", lang).apply()
+    }
+
+    // TTS content flags — what to announce
+    fun isTtsSpeakBank(): Boolean = prefs.getBoolean("tts_speak_bank", true)
+    fun setTtsSpeakBank(enabled: Boolean) { prefs.edit().putBoolean("tts_speak_bank", enabled).apply() }
+
+    fun isTtsSpeakAmount(): Boolean = prefs.getBoolean("tts_speak_amount", true)
+    fun setTtsSpeakAmount(enabled: Boolean) { prefs.edit().putBoolean("tts_speak_amount", enabled).apply() }
+
+    fun isTtsSpeakType(): Boolean = prefs.getBoolean("tts_speak_type", true)
+    fun setTtsSpeakType(enabled: Boolean) { prefs.edit().putBoolean("tts_speak_type", enabled).apply() }
+
+    fun isTtsSpeakOrder(): Boolean = prefs.getBoolean("tts_speak_order", true)
+    fun setTtsSpeakOrder(enabled: Boolean) { prefs.edit().putBoolean("tts_speak_order", enabled).apply() }
+
     fun isNotificationListeningEnabled(): Boolean {
         return prefs.getBoolean("notification_listening_enabled", false)
     }

@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.thaiprompt.smschecker.ui
 
 import android.Manifest
@@ -142,7 +144,6 @@ sealed class Screen(val route: String) {
     data object SmsMatcher : Screen("sms_matcher")
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainApp(
     onThemeChanged: (ThemeMode) -> Unit = {},

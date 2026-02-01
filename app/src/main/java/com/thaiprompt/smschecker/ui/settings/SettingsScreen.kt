@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.thaiprompt.smschecker.ui.settings
 
 import android.content.Intent
@@ -45,7 +47,6 @@ import com.thaiprompt.smschecker.ui.theme.ThemeMode
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onNavigateToQrScanner: () -> Unit = {},
@@ -436,9 +437,10 @@ fun SettingsScreen(
 
         item { Spacer(modifier = Modifier.height(12.dp)) }
 
-        // TTS Toggle
+        // TTS Settings
         item {
             GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+                // Header with toggle
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -486,6 +488,141 @@ fun SettingsScreen(
                             checkedTrackColor = AppColors.GoldAccent.copy(alpha = 0.3f)
                         )
                     )
+                }
+
+                // Expanded settings when TTS is enabled
+                if (state.ttsEnabled) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Divider(color = MaterialTheme.colorScheme.outline, thickness = 0.5.dp)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // TTS Language selection
+                    Text(
+                        strings.ttsLanguageLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        color = AppColors.GoldAccent
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val langOptions = listOf(
+                            "auto" to strings.ttsLangAuto,
+                            "th" to strings.ttsLangThai,
+                            "en" to strings.ttsLangEnglish
+                        )
+                        langOptions.forEach { (key, label) ->
+                            FilterChip(
+                                selected = state.ttsLanguage == key,
+                                onClick = { viewModel.setTtsLanguage(key) },
+                                label = { Text(label, fontSize = 12.sp) },
+                                leadingIcon = if (state.ttsLanguage == key) {
+                                    { Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                                } else null,
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = AppColors.GoldAccent.copy(alpha = 0.2f),
+                                    selectedLabelColor = AppColors.GoldAccent
+                                )
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Speech content checkboxes
+                    Text(
+                        strings.ttsSpeakContentLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        color = AppColors.GoldAccent
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Type (Income/Expense)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = state.ttsSpeakType,
+                            onCheckedChange = { viewModel.setTtsSpeakType(it) },
+                            colors = CheckboxDefaults.colors(checkedColor = AppColors.GoldAccent)
+                        )
+                        Text(
+                            strings.ttsSpeakTypeLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+
+                    // Bank name
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = state.ttsSpeakBank,
+                            onCheckedChange = { viewModel.setTtsSpeakBank(it) },
+                            colors = CheckboxDefaults.colors(checkedColor = AppColors.GoldAccent)
+                        )
+                        Text(
+                            strings.ttsSpeakBankLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+
+                    // Amount
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = state.ttsSpeakAmount,
+                            onCheckedChange = { viewModel.setTtsSpeakAmount(it) },
+                            colors = CheckboxDefaults.colors(checkedColor = AppColors.GoldAccent)
+                        )
+                        Text(
+                            strings.ttsSpeakAmountLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+
+                    // Order number
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = state.ttsSpeakOrder,
+                            onCheckedChange = { viewModel.setTtsSpeakOrder(it) },
+                            colors = CheckboxDefaults.colors(checkedColor = AppColors.GoldAccent)
+                        )
+                        Text(
+                            strings.ttsSpeakOrderLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Preview button
+                    FilledTonalButton(
+                        onClick = { viewModel.previewTts() },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = AppColors.GoldAccent.copy(alpha = 0.2f),
+                            contentColor = AppColors.GoldAccent
+                        )
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(strings.ttsPreviewButton)
+                    }
                 }
             }
         }
@@ -1026,7 +1163,6 @@ fun ServerCard(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddServerDialog(
     onDismiss: () -> Unit,

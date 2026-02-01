@@ -9,6 +9,7 @@ import com.thaiprompt.smschecker.data.model.ServerConfig
 import com.thaiprompt.smschecker.data.repository.OrderRepository
 import com.thaiprompt.smschecker.data.repository.TransactionRepository
 import com.thaiprompt.smschecker.security.SecureStorage
+import com.thaiprompt.smschecker.service.TtsManager
 import com.thaiprompt.smschecker.ui.theme.LanguageMode
 import com.thaiprompt.smschecker.ui.theme.ThemeMode
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,6 +30,11 @@ data class SettingsState(
     val themeMode: ThemeMode = ThemeMode.DARK,
     val languageMode: LanguageMode = LanguageMode.THAI,
     val ttsEnabled: Boolean = false,
+    val ttsLanguage: String = "auto",      // "auto", "th", "en"
+    val ttsSpeakBank: Boolean = true,
+    val ttsSpeakAmount: Boolean = true,
+    val ttsSpeakType: Boolean = true,
+    val ttsSpeakOrder: Boolean = true,
     val isNotificationListening: Boolean = false,
     val isNotificationAccessGranted: Boolean = false
 )
@@ -37,7 +43,8 @@ data class SettingsState(
 class SettingsViewModel @Inject constructor(
     private val repository: TransactionRepository,
     private val orderRepository: OrderRepository,
-    private val secureStorage: SecureStorage
+    private val secureStorage: SecureStorage,
+    private val ttsManager: TtsManager
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsState())
@@ -64,6 +71,11 @@ class SettingsViewModel @Inject constructor(
                     themeMode = ThemeMode.fromKey(secureStorage.getThemeMode()),
                     languageMode = LanguageMode.fromKey(secureStorage.getLanguage()),
                     ttsEnabled = secureStorage.isTtsEnabled(),
+                    ttsLanguage = secureStorage.getTtsLanguage(),
+                    ttsSpeakBank = secureStorage.isTtsSpeakBank(),
+                    ttsSpeakAmount = secureStorage.isTtsSpeakAmount(),
+                    ttsSpeakType = secureStorage.isTtsSpeakType(),
+                    ttsSpeakOrder = secureStorage.isTtsSpeakOrder(),
                     isNotificationListening = secureStorage.isNotificationListeningEnabled()
                 )
             }
@@ -109,11 +121,8 @@ class SettingsViewModel @Inject constructor(
     fun addServer(name: String, url: String, apiKey: String, secretKey: String, isDefault: Boolean, deviceId: String? = null) {
         viewModelScope.launch {
             try {
-                // Clear any previous error
                 _state.update { it.copy(addServerError = null) }
 
-                // If QR code provided a device ID from the server, use it
-                // This ensures the device ID matches the server's records
                 if (deviceId != null) {
                     secureStorage.saveDeviceId(deviceId)
                     _state.update { it.copy(deviceId = deviceId) }
@@ -128,15 +137,11 @@ class SettingsViewModel @Inject constructor(
                 )
                 _state.update { it.copy(showAddDialog = false, addServerError = null) }
 
-                // Auto-sync immediately after adding server
                 try {
                     orderRepository.fetchOrders()
                     repository.syncAllUnsynced()
-                } catch (_: Exception) {
-                    // Sync failed, will retry on next schedule
-                }
+                } catch (_: Exception) { }
             } catch (e: IllegalStateException) {
-                // Duplicate server URL
                 _state.update { it.copy(addServerError = e.message ?: "Server URL already exists") }
             } catch (e: Exception) {
                 _state.update { it.copy(addServerError = "Error: ${e.message}") }
@@ -150,17 +155,13 @@ class SettingsViewModel @Inject constructor(
 
     fun deleteServer(config: ServerConfig) {
         viewModelScope.launch {
-            try {
-                repository.deleteServerConfig(config)
-            } catch (_: Exception) { }
+            try { repository.deleteServerConfig(config) } catch (_: Exception) { }
         }
     }
 
     fun toggleServerActive(config: ServerConfig) {
         viewModelScope.launch {
-            try {
-                repository.toggleServerActive(config)
-            } catch (_: Exception) { }
+            try { repository.toggleServerActive(config) } catch (_: Exception) { }
         }
     }
 
@@ -170,11 +171,7 @@ class SettingsViewModel @Inject constructor(
             _state.update { it.copy(approvalMode = mode) }
         } catch (_: Exception) { }
         viewModelScope.launch {
-            try {
-                orderRepository.updateApprovalMode(mode)
-            } catch (_: Exception) {
-                // Server update failed, local setting still persisted
-            }
+            try { orderRepository.updateApprovalMode(mode) } catch (_: Exception) { }
         }
     }
 
@@ -191,6 +188,48 @@ class SettingsViewModel @Inject constructor(
     fun setTtsEnabled(enabled: Boolean) {
         secureStorage.setTtsEnabled(enabled)
         _state.update { it.copy(ttsEnabled = enabled) }
+    }
+
+    fun setTtsLanguage(lang: String) {
+        secureStorage.setTtsLanguage(lang)
+        _state.update { it.copy(ttsLanguage = lang) }
+    }
+
+    fun setTtsSpeakBank(enabled: Boolean) {
+        secureStorage.setTtsSpeakBank(enabled)
+        _state.update { it.copy(ttsSpeakBank = enabled) }
+    }
+
+    fun setTtsSpeakAmount(enabled: Boolean) {
+        secureStorage.setTtsSpeakAmount(enabled)
+        _state.update { it.copy(ttsSpeakAmount = enabled) }
+    }
+
+    fun setTtsSpeakType(enabled: Boolean) {
+        secureStorage.setTtsSpeakType(enabled)
+        _state.update { it.copy(ttsSpeakType = enabled) }
+    }
+
+    fun setTtsSpeakOrder(enabled: Boolean) {
+        secureStorage.setTtsSpeakOrder(enabled)
+        _state.update { it.copy(ttsSpeakOrder = enabled) }
+    }
+
+    fun previewTts() {
+        val s = _state.value
+        val message = ttsManager.buildTransactionMessage(
+            bankName = "KBANK",
+            amount = "1,500.00",
+            isCredit = true,
+            orderNumber = "ORD-12345",
+            speakBank = s.ttsSpeakBank,
+            speakAmount = s.ttsSpeakAmount,
+            speakType = s.ttsSpeakType,
+            speakOrder = s.ttsSpeakOrder
+        )
+        if (message.isNotBlank()) {
+            ttsManager.speakPreview(message)
+        }
     }
 
     fun checkNotificationAccess(context: Context) {

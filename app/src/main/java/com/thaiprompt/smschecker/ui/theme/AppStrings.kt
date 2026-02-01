@@ -203,6 +203,16 @@ data class AppStrings(
     val ttsCreditAnnounce: String, // "เงินเข้า {bank} จำนวน {amount} บาท"
     val ttsDebitAnnounce: String,  // "เงินออก {bank} จำนวน {amount} บาท"
     val ttsOrderMatch: String,     // "ตรงกับออเดอร์ {order}"
+    val ttsLanguageLabel: String,
+    val ttsLangAuto: String,
+    val ttsLangThai: String,
+    val ttsLangEnglish: String,
+    val ttsSpeakContentLabel: String,
+    val ttsSpeakTypeLabel: String,
+    val ttsSpeakBankLabel: String,
+    val ttsSpeakAmountLabel: String,
+    val ttsSpeakOrderLabel: String,
+    val ttsPreviewButton: String,
 
     // === Notification Listening ===
     val notificationListeningTitle: String,
@@ -415,6 +425,16 @@ val ThaiStrings = AppStrings(
     ttsCreditAnnounce = "เงินเข้า %s จำนวน %s บาท",
     ttsDebitAnnounce = "เงินออก %s จำนวน %s บาท",
     ttsOrderMatch = "ตรงกับออเดอร์ %s",
+    ttsLanguageLabel = "ภาษาที่พูด",
+    ttsLangAuto = "ตามแอพ",
+    ttsLangThai = "ไทย",
+    ttsLangEnglish = "English",
+    ttsSpeakContentLabel = "เนื้อหาที่อ่าน",
+    ttsSpeakTypeLabel = "ประเภท (เงินเข้า/ออก)",
+    ttsSpeakBankLabel = "ชื่อธนาคาร",
+    ttsSpeakAmountLabel = "จำนวนเงิน",
+    ttsSpeakOrderLabel = "เลขออเดอร์",
+    ttsPreviewButton = "ทดลองฟัง",
 
     // Notification Listening
     notificationListeningTitle = "ตรวจจับแจ้งเตือนธนาคาร",
@@ -627,6 +647,16 @@ val EnglishStrings = AppStrings(
     ttsCreditAnnounce = "Income from %s, amount %s baht",
     ttsDebitAnnounce = "Expense from %s, amount %s baht",
     ttsOrderMatch = "Matched with order %s",
+    ttsLanguageLabel = "Speech Language",
+    ttsLangAuto = "Follow App",
+    ttsLangThai = "Thai",
+    ttsLangEnglish = "English",
+    ttsSpeakContentLabel = "Speech Content",
+    ttsSpeakTypeLabel = "Transaction Type (Income/Expense)",
+    ttsSpeakBankLabel = "Bank Name",
+    ttsSpeakAmountLabel = "Amount",
+    ttsSpeakOrderLabel = "Order Number",
+    ttsPreviewButton = "Preview",
 
     // Notification Listening
     notificationListeningTitle = "Bank Notification Listener",

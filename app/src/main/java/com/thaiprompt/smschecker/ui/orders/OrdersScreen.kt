@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.thaiprompt.smschecker.ui.orders
 
 import androidx.compose.foundation.background
@@ -34,7 +36,6 @@ import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
