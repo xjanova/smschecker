@@ -38,8 +38,10 @@ obj/
 *.jks
 *.keystore
 
-# Google Services
-google-services.json
+# Google Services (real keys)
+# NOTE: app/google-services.json is a placeholder committed for CI builds
+# Replace with real Firebase config locally — do NOT commit real keys
+# google-services.json
 
 # Signing config
 signing.properties
