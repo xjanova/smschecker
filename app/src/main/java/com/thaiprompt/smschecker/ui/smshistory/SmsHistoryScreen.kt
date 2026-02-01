@@ -144,7 +144,7 @@ fun SmsHistoryScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "v1.7.0 — Minimal UI Test",
+                        "v1.7.1 — Step 2: Room DB loaded",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                         fontSize = 10.sp
