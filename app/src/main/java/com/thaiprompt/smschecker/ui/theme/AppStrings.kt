@@ -231,6 +231,17 @@ data class AppStrings(
     val notificationAccessRequired: String,
     val notificationBadge: String,
 
+    // === SMS History Edit ===
+    val editTransaction: String,
+    val editBank: String,
+    val editType: String,
+    val editAmount: String,
+    val editSave: String,
+    val editCancel: String,
+    val editRawMessage: String,
+    val editIncorrectData: String,
+    val navSmsHistory: String,
+
     // === Common ===
     val backButton: String,
 )
@@ -463,6 +474,17 @@ val ThaiStrings = AppStrings(
     notificationAccessRequired = "ต้องเปิดสิทธิ์การเข้าถึงการแจ้งเตือนในตั้งค่าระบบ",
     notificationBadge = "แจ้งเตือน",
 
+    // SMS History Edit
+    editTransaction = "แก้ไขรายการ",
+    editBank = "ธนาคาร",
+    editType = "ประเภท",
+    editAmount = "จำนวนเงิน",
+    editSave = "บันทึก",
+    editCancel = "ยกเลิก",
+    editRawMessage = "ข้อความต้นฉบับ",
+    editIncorrectData = "แก้ไขข้อมูลที่ไม่ถูกต้อง",
+    navSmsHistory = "ข้อความ",
+
     // Common
     backButton = "กลับ",
 )
@@ -694,6 +716,17 @@ val EnglishStrings = AppStrings(
     notificationListeningPaused = "Disabled",
     notificationAccessRequired = "Enable Notification Access in system settings",
     notificationBadge = "Notification",
+
+    // SMS History Edit
+    editTransaction = "Edit Transaction",
+    editBank = "Bank",
+    editType = "Type",
+    editAmount = "Amount",
+    editSave = "Save",
+    editCancel = "Cancel",
+    editRawMessage = "Original Message",
+    editIncorrectData = "Correct incorrect data",
+    navSmsHistory = "Messages",
 
     // Common
     backButton = "Back",

@@ -74,4 +74,7 @@ interface TransactionDao {
 
     @Query("SELECT COUNT(*) FROM bank_transactions WHERE isSynced = 1")
     fun getSyncedCount(): Flow<Int>
+
+    @Query("UPDATE bank_transactions SET bank = :bank, type = :type, amount = :amount WHERE id = :id")
+    suspend fun updateTransaction(id: Long, bank: String, type: TransactionType, amount: String)
 }

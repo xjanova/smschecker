@@ -46,7 +46,6 @@ import java.util.*
 @Composable
 fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
-    val isRefreshing by viewModel.isRefreshing.collectAsState()
     val strings = LocalAppStrings.current
 
     LazyColumn(
@@ -93,21 +92,6 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { viewModel.refresh() }) {
-                            if (isRefreshing) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp,
-                                    color = Color(0xFF66BB6A)
-                                )
-                            } else {
-                                Icon(
-                                    Icons.Default.Refresh,
-                                    contentDescription = strings.refresh,
-                                    tint = Color(0xFF66BB6A)
-                                )
-                            }
-                        }
                         Text(
                             if (state.isMonitoring) strings.running else strings.stopped,
                             style = MaterialTheme.typography.bodySmall,

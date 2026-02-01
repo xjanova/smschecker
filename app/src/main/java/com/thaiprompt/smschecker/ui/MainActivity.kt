@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Textsms
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,6 +46,7 @@ import com.thaiprompt.smschecker.ui.dashboard.DashboardViewModel
 import com.thaiprompt.smschecker.ui.orders.OrdersScreen
 import com.thaiprompt.smschecker.ui.qrscanner.QrScannerScreen
 import com.thaiprompt.smschecker.ui.settings.SettingsScreen
+import com.thaiprompt.smschecker.ui.smshistory.SmsHistoryScreen
 import com.thaiprompt.smschecker.ui.smsmatcher.SmsMatcherScreen
 import com.thaiprompt.smschecker.ui.theme.*
 import com.thaiprompt.smschecker.ui.transactions.TransactionListScreen
@@ -146,6 +148,7 @@ sealed class Screen(val route: String) {
     data object Settings : Screen("settings")
     data object QrScanner : Screen("qr_scanner")
     data object SmsMatcher : Screen("sms_matcher")
+    data object SmsHistory : Screen("sms_history")
 }
 
 @Composable
@@ -158,7 +161,7 @@ fun MainApp(
     val currentRoute = navBackStackEntry?.destination?.route
     val strings = LocalAppStrings.current
 
-    val bottomScreens = listOf(Screen.Dashboard, Screen.Orders, Screen.Transactions, Screen.Settings)
+    val bottomScreens = listOf(Screen.Dashboard, Screen.Orders, Screen.Transactions, Screen.SmsHistory, Screen.Settings)
 
     // Observe pending count for badge on Orders tab
     val dashboardViewModel: DashboardViewModel = hiltViewModel()
@@ -183,6 +186,7 @@ fun MainApp(
                             is Screen.Dashboard -> strings.navDashboard
                             is Screen.Orders -> strings.navOrders
                             is Screen.Transactions -> strings.navTransactions
+                            is Screen.SmsHistory -> strings.navSmsHistory
                             is Screen.Settings -> strings.navSettings
                             else -> ""
                         }
@@ -192,6 +196,7 @@ fun MainApp(
                                     is Screen.Dashboard -> Icons.Default.Dashboard
                                     is Screen.Orders -> Icons.Default.Assignment
                                     is Screen.Transactions -> Icons.Default.History
+                                    is Screen.SmsHistory -> Icons.Default.Textsms
                                     is Screen.Settings -> Icons.Default.Settings
                                     else -> Icons.Default.Dashboard
                                 }
@@ -271,6 +276,7 @@ fun MainApp(
                 composable(Screen.Dashboard.route) { DashboardScreen(viewModel = dashboardViewModel) }
                 composable(Screen.Orders.route) { OrdersScreen() }
                 composable(Screen.Transactions.route) { TransactionListScreen() }
+                composable(Screen.SmsHistory.route) { SmsHistoryScreen() }
                 composable(Screen.Settings.route) { backStackEntry ->
                     // Observe QR scan results from savedStateHandle
                     val savedStateHandle = backStackEntry.savedStateHandle
