@@ -2,11 +2,14 @@
 
 ## Overview
 
-SMS Payment Checker consists of three parts:
+SMS Payment Checker consists of these parts:
 
 1. **Android App** (`app/`) - Reads bank SMS, auto-detects transactions, matches with orders, TTS alerts
 2. **Laravel Plugin** (`laravel-plugin/`) - Composer package with controllers, models, routes, QR setup
 3. **Laravel API** (`laravel-api/`) - Standalone API integration files
+4. **WordPress Plugin** (`plugin wordpress/sms-payment-checker/`) - Full WordPress/WooCommerce integration
+
+Choose either **Laravel** (Part 1) or **WordPress** (Part 1B) as your backend, then set up the Android app (Part 2).
 
 ---
 
@@ -108,6 +111,66 @@ php artisan smschecker:status
 
 ---
 
+## Part 1B: WordPress Server Setup (Alternative to Part 1)
+
+Use this if you run WordPress instead of Laravel.
+
+### Step 1: Install Plugin
+
+Upload the `plugin wordpress/sms-payment-checker/` folder to `/wp-content/plugins/`:
+
+```
+wp-content/plugins/sms-payment-checker/
+├── sms-payment-checker.php
+├── includes/
+├── api/
+├── admin/
+├── assets/
+├── readme.txt
+└── LICENSE
+```
+
+### Step 2: Activate
+
+Go to **Plugins** menu in WordPress admin and activate **SMS Payment Checker**.
+
+The plugin auto-creates its database tables on activation (5 tables: devices, notifications, unique_amounts, nonces, order_approvals).
+
+### Step 3: Create Device
+
+1. Go to **SMS Payment > Devices**
+2. Enter a device name and click **Create Device**
+3. The API key, secret key, and QR code are displayed
+4. Scan the QR code with the Android app
+
+### Step 4: Configure Settings
+
+Go to **SMS Payment > Settings**:
+
+- **Approval Mode**: `auto` (auto-approve matched payments) or `manual` (require manual review)
+- **Amount Expiry**: How long unique amounts are reserved (default: 30 minutes)
+- **Amount Tolerance**: Matching tolerance in baht (default: 0.00)
+- **Rate Limit**: Max notifications per device per minute (default: 30)
+- **Nonce Expiry**: Nonce cleanup threshold in hours (default: 24)
+- **WooCommerce**: Enable auto-match with orders, auto-confirm on approval, notify admin
+
+### Step 5: WooCommerce Integration (Optional)
+
+If WooCommerce is active:
+
+1. Enable **WooCommerce Integration** in settings
+2. The plugin generates unique amounts for WooCommerce orders automatically
+3. When a payment matches an order, the order status updates to "Completed"
+4. Admin is notified of new matches
+
+### WordPress REST API Endpoints
+
+**Base URL**: `https://your-domain.com/wp-json/sms-payment/v1/`
+
+Same endpoints as the Laravel API. The Android app is compatible with both backends.
+
+---
+
 ## Part 2: Android App Setup
 
 ### 1. Build
@@ -202,9 +265,9 @@ public function bankTransfer(Request $request, SmsPaymentService $smsService)
 
 ---
 
-## Part 5: QR Code for Plugins
+## Part 5: QR Code for Custom Integrations
 
-Any plugin (WooCommerce, Shopify, custom) can generate a QR code for device setup by creating the same JSON structure:
+Both the Laravel backend and WordPress plugin generate QR codes automatically. Any custom plugin (Shopify, custom CMS, etc.) can also generate a QR code for device setup by creating the same JSON structure:
 
 ```json
 {
@@ -274,6 +337,15 @@ The QR setup page (`qr-setup.blade.php`) uses `qrcodejs` CDN to generate the QR 
 | BAY | Bank of Ayudhya | BAY, KMA, Krungsri |
 | TTB | TMBThanachart Bank | TTB, ttb, TMB, Thanachart, ttbbank |
 | PROMPTPAY | PromptPay | PromptPay, PROMPTPAY |
+| CIMB | CIMB Thai | CIMB |
+| KKP | Kiatnakin Phatra Bank | KKP |
+| LH | Land and Houses Bank | LH, LHBank |
+| TISCO | TISCO Bank | TISCO |
+| UOB | United Overseas Bank (Thailand) | UOB |
+| ICBC | ICBC (Thai) | ICBC |
+| BAAC | Bank for Agriculture (ธ.ก.ส.) | BAAC |
+
+The app also includes **heuristic detection** for unknown SMS senders.
 
 ---
 
@@ -286,7 +358,7 @@ The QR setup page (`qr-setup.blade.php`) uses `qrcodejs` CDN to generate the QR 
 | Sync failing | Verify URL starts with `https://`, check API key matches |
 | Unique amount not matching | Customer must transfer exact amount, check expiry (default 30 min) |
 | TTS not working | Check TTS toggle in Settings, verify Thai TTS data installed on device |
-| SMS not auto-detected | App uses heuristic detection; add custom sender rules in SMS Matcher |
+| SMS not auto-detected | App uses heuristic detection for unknown senders; check SMS History for detected messages |
 
 ---
 

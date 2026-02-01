@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-02-01
+
+### Added
+
+#### Android App
+- **Enhanced Dashboard**: Professional dashboard with Net Balance card (gradient border), System Overview grid (total messages, sync rate, connected servers, offline queue), sync progress bar, and improved server health section
+- **TTS Customization**: Select TTS language (Thai/English/System), choose which content to read aloud (bank name, amount, type, time), and preview button to test TTS settings
+- **Transaction History Screen**: Replaced SMS Matcher/Scan with read-only history view showing last 200 detected bank messages with filter (All/Credit/Debit), stats summary (detected/synced), and sync status badges
+- **Lock Screen Notifications**: Heads-up floating alerts visible on lock screen with transaction details, session counters (detected/matched), and `VISIBILITY_PUBLIC` notification channel
+- **Session Counters**: Foreground service notification shows running count of detected and matched transactions
+
+#### WordPress Plugin (`plugin wordpress/sms-payment-checker/`)
+- **Full WordPress/WooCommerce integration** — new standalone plugin matching all Laravel API endpoints
+- **REST API** (`sms-payment/v1` namespace): notify, status, register-device, orders, device-settings, dashboard-stats, generate-amount, notifications
+- **AES-256-GCM encryption** with HMAC-SHA256 signature verification and nonce replay protection
+- **Device management** with QR code generation for Android app setup
+- **Unique amount matching** — decimal suffix (0.01-0.99) reservation system for payment verification
+- **WooCommerce integration** — auto-match payments with orders, auto-complete orders on approval
+- **Admin dashboard** with statistics, device management, order approvals, notification history, and settings
+- **Order approval workflow** — auto/manual modes with approve/reject actions
+- **Multi-device support** with individual API keys per device
+- **GPL-2.0 license** (Xman Studio)
+
+### Fixed
+
+#### Android App
+- **Bottom navigation icon visibility** — active icon was invisible (gold on gold); changed to white icon on solid gold indicator
+- **Screen crashes on refresh and SMS history** — replaced experimental `Badge`/`BadgedBox` with stable `Box` composables
+- **CancellationException handling** — properly rethrow `CancellationException` in coroutine catch blocks to prevent swallowing cancellation signals
+- **TTS thread safety** — moved all TTS operations to main thread using `withContext(Dispatchers.Main)` for reliable voice announcements
+
+### Changed
+- SMS Matcher screen transformed from scan/rule-based UI to read-only transaction history
+- Dashboard ViewModel now injects `TransactionDao` directly for total/synced count queries
+- Notification channel for transactions set to `VISIBILITY_PUBLIC` for lock screen display
+- `versionCode` bumped to 7, `versionName` to "1.5.1"
+
 ## [1.1.0] - 2025-01-31
 
 ### Added
@@ -101,5 +138,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ProGuard rules for production builds
 - Secret key hidden from JSON serialization
 
+[1.2.0]: https://github.com/xjanova/smschecker/releases/tag/v1.2.0
 [1.1.0]: https://github.com/xjanova/smschecker/releases/tag/v1.1.0
 [1.0.0]: https://github.com/xjanova/smschecker/releases/tag/v1.0.0

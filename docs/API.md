@@ -1,6 +1,9 @@
 # API Reference
 
-**Base URL**: `https://your-domain.com/api/v1/sms-payment`
+Both Laravel and WordPress backends implement the same API contract. The Android app works with either backend.
+
+**Laravel Base URL**: `https://your-domain.com/api/v1/sms-payment`
+**WordPress Base URL**: `https://your-domain.com/wp-json/sms-payment/v1`
 
 ---
 
@@ -17,10 +20,16 @@ X-Device-Id: {device_id}
 
 ### User Authentication (Web/Admin)
 
-Admin endpoints use Laravel Sanctum:
+**Laravel:** Admin endpoints use Laravel Sanctum:
 
 ```
 Authorization: Bearer {sanctum_token}
+```
+
+**WordPress:** Admin endpoints use WordPress REST nonce or logged-in admin session:
+
+```
+X-WP-Nonce: {wp_rest_nonce}
 ```
 
 ---

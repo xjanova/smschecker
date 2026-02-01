@@ -230,6 +230,37 @@ class OrderRepository @Inject constructor(
         return combined
     }
 
+    /**
+     * ส่ง FCM token ไปยังเซิร์ฟเวอร์ทุกตัวเพื่อรับ push notifications
+     */
+    suspend fun registerFcmToken(fcmToken: String) {
+        val activeServers = try {
+            serverConfigDao.getActiveConfigs()
+        } catch (_: Exception) {
+            return
+        }
+        val deviceId = secureStorage.getDeviceId() ?: return
+
+        for (server in activeServers) {
+            val apiKey = secureStorage.getApiKey(server.id) ?: continue
+            try {
+                val client = apiClientFactory.getClient(server.baseUrl)
+                client.registerDevice(
+                    apiKey = apiKey,
+                    body = DeviceRegistration(
+                        device_id = deviceId,
+                        device_name = android.os.Build.MODEL,
+                        platform = "android",
+                        app_version = "1.6.0",
+                        fcm_token = fcmToken
+                    )
+                )
+            } catch (_: Exception) {
+                // Best effort — will retry on next sync
+            }
+        }
+    }
+
     suspend fun updateApprovalMode(mode: ApprovalMode) {
         val activeServers = serverConfigDao.getActiveConfigs()
         val deviceId = secureStorage.getDeviceId() ?: return

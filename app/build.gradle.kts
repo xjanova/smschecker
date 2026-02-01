@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -120,6 +121,10 @@ dependencies {
 
     // Gson
     implementation("com.google.code.gson:gson:2.10.1")
+
+    // Firebase (push notifications for real-time order updates)
+    implementation(platform("com.google.firebase:firebase-bom:32.7.1"))
+    implementation("com.google.firebase:firebase-messaging-ktx")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

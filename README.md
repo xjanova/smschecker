@@ -4,12 +4,13 @@
 ![Platform](https://img.shields.io/badge/platform-Android-green?logo=android)
 ![Kotlin](https://img.shields.io/badge/Kotlin-1.9.22-blue?logo=kotlin)
 ![Laravel](https://img.shields.io/badge/Laravel-10%20%7C%2011-red?logo=laravel)
+![WordPress](https://img.shields.io/badge/WordPress-5.8%2B-21759B?logo=wordpress)
 ![PHP](https://img.shields.io/badge/PHP-8.1%2B-777BB4?logo=php)
 ![License](https://img.shields.io/badge/license-MIT-brightgreen)
 ![Min SDK](https://img.shields.io/badge/minSdk-26-brightgreen)
 ![Target SDK](https://img.shields.io/badge/targetSdk-34-blue)
 
-Real-time SMS payment verification system for Thai banks. An Android app intercepts bank SMS notifications, encrypts them with AES-256-GCM, and forwards them to a Laravel backend that auto-matches transactions to pending orders using unique decimal amounts.
+Real-time SMS payment verification system for Thai banks. An Android app intercepts bank SMS notifications, encrypts them with AES-256-GCM, and forwards them to a Laravel or WordPress backend that auto-matches transactions to pending orders using unique decimal amounts.
 
 Supports **15 Thai banks**: KBANK, SCB, KTB, BBL, GSB, BAY, TTB, PromptPay, CIMB, KKP, LH, TISCO, UOB, ICBC, and BAAC. Also intercepts **bank app push notifications** via NotificationListenerService.
 
@@ -43,7 +44,7 @@ Supports **15 Thai banks**: KBANK, SCB, KTB, BBL, GSB, BAY, TTB, PromptPay, CIMB
                                       |  | AES-256-GCM  |   |
 +------------------+                  |  | Encrypt +    |   |
 |   Laravel API    | <── HTTPS ────── |  | HMAC Sign    |   |
-|                  |                  |  | (PBKDF2 key) |   |
+|   (or WordPress) |                  |  | (PBKDF2 key) |   |
 |  +-----------+   |                  |  +--------------+   |
 |  | Decrypt & |   |                  |         |           |
 |  | Verify    |   |                  |         v           |
@@ -92,7 +93,7 @@ Supports **15 Thai banks**: KBANK, SCB, KTB, BBL, GSB, BAY, TTB, PromptPay, CIMB
 - **Multi-server support** -- one Android device can report to multiple Laravel servers
 - **Dark/Light theme toggle** with Material 3 dynamic theming (green gradient)
 - **Thai/English language support** (full i18n)
-- **TTS voice alerts** using Android TextToSpeech with Thai locale
+- **TTS voice alerts** using Android TextToSpeech with language selection (Thai/English/System), configurable content (bank name, amount, type, time), and preview button
 - **Transaction history** -- browse last 200 detected bank messages with filter (All/Credit/Debit), stats summary, and sync status
 - **Lock screen notifications** -- heads-up floating alerts visible on lock screen showing transaction details and session counters (detected/matched)
 - **SMS auto-scan** with background service and boot receiver for 24/7 operation
@@ -147,6 +148,16 @@ SmsChecker/
 |   |-- tests/                    # PHPUnit tests
 |   |-- composer.json
 |
+|-- plugin wordpress/             # WordPress/WooCommerce plugin
+|   |-- sms-payment-checker/
+|   |   |-- sms-payment-checker.php      # Main plugin file
+|   |   |-- includes/                    # Core classes (DB, Crypto, DeviceManager, PaymentService)
+|   |   |-- api/                         # REST API controller
+|   |   |-- admin/                       # Admin panel (views, AJAX handlers)
+|   |   |-- assets/                      # CSS & JS
+|   |   |-- readme.txt                   # WordPress plugin directory readme
+|   |   |-- LICENSE                      # GPL-2.0 (Xman Studio)
+|
 |-- docs/                         # Documentation
 |   |-- API.md                    # Full API reference
 |   |-- BANKS.md                  # Supported banks & SMS formats
@@ -182,11 +193,25 @@ SmsChecker/
 | Testing         | PHPUnit 10 / 11              |
 | Package         | `thaiprompt/smschecker-laravel` |
 
+### WordPress
+
+| Component       | Version                       |
+|-----------------|-------------------------------|
+| WordPress       | 5.8+                         |
+| PHP             | 7.4+                         |
+| WooCommerce     | Optional (for order matching) |
+| Plugin          | `sms-payment-checker`        |
+| License         | GPL-2.0 (Xman Studio)        |
+
 ## Getting Started
 
-### 1. Laravel Backend Setup
+### 1. Backend Setup
 
-**Option A: Composer Plugin (recommended)**
+Choose either **Laravel** or **WordPress** as your backend.
+
+#### Option A: Laravel Backend
+
+**Composer Plugin (recommended):**
 
 ```bash
 composer require thaiprompt/smschecker-laravel
@@ -194,9 +219,7 @@ php artisan vendor:publish --tag=smschecker-config
 php artisan migrate
 ```
 
-**Option B: Standalone Integration**
-
-Copy the files from `laravel-api/` into your Laravel project:
+**Standalone Integration:** Copy the files from `laravel-api/` into your Laravel project:
 
 ```bash
 # Copy models, controllers, middleware, service, config, and migrations
@@ -222,6 +245,16 @@ php artisan smschecker:create-device --name="Shop Phone"
 ```
 
 Then visit `/smschecker/device/{id}/qr` in your browser to display the QR code.
+
+#### Option B: WordPress Backend
+
+1. Upload `plugin wordpress/sms-payment-checker/` to `/wp-content/plugins/`
+2. Activate through WordPress Plugins menu
+3. Go to **SMS Payment > Devices** to create a new device
+4. Scan the QR code with the Android app
+5. Configure settings under **SMS Payment > Settings**
+
+WooCommerce integration is optional -- when active, the plugin auto-matches payments with WooCommerce orders using unique decimal amounts and can auto-complete orders on approval.
 
 ### 2. Android App Setup
 
@@ -263,7 +296,10 @@ $uniqueAmount = $service->generateUniqueAmount(500.00);
 
 ## API Endpoints
 
-All endpoints are prefixed with `/api/v1/sms-payment/`.
+**Laravel:** All endpoints prefixed with `/api/v1/sms-payment/`
+**WordPress:** All endpoints prefixed with `/wp-json/sms-payment/v1/`
+
+Both backends implement the same API contract. The Android app works with either backend.
 
 ### Device-Authenticated Endpoints (Header: `X-Api-Key`)
 
@@ -281,7 +317,7 @@ All endpoints are prefixed with `/api/v1/sms-payment/`.
 | PUT    | `/device-settings`          | Update device settings           |
 | GET    | `/dashboard-stats`          | Get dashboard statistics         |
 
-### Admin-Authenticated Endpoints (Laravel Sanctum)
+### Admin-Authenticated Endpoints (Laravel: Sanctum / WordPress: admin nonce)
 
 | Method | Path                        | Description                      |
 |--------|-----------------------------|----------------------------------|
@@ -341,7 +377,7 @@ See [docs/BANKS.md](docs/BANKS.md) for SMS format details per bank.
 
 ## Configuration Reference
 
-Key settings in `config/smschecker.php`:
+Key settings in `config/smschecker.php` (Laravel) or **SMS Payment > Settings** (WordPress):
 
 | Setting                    | Default | Description                                      |
 |----------------------------|---------|--------------------------------------------------|

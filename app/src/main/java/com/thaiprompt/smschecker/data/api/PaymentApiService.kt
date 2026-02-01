@@ -113,7 +113,8 @@ data class DeviceRegistration(
     val device_id: String,
     val device_name: String,
     val platform: String = "android",
-    val app_version: String
+    val app_version: String,
+    val fcm_token: String? = null
 )
 
 /**

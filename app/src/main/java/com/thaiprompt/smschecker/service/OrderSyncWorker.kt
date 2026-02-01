@@ -17,6 +17,9 @@ class OrderSyncWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         return try {
+            // 0. Sync FCM token if needed
+            syncFcmTokenIfNeeded()
+
             // 1. Push offline queued actions first
             orderRepository.syncOfflineQueue()
 
@@ -29,6 +32,24 @@ class OrderSyncWorker @AssistedInject constructor(
             Result.success()
         } catch (e: Exception) {
             if (runAttemptCount < 3) Result.retry() else Result.failure()
+        }
+    }
+
+    /**
+     * ส่ง FCM token ไปเซิร์ฟเวอร์ถ้ายังไม่ได้ส่ง
+     */
+    private suspend fun syncFcmTokenIfNeeded() {
+        val prefs = applicationContext.getSharedPreferences("fcm_prefs", Context.MODE_PRIVATE)
+        val needsSync = prefs.getBoolean("fcm_token_needs_sync", false)
+        val fcmToken = prefs.getString(FcmService.FCM_TOKEN_KEY, null)
+
+        if (needsSync && fcmToken != null) {
+            try {
+                orderRepository.registerFcmToken(fcmToken)
+                prefs.edit().putBoolean("fcm_token_needs_sync", false).apply()
+            } catch (_: Exception) {
+                // Will retry next sync
+            }
         }
     }
 
