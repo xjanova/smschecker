@@ -911,44 +911,6 @@ fun SettingsScreen(
             }
         }
 
-        // SMS Matcher
-        item { Spacer(modifier = Modifier.height(12.dp)) }
-        item {
-            GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            strings.customBankMapping,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = AppColors.GoldAccent
-                        )
-                        Text(
-                            strings.customBankMappingDesc,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    FilledTonalButton(
-                        onClick = onNavigateToSmsMatcher,
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = AppColors.GoldAccent.copy(alpha = 0.2f),
-                            contentColor = AppColors.GoldAccent
-                        ),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Default.Sms, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(strings.smsMatcherTitle, fontSize = 12.sp)
-                    }
-                }
-            }
-        }
-
         // Version info
         item {
             Spacer(modifier = Modifier.height(24.dp))

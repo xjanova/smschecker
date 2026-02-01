@@ -179,56 +179,90 @@ fun BankLogoCircle(
     bankCode: String,
     size: androidx.compose.ui.unit.Dp = 44.dp
 ) {
-    val bankColor = when (bankCode.uppercase()) {
-        "KBANK" -> Color(0xFF138F2D)
-        "SCB" -> Color(0xFF4E2A84)
-        "KTB" -> Color(0xFF00A4E4)
-        "BBL" -> Color(0xFF1E3A8A)
-        "GSB" -> Color(0xFFE91E9A)
-        "BAY" -> Color(0xFFFFC107)
-        "TTB" -> Color(0xFF0066FF)
-        "PROMPTPAY" -> Color(0xFF003B71)
-        "CIMB" -> Color(0xFFED1C24)
-        "KKP" -> Color(0xFF004B87)
-        "LH" -> Color(0xFF00833E)
-        "TISCO" -> Color(0xFF1A237E)
-        "UOB" -> Color(0xFF0033A0)
-        "ICBC" -> Color(0xFFC8102E)
-        "BAAC" -> Color(0xFF006B3F)
-        else -> Color.Gray
+    val drawableRes = when (bankCode.uppercase()) {
+        "KBANK" -> com.thaiprompt.smschecker.R.drawable.bank_kbank
+        "SCB" -> com.thaiprompt.smschecker.R.drawable.bank_scb
+        "KTB" -> com.thaiprompt.smschecker.R.drawable.bank_ktb
+        "BBL" -> com.thaiprompt.smschecker.R.drawable.bank_bbl
+        "GSB" -> com.thaiprompt.smschecker.R.drawable.bank_gsb
+        "BAY" -> com.thaiprompt.smschecker.R.drawable.bank_bay
+        "TTB" -> com.thaiprompt.smschecker.R.drawable.bank_ttb
+        "PROMPTPAY" -> com.thaiprompt.smschecker.R.drawable.bank_promptpay
+        "CIMB" -> com.thaiprompt.smschecker.R.drawable.bank_cimb
+        "KKP" -> com.thaiprompt.smschecker.R.drawable.bank_kkp
+        "LH" -> com.thaiprompt.smschecker.R.drawable.bank_lh
+        "TISCO" -> com.thaiprompt.smschecker.R.drawable.bank_tisco
+        "UOB" -> com.thaiprompt.smschecker.R.drawable.bank_uob
+        "ICBC" -> com.thaiprompt.smschecker.R.drawable.bank_icbc
+        "BAAC" -> com.thaiprompt.smschecker.R.drawable.bank_baac
+        else -> null
     }
 
     val initials = when (bankCode.uppercase()) {
-        "KBANK" -> "KB"
-        "SCB" -> "SC"
-        "KTB" -> "KT"
-        "BBL" -> "BB"
-        "GSB" -> "GS"
-        "BAY" -> "AY"
-        "TTB" -> "TB"
+        "KBANK" -> "K"
+        "SCB" -> "SCB"
+        "KTB" -> "KTB"
+        "BBL" -> "BBL"
+        "GSB" -> "GSB"
+        "BAY" -> "BAY"
+        "TTB" -> "ttb"
         "PROMPTPAY" -> "PP"
-        "CIMB" -> "CI"
-        "KKP" -> "KK"
+        "CIMB" -> "CIMB"
+        "KKP" -> "KKP"
         "LH" -> "LH"
-        "TISCO" -> "TI"
-        "UOB" -> "UO"
-        "ICBC" -> "IC"
-        "BAAC" -> "กส"
-        else -> bankCode.take(2).uppercase()
+        "TISCO" -> "TISCO"
+        "UOB" -> "UOB"
+        "ICBC" -> "ICBC"
+        "BAAC" -> "ธกส"
+        else -> bankCode.take(3).uppercase()
     }
 
-    Box(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(bankColor),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = initials,
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            fontSize = (size.value * 0.35f).sp
-        )
+    val textColor = when (bankCode.uppercase()) {
+        "BAY" -> Color(0xFF333333) // Dark text on yellow
+        else -> Color.White
+    }
+
+    val fontSize = when {
+        initials.length <= 1 -> (size.value * 0.5f).sp
+        initials.length <= 2 -> (size.value * 0.38f).sp
+        initials.length <= 3 -> (size.value * 0.3f).sp
+        else -> (size.value * 0.22f).sp
+    }
+
+    if (drawableRes != null) {
+        Box(
+            modifier = Modifier.size(size),
+            contentAlignment = Alignment.Center
+        ) {
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(id = drawableRes),
+                contentDescription = bankCode,
+                modifier = Modifier
+                    .size(size)
+                    .clip(CircleShape)
+            )
+            Text(
+                text = initials,
+                color = textColor,
+                fontWeight = FontWeight.Bold,
+                fontSize = fontSize
+            )
+        }
+    } else {
+        // Fallback for unknown banks
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(CircleShape)
+                .background(Color.Gray),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = initials,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = fontSize
+            )
+        }
     }
 }

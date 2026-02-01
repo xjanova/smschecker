@@ -2,7 +2,6 @@
 
 package com.thaiprompt.smschecker.ui.smshistory
 
-import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -52,10 +51,11 @@ fun SmsHistoryScreen(
     val strings = LocalAppStrings.current
     val dateFormat = remember { SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault()) }
 
-    // Edit dialog
-    if (state.editingTransaction != null) {
+    // Edit dialog — safe access with local val to avoid !! crash
+    val editingTx = state.editingTransaction
+    if (editingTx != null) {
         EditTransactionDialog(
-            transaction = state.editingTransaction!!,
+            transaction = editingTx,
             isSaving = state.isSaving,
             onSave = { bank, type, amount ->
                 viewModel.saveEdit(bank, type, amount)
