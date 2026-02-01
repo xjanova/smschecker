@@ -25,7 +25,7 @@ data class BankTransaction(
 ) {
     fun getAmountAsBigDecimal(): BigDecimal = try {
         BigDecimal(amount)
-    } catch (_: Exception) {
+    } catch (e: Exception) {
         BigDecimal.ZERO
     }
 
@@ -34,7 +34,7 @@ data class BankTransaction(
             val bd = getAmountAsBigDecimal()
             val prefix = if (type == TransactionType.CREDIT) "+" else "-"
             "$prefix฿${String.format("%,.2f", bd)}"
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             val prefix = if (type == TransactionType.CREDIT) "+" else "-"
             "$prefix฿$amount"
         }

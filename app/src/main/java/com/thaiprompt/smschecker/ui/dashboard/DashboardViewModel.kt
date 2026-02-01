@@ -76,7 +76,7 @@ class DashboardViewModel @Inject constructor(
                 repository.getTotalCredit(todayStart).collect { total ->
                     _state.update { it.copy(todayCredit = total) }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { }
         }
 
         // Collect today's debit total
@@ -85,7 +85,7 @@ class DashboardViewModel @Inject constructor(
                 repository.getTotalDebit(todayStart).collect { total ->
                     _state.update { it.copy(todayDebit = total) }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { }
         }
 
         // Collect unsynced count
@@ -94,7 +94,7 @@ class DashboardViewModel @Inject constructor(
                 repository.getUnsyncedCount().collect { count ->
                     _state.update { it.copy(unsyncedCount = count) }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { }
         }
 
         // Collect total transaction count
@@ -103,7 +103,7 @@ class DashboardViewModel @Inject constructor(
                 transactionDao.getTotalCount().collect { count ->
                     _state.update { it.copy(totalTransactionCount = count) }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { }
         }
 
         // Collect synced count
@@ -112,7 +112,7 @@ class DashboardViewModel @Inject constructor(
                 transactionDao.getSyncedCount().collect { count ->
                     _state.update { it.copy(syncedCount = count) }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { }
         }
 
         // Collect recent transactions + today count
@@ -128,7 +128,7 @@ class DashboardViewModel @Inject constructor(
                         )
                     }
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false) }
             }
         }
@@ -136,7 +136,7 @@ class DashboardViewModel @Inject constructor(
         // Check monitoring status
         try {
             _state.update { it.copy(isMonitoring = secureStorage.isMonitoringEnabled()) }
-        } catch (_: Exception) { }
+        } catch (e: Exception) { }
     }
 
     fun toggleMonitoring() {
@@ -144,14 +144,14 @@ class DashboardViewModel @Inject constructor(
             val newValue = !_state.value.isMonitoring
             secureStorage.setMonitoringEnabled(newValue)
             _state.update { it.copy(isMonitoring = newValue) }
-        } catch (_: Exception) { }
+        } catch (e: Exception) { }
     }
 
     fun syncAll() {
         viewModelScope.launch {
             try {
                 repository.syncAllUnsynced()
-            } catch (_: Exception) { }
+            } catch (e: Exception) { }
         }
     }
 

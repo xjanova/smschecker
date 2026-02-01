@@ -63,7 +63,7 @@ class OrdersViewModel @Inject constructor(
                 ).collect { orders ->
                     _state.update { it.copy(orders = orders, isLoading = false) }
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false) }
             }
         }
@@ -77,14 +77,14 @@ class OrdersViewModel @Inject constructor(
                 orderRepository.getPendingReviewCount().collect { count ->
                     _state.update { it.copy(pendingCount = count) }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { }
         }
         offlineQueueJob = viewModelScope.launch {
             try {
                 orderRepository.getOfflineQueueCount().collect { count ->
                     _state.update { it.copy(offlineQueueCount = count) }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { }
         }
     }
 
@@ -95,7 +95,7 @@ class OrdersViewModel @Inject constructor(
                 transactionRepository.getAllServerConfigs().collect { servers ->
                     _state.update { it.copy(servers = servers) }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { }
         }
     }
 
@@ -105,7 +105,7 @@ class OrdersViewModel @Inject constructor(
             try {
                 try {
                     orderRepository.fetchOrders()
-                } catch (_: Exception) {
+                } catch (e: Exception) {
                     // Server unreachable or not configured
                 }
             } finally {
@@ -138,7 +138,7 @@ class OrdersViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 orderRepository.approveOrder(order)
-            } catch (_: Exception) { }
+            } catch (e: Exception) { }
         }
     }
 
@@ -146,7 +146,7 @@ class OrdersViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 orderRepository.rejectOrder(order)
-            } catch (_: Exception) { }
+            } catch (e: Exception) { }
         }
     }
 
@@ -157,7 +157,7 @@ class OrdersViewModel @Inject constructor(
                 for (order in pending) {
                     orderRepository.approveOrder(order)
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { }
         }
     }
 }

@@ -79,7 +79,7 @@ class SettingsViewModel @Inject constructor(
                     isNotificationListening = secureStorage.isNotificationListeningEnabled()
                 )
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             // SecureStorage initialization may fail on first launch
         }
 
@@ -89,7 +89,7 @@ class SettingsViewModel @Inject constructor(
                     _state.update { it.copy(servers = servers, isLoading = false) }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false) }
             }
         }
@@ -100,7 +100,7 @@ class SettingsViewModel @Inject constructor(
                     _state.update { it.copy(offlineQueueCount = count) }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e
-            } catch (_: Exception) { }
+            } catch (e: Exception) { }
         }
     }
 
@@ -109,7 +109,7 @@ class SettingsViewModel @Inject constructor(
             val newValue = !_state.value.isMonitoring
             secureStorage.setMonitoringEnabled(newValue)
             _state.update { it.copy(isMonitoring = newValue) }
-        } catch (_: Exception) { }
+        } catch (e: Exception) { }
     }
 
     fun showAddServerDialog() {
@@ -142,7 +142,7 @@ class SettingsViewModel @Inject constructor(
                 try {
                     orderRepository.fetchOrders()
                     repository.syncAllUnsynced()
-                } catch (_: Exception) { }
+                } catch (e: Exception) { }
             } catch (e: IllegalStateException) {
                 _state.update { it.copy(addServerError = e.message ?: "Server URL already exists") }
             } catch (e: Exception) {
@@ -157,13 +157,13 @@ class SettingsViewModel @Inject constructor(
 
     fun deleteServer(config: ServerConfig) {
         viewModelScope.launch {
-            try { repository.deleteServerConfig(config) } catch (_: Exception) { }
+            try { repository.deleteServerConfig(config) } catch (e: Exception) { }
         }
     }
 
     fun toggleServerActive(config: ServerConfig) {
         viewModelScope.launch {
-            try { repository.toggleServerActive(config) } catch (_: Exception) { }
+            try { repository.toggleServerActive(config) } catch (e: Exception) { }
         }
     }
 
@@ -171,9 +171,9 @@ class SettingsViewModel @Inject constructor(
         try {
             secureStorage.setApprovalMode(mode.apiValue)
             _state.update { it.copy(approvalMode = mode) }
-        } catch (_: Exception) { }
+        } catch (e: Exception) { }
         viewModelScope.launch {
-            try { orderRepository.updateApprovalMode(mode) } catch (_: Exception) { }
+            try { orderRepository.updateApprovalMode(mode) } catch (e: Exception) { }
         }
     }
 
@@ -243,7 +243,7 @@ class SettingsViewModel @Inject constructor(
             val packageName = context.packageName
             val isGranted = enabledListeners.contains(packageName)
             _state.update { it.copy(isNotificationAccessGranted = isGranted) }
-        } catch (_: Exception) { }
+        } catch (e: Exception) { }
     }
 
     fun toggleNotificationListening() {
@@ -251,6 +251,6 @@ class SettingsViewModel @Inject constructor(
             val newValue = !_state.value.isNotificationListening
             secureStorage.setNotificationListeningEnabled(newValue)
             _state.update { it.copy(isNotificationListening = newValue) }
-        } catch (_: Exception) { }
+        } catch (e: Exception) { }
     }
 }

@@ -313,11 +313,11 @@ private fun TransactionCard(
                     // Source badge
                     val sourceText = try {
                         if (transaction.sourceType == TransactionSource.NOTIFICATION) "NOTIF" else "SMS"
-                    } catch (_: Exception) { "SMS" }
+                    } catch (e: Exception) { "SMS" }
                     val sourceColor = try {
                         if (transaction.sourceType == TransactionSource.NOTIFICATION)
                             Color(0xFF7C4DFF) else AppColors.InfoBlue
-                    } catch (_: Exception) { AppColors.InfoBlue }
+                    } catch (e: Exception) { AppColors.InfoBlue }
 
                     Box(
                         modifier = Modifier
@@ -353,7 +353,7 @@ private fun TransactionCard(
                     // Time
                     val timeText = try {
                         dateFormat.format(Date(transaction.timestamp))
-                    } catch (_: Exception) { "" }
+                    } catch (e: Exception) { "" }
                     if (timeText.isNotBlank()) {
                         Text(
                             timeText,
@@ -368,7 +368,7 @@ private fun TransactionCard(
 
             // Amount
             Text(
-                try { transaction.getFormattedAmount() } catch (_: Exception) { transaction.amount },
+                try { transaction.getFormattedAmount() } catch (e: Exception) { transaction.amount },
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,
                 color = amountColor

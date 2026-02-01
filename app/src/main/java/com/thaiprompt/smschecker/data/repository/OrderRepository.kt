@@ -56,10 +56,10 @@ class OrderRepository @Inject constructor(
                 } else {
                     serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 try {
                     serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
-                } catch (_: Exception) { }
+                } catch (e: Exception) { }
             }
         }
     }
@@ -78,7 +78,7 @@ class OrderRepository @Inject constructor(
                 // Queue for offline sync
                 orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
         }
     }
@@ -96,7 +96,7 @@ class OrderRepository @Inject constructor(
             } else {
                 orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.REJECT)
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.REJECT)
         }
     }
@@ -134,7 +134,7 @@ class OrderRepository @Inject constructor(
                     }
                     orderApprovalDao.updateStatus(order.id, newStatus, null)
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 // Keep pending, retry next sync
             }
         }
@@ -181,7 +181,7 @@ class OrderRepository @Inject constructor(
                 } else {
                     serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
             }
         }
@@ -190,7 +190,7 @@ class OrderRepository @Inject constructor(
     suspend fun fetchDashboardStats(days: Int = 7): DashboardStats {
         val activeServers = try {
             serverConfigDao.getActiveConfigs()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             return DashboardStats()
         }
         val deviceId = secureStorage.getDeviceId() ?: return DashboardStats()
@@ -222,7 +222,7 @@ class OrderRepository @Inject constructor(
                         }
                     )
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 // Skip failed server - network error, parse error, etc.
             }
         }
@@ -236,7 +236,7 @@ class OrderRepository @Inject constructor(
     suspend fun registerFcmToken(fcmToken: String) {
         val activeServers = try {
             serverConfigDao.getActiveConfigs()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             return
         }
         val deviceId = secureStorage.getDeviceId() ?: return
@@ -255,7 +255,7 @@ class OrderRepository @Inject constructor(
                         fcm_token = fcmToken
                     )
                 )
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 // Best effort — will retry on next sync
             }
         }
@@ -272,7 +272,7 @@ class OrderRepository @Inject constructor(
             try {
                 val client = apiClientFactory.getClient(server.baseUrl)
                 client.updateDeviceSettings(apiKey, deviceId, UpdateSettingsBody(mode.apiValue))
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 // Best effort
             }
         }

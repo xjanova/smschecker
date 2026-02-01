@@ -47,7 +47,7 @@ class OrderSyncWorker @AssistedInject constructor(
             try {
                 orderRepository.registerFcmToken(fcmToken)
                 prefs.edit().putBoolean("fcm_token_needs_sync", false).apply()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 // Will retry next sync
             }
         }

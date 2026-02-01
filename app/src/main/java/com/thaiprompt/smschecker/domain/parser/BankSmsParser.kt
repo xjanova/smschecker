@@ -453,7 +453,7 @@ class BankSmsParser {
                         .firstOrNull { it.isNotEmpty() && it.all { c -> c.isDigit() } }
                     if (digits != null) return digits
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { }
         }
         return ""
     }
@@ -465,7 +465,7 @@ class BankSmsParser {
                 if (match != null && match.groupValues.size > 1) {
                     return normalizeAmount(match.groupValues[1])
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { }
         }
         return ""
     }
@@ -477,7 +477,7 @@ class BankSmsParser {
                 if (match != null) {
                     return match.groupValues[1].trim()
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { }
         }
         return ""
     }
@@ -492,7 +492,7 @@ class BankSmsParser {
                         return name.take(100)
                     }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { }
         }
         return ""
     }
@@ -504,7 +504,7 @@ class BankSmsParser {
                 if (match != null) {
                     return match.groupValues[1].trim().take(30)
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { }
         }
         return ""
     }
