@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.thaiprompt.smschecker.data.db.TransactionDao
 import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.TransactionType
+import com.thaiprompt.smschecker.data.repository.TransactionRepository
+import com.thaiprompt.smschecker.domain.scanner.SmsInboxScanner
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -27,23 +29,126 @@ data class SmsHistoryUiState(
     val totalSynced: Int = 0,
     val isLoading: Boolean = true,
     val editingTransaction: BankTransaction? = null,
-    val isSaving: Boolean = false
+    val isSaving: Boolean = false,
+    // Scanning state
+    val isScanning: Boolean = false,
+    val scanProgress: Int = 0,
+    val scanTotal: Int = 0,
+    val scanFoundCount: Int = 0,
+    val scanComplete: Boolean = false,
+    val scanError: String? = null
 )
 
 @HiltViewModel
 class SmsHistoryViewModel @Inject constructor(
-    private val transactionDao: TransactionDao
+    private val transactionDao: TransactionDao,
+    private val repository: TransactionRepository,
+    private val smsInboxScanner: SmsInboxScanner
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SmsHistoryUiState())
     val state: StateFlow<SmsHistoryUiState> = _state.asStateFlow()
 
     private var transactionsJob: Job? = null
+    private var scanJob: Job? = null
 
     init {
         Log.d(TAG, "SmsHistoryViewModel init")
         loadTransactions()
         loadCounts()
+    }
+
+    /**
+     * Start scanning SMS inbox for bank transactions.
+     * Called from UI when user opens the screen and DB is empty,
+     * or manually via a "scan" button.
+     */
+    fun startInboxScan() {
+        if (_state.value.isScanning) return
+        scanJob?.cancel()
+
+        _state.update {
+            it.copy(
+                isScanning = true,
+                scanProgress = 0,
+                scanTotal = 0,
+                scanFoundCount = 0,
+                scanComplete = false,
+                scanError = null
+            )
+        }
+
+        scanJob = viewModelScope.launch {
+            try {
+                Log.d(TAG, "Starting SMS inbox scan...")
+                var foundCount = 0
+
+                val scannedMessages = smsInboxScanner.scanInbox(
+                    maxMessages = 200,
+                    onProgress = { processed, total ->
+                        _state.update {
+                            it.copy(scanProgress = processed, scanTotal = total)
+                        }
+                    }
+                )
+
+                // Filter only successfully parsed bank transactions
+                val bankTransactions = scannedMessages.mapNotNull { it.parsedTransaction }
+                Log.d(TAG, "Scan complete: ${scannedMessages.size} messages, ${bankTransactions.size} bank transactions found")
+
+                // Save each transaction to DB (skip duplicates)
+                for (tx in bankTransactions) {
+                    try {
+                        val isDuplicate = repository.findDuplicate(
+                            bank = tx.bank,
+                            amount = tx.amount,
+                            type = tx.type,
+                            timestamp = tx.timestamp,
+                            windowMs = 60_000L
+                        )
+                        if (!isDuplicate) {
+                            repository.saveTransaction(tx)
+                            foundCount++
+                            _state.update { it.copy(scanFoundCount = foundCount) }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error saving scanned transaction", e)
+                    }
+                }
+
+                _state.update {
+                    it.copy(
+                        isScanning = false,
+                        scanComplete = true,
+                        scanFoundCount = foundCount,
+                        scanProgress = _state.value.scanTotal,
+                        scanTotal = _state.value.scanTotal
+                    )
+                }
+                Log.d(TAG, "Inbox scan finished. Saved $foundCount new transactions.")
+
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: SecurityException) {
+                Log.e(TAG, "SMS permission not granted", e)
+                _state.update {
+                    it.copy(
+                        isScanning = false,
+                        scanError = "ไม่ได้รับสิทธิ์อ่าน SMS กรุณาอนุญาตในตั้งค่า"
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Inbox scan failed", e)
+                _state.update {
+                    it.copy(
+                        isScanning = false,
+                        scanError = "สแกนไม่สำเร็จ: ${e.message}"
+                    )
+                }
+            }
+        }
     }
 
     private fun loadTransactions() {

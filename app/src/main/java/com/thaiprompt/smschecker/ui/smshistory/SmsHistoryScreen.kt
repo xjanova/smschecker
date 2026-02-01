@@ -2,6 +2,7 @@
 
 package com.thaiprompt.smschecker.ui.smshistory
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -16,6 +17,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,6 +53,18 @@ fun SmsHistoryScreen(
     val state by viewModel.state.collectAsState()
     val strings = LocalAppStrings.current
     val dateFormat = remember { SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault()) }
+
+    // Auto-scan SMS inbox when DB is empty and not loading and not already scanned
+    LaunchedEffect(state.isLoading, state.allTransactions.size, state.scanComplete) {
+        if (!state.isLoading &&
+            state.allTransactions.isEmpty() &&
+            !state.isScanning &&
+            !state.scanComplete &&
+            state.scanError == null
+        ) {
+            viewModel.startInboxScan()
+        }
+    }
 
     // Edit dialog — safe access with local val to avoid !! crash
     val editingTx = state.editingTransaction
@@ -91,11 +106,58 @@ fun SmsHistoryScreen(
                             color = Color(0xFF66BB6A)
                         )
                     }
+                    // Scan / Refresh button
+                    IconButton(
+                        onClick = { viewModel.startInboxScan() },
+                        enabled = !state.isScanning
+                    ) {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = strings.scanInbox,
+                            tint = Color.White
+                        )
+                    }
                 }
             }
         }
 
         item(key = "spacer_top") { Spacer(modifier = Modifier.height(12.dp)) }
+
+        // ===== Scanning Card =====
+        if (state.isScanning) {
+            item(key = "scanning_card") {
+                ScanningCard(
+                    progress = state.scanProgress,
+                    total = state.scanTotal,
+                    foundCount = state.scanFoundCount
+                )
+            }
+            item(key = "spacer_scan") { Spacer(modifier = Modifier.height(12.dp)) }
+        }
+
+        // ===== Scan Complete Card =====
+        if (state.scanComplete && !state.isScanning) {
+            item(key = "scan_result") {
+                ScanResultCard(
+                    foundCount = state.scanFoundCount,
+                    totalScanned = state.scanTotal,
+                    onDismiss = { /* Card will naturally disappear when new data loads */ }
+                )
+            }
+            item(key = "spacer_result") { Spacer(modifier = Modifier.height(12.dp)) }
+        }
+
+        // ===== Scan Error Card =====
+        val scanErr = state.scanError
+        if (scanErr != null && !state.isScanning) {
+            item(key = "scan_error") {
+                ScanErrorCard(
+                    errorMessage = scanErr,
+                    onRetry = { viewModel.startInboxScan() }
+                )
+            }
+            item(key = "spacer_error") { Spacer(modifier = Modifier.height(12.dp)) }
+        }
 
         // Stats Summary
         item(key = "stats") {
@@ -213,7 +275,7 @@ fun SmsHistoryScreen(
         item(key = "spacer_list2") { Spacer(modifier = Modifier.height(8.dp)) }
 
         // Loading State
-        if (state.isLoading) {
+        if (state.isLoading && !state.isScanning) {
             item(key = "loading") {
                 Box(
                     modifier = Modifier
@@ -226,8 +288,8 @@ fun SmsHistoryScreen(
             }
         }
 
-        // Empty State
-        if (!state.isLoading && state.transactions.isEmpty()) {
+        // Empty State (only show when not loading AND not scanning)
+        if (!state.isLoading && !state.isScanning && state.transactions.isEmpty()) {
             item(key = "empty") {
                 Box(
                     modifier = Modifier
@@ -256,6 +318,20 @@ fun SmsHistoryScreen(
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        // Manual scan button
+                        OutlinedButton(
+                            onClick = { viewModel.startInboxScan() },
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(strings.scanInbox)
+                        }
                     }
                 }
             }
@@ -280,6 +356,217 @@ fun SmsHistoryScreen(
     }
 }
 
+// ============================================================
+// Scanning Animation Card
+// ============================================================
+@Composable
+private fun ScanningCard(
+    progress: Int,
+    total: Int,
+    foundCount: Int
+) {
+    val strings = LocalAppStrings.current
+    val infiniteTransition = rememberInfiniteTransition(label = "scan_spin")
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotation"
+    )
+
+    val progressFraction = if (total > 0) progress.toFloat() / total else 0f
+
+    GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Spinning icon
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                AppColors.InfoBlue.copy(alpha = 0.2f),
+                                AppColors.CreditGreen.copy(alpha = 0.2f)
+                            )
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.Search,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .rotate(rotation),
+                    tint = AppColors.InfoBlue
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    strings.scanning,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                // Progress bar
+                @Suppress("DEPRECATION")
+                LinearProgressIndicator(
+                    progress = progressFraction,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp)),
+                    color = AppColors.CreditGreen,
+                    trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        if (total > 0) "$progress / $total" else strings.scanning,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp
+                    )
+                    if (foundCount > 0) {
+                        Text(
+                            "${strings.foundMessages}: $foundCount",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                            color = AppColors.CreditGreen,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
+// Scan Result Card
+// ============================================================
+@Composable
+private fun ScanResultCard(
+    foundCount: Int,
+    totalScanned: Int,
+    onDismiss: () -> Unit
+) {
+    val strings = LocalAppStrings.current
+
+    GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(AppColors.CreditGreen.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                    tint = AppColors.CreditGreen
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    strings.scanComplete,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = AppColors.CreditGreen
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    "${strings.foundMessages}: $foundCount (${strings.totalDetected}: $totalScanned)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp
+                )
+            }
+        }
+    }
+}
+
+// ============================================================
+// Scan Error Card
+// ============================================================
+@Composable
+private fun ScanErrorCard(
+    errorMessage: String,
+    onRetry: () -> Unit
+) {
+    GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(AppColors.DebitRed.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    tint = AppColors.DebitRed
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    errorMessage,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppColors.DebitRed,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                TextButton(
+                    onClick = onRetry,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("ลองใหม่", fontSize = 12.sp)
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
+// Stats Item
+// ============================================================
 @Composable
 private fun HistoryStatItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -313,6 +600,9 @@ private fun HistoryStatItem(
     }
 }
 
+// ============================================================
+// Transaction Card
+// ============================================================
 @Composable
 private fun HistoryTransactionCard(
     transaction: BankTransaction,
@@ -450,6 +740,9 @@ private fun HistoryTransactionCard(
     }
 }
 
+// ============================================================
+// Edit Transaction Dialog
+// ============================================================
 @Composable
 private fun EditTransactionDialog(
     transaction: BankTransaction,
