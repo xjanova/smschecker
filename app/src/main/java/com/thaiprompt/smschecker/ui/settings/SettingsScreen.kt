@@ -830,7 +830,10 @@ fun SettingsScreen(
             }
         }
 
-        items(state.servers) { server ->
+        items(
+            items = state.servers,
+            key = { "server_${it.id}" }
+        ) { server ->
             ServerCard(
                 server = server,
                 onToggle = { viewModel.toggleServerActive(server) },

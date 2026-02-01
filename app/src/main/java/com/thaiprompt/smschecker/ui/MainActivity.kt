@@ -14,8 +14,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Dashboard
@@ -23,8 +25,10 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -192,24 +196,30 @@ fun MainApp(
                                     else -> Icons.Default.Dashboard
                                 }
                                 if (screen is Screen.Orders && pendingCount > 0) {
-                                    BadgedBox(
-                                        badge = {
-                                            Badge(
-                                                containerColor = AppColors.WarningOrange,
-                                                contentColor = Color.White
-                                            ) {
-                                                Text(
-                                                    "$pendingCount",
-                                                    fontSize = 9.sp
-                                                )
-                                            }
-                                        }
-                                    ) {
+                                    Box {
                                         Icon(
                                             icon,
                                             contentDescription = title,
                                             modifier = Modifier.size(22.dp)
                                         )
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .offset(x = 6.dp, y = (-4).dp)
+                                                .size(16.dp)
+                                                .background(
+                                                    AppColors.WarningOrange,
+                                                    shape = CircleShape
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                "$pendingCount",
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                        }
                                     }
                                 } else {
                                     Icon(

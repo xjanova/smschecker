@@ -380,11 +380,18 @@ private fun OrderApprovalSummaryCard(
                 color = AppColors.GoldAccent
             )
             if (pendingCount > 0) {
-                Badge(
-                    containerColor = AppColors.WarningOrange,
-                    contentColor = MaterialTheme.colorScheme.onBackground
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(AppColors.WarningOrange)
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
                 ) {
-                    Text("$pendingCount ${strings.pending}")
+                    Text(
+                        "$pendingCount ${strings.pending}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
                 }
             }
         }

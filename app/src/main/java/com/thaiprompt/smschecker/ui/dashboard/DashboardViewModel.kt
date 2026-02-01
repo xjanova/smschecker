@@ -134,24 +134,25 @@ class DashboardViewModel @Inject constructor(
             try {
                 try {
                     orderRepository.fetchOrders()
-                } catch (e: Exception) {
-                    Log.w(TAG, "fetchOrders failed", e)
-                }
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                } catch (e: Exception) { Log.w(TAG, "fetchOrders failed", e) }
+
                 try {
                     repository.syncAllUnsynced()
-                } catch (e: Exception) {
-                    Log.w(TAG, "syncAllUnsynced failed", e)
-                }
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                } catch (e: Exception) { Log.w(TAG, "syncAllUnsynced failed", e) }
+
                 try {
                     loadOrderStats()
-                } catch (e: Exception) {
-                    Log.e(TAG, "loadOrderStats failed", e)
-                }
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                } catch (e: Exception) { Log.e(TAG, "loadOrderStats failed", e) }
+
                 try {
                     loadServerHealth()
-                } catch (e: Exception) {
-                    Log.e(TAG, "loadServerHealth failed", e)
-                }
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                } catch (e: Exception) { Log.e(TAG, "loadServerHealth failed", e) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Refresh failed", e)
             } finally {
@@ -175,6 +176,9 @@ class DashboardViewModel @Inject constructor(
                 orderRepository.getPendingReviewCount().collect { count ->
                     _state.update { it.copy(pendingApprovalCount = count) }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Normal cancellation from job.cancel(), rethrow to propagate
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "pendingCountJob failed", e)
             }
@@ -184,6 +188,8 @@ class DashboardViewModel @Inject constructor(
                 orderRepository.getOfflineQueueCount().collect { count ->
                     _state.update { it.copy(offlineQueueCount = count) }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "offlineQueueJob failed", e)
             }
@@ -192,6 +198,8 @@ class DashboardViewModel @Inject constructor(
             try {
                 val stats = orderRepository.fetchDashboardStats()
                 _state.update { it.copy(orderStats = stats) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "fetchDashboardStats failed", e)
             }
@@ -219,6 +227,8 @@ class DashboardViewModel @Inject constructor(
                         Log.w(TAG, "Error mapping server health", e)
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "serverHealthJob failed", e)
             }

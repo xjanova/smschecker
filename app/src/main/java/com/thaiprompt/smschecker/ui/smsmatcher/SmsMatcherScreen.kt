@@ -2,15 +2,20 @@
 
 package com.thaiprompt.smschecker.ui.smsmatcher
 
+import android.util.Log
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -28,10 +33,20 @@ import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 import java.text.SimpleDateFormat
 import java.util.*
 
+private const val TAG = "SmsMatcherScreen"
+
 @Composable
 fun SmsMatcherScreen(
+    onBack: () -> Unit
+) {
+    val viewModel: SmsMatcherViewModel = hiltViewModel()
+    SmsMatcherContent(onBack = onBack, viewModel = viewModel)
+}
+
+@Composable
+private fun SmsMatcherContent(
     onBack: () -> Unit,
-    viewModel: SmsMatcherViewModel = hiltViewModel()
+    viewModel: SmsMatcherViewModel
 ) {
     val state by viewModel.state.collectAsState()
     val strings = LocalAppStrings.current
@@ -95,7 +110,7 @@ fun SmsMatcherScreen(
                         )
                         StatItem(
                             icon = Icons.Default.Pending,
-                            value = "${state.totalDetected - state.totalSynced}",
+                            value = "${maxOf(0, state.totalDetected - state.totalSynced)}",
                             label = strings.pendingLabel,
                             color = AppColors.WarningOrange
                         )
@@ -184,15 +199,17 @@ fun SmsMatcherScreen(
             }
 
             // === Transaction List ===
-            items(
-                items = state.transactions,
-                key = { "tx_${it.id}" }
-            ) { transaction ->
-                TransactionCard(
-                    transaction = transaction,
-                    dateFormat = dateFormat,
-                    strings = strings
-                )
+            if (!state.isLoading && state.transactions.isNotEmpty()) {
+                items(
+                    items = state.transactions,
+                    key = { "tx_${it.id}" }
+                ) { transaction ->
+                    TransactionCard(
+                        transaction = transaction,
+                        dateFormat = dateFormat,
+                        strings = strings
+                    )
+                }
             }
 
             // Bottom spacer
@@ -277,55 +294,73 @@ private fun TransactionCard(
                 }
 
                 // Raw message preview
-                Text(
-                    transaction.rawMessage,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                if (transaction.rawMessage.isNotBlank()) {
+                    Text(
+                        transaction.rawMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
 
-                // Tags row
+                // Tags row - use simple Box badges instead of Badge composable for reliability
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Source badge
-                    val sourceText = if (transaction.sourceType == TransactionSource.NOTIFICATION) "NOTIF" else "SMS"
-                    val sourceColor = if (transaction.sourceType == TransactionSource.NOTIFICATION)
-                        Color(0xFF7C4DFF) else AppColors.InfoBlue
-                    Badge(
-                        containerColor = sourceColor.copy(alpha = 0.15f),
-                        contentColor = sourceColor
+                    val sourceText = try {
+                        if (transaction.sourceType == TransactionSource.NOTIFICATION) "NOTIF" else "SMS"
+                    } catch (_: Exception) { "SMS" }
+                    val sourceColor = try {
+                        if (transaction.sourceType == TransactionSource.NOTIFICATION)
+                            Color(0xFF7C4DFF) else AppColors.InfoBlue
+                    } catch (_: Exception) { AppColors.InfoBlue }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(sourceColor.copy(alpha = 0.15f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
                             sourceText,
                             fontSize = 10.sp,
-                            modifier = Modifier.padding(horizontal = 4.dp)
+                            fontWeight = FontWeight.Medium,
+                            color = sourceColor
                         )
                     }
 
                     // Sync badge
                     val syncText = if (transaction.isSynced) strings.syncedLabel else strings.pendingLabel
                     val syncColor = if (transaction.isSynced) AppColors.CreditGreen else AppColors.WarningOrange
-                    Badge(
-                        containerColor = syncColor.copy(alpha = 0.15f),
-                        contentColor = syncColor
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(syncColor.copy(alpha = 0.15f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
                             syncText,
                             fontSize = 10.sp,
-                            modifier = Modifier.padding(horizontal = 4.dp)
+                            fontWeight = FontWeight.Medium,
+                            color = syncColor
                         )
                     }
 
                     // Time
-                    Text(
-                        dateFormat.format(Date(transaction.timestamp)),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                    )
+                    val timeText = try {
+                        dateFormat.format(Date(transaction.timestamp))
+                    } catch (_: Exception) { "" }
+                    if (timeText.isNotBlank()) {
+                        Text(
+                            timeText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
                 }
             }
 
@@ -333,7 +368,7 @@ private fun TransactionCard(
 
             // Amount
             Text(
-                transaction.getFormattedAmount(),
+                try { transaction.getFormattedAmount() } catch (_: Exception) { transaction.amount },
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,
                 color = amountColor

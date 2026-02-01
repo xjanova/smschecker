@@ -268,7 +268,10 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
         }
 
         // Order list
-        items(state.orders) { order ->
+        items(
+            items = state.orders,
+            key = { "order_${it.id}" }
+        ) { order ->
             OrderCard(
                 order = order,
                 onApprove = { viewModel.approveOrder(order) },

@@ -88,6 +88,7 @@ class SettingsViewModel @Inject constructor(
                 repository.getAllServerConfigs().collect { servers ->
                     _state.update { it.copy(servers = servers, isLoading = false) }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
             } catch (_: Exception) {
                 _state.update { it.copy(isLoading = false) }
             }
@@ -98,6 +99,7 @@ class SettingsViewModel @Inject constructor(
                 orderRepository.getOfflineQueueCount().collect { count ->
                     _state.update { it.copy(offlineQueueCount = count) }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
             } catch (_: Exception) { }
         }
     }

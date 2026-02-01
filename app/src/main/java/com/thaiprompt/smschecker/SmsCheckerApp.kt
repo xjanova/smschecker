@@ -5,6 +5,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import android.util.Log
 import dagger.hilt.android.HiltAndroidApp
 
 @HiltAndroidApp
@@ -13,10 +14,19 @@ class SmsCheckerApp : Application() {
     companion object {
         const val NOTIFICATION_CHANNEL_ID = "sms_processing"
         const val NOTIFICATION_CHANNEL_TRANSACTION = "transaction_alerts"
+        private const val TAG = "SmsCheckerApp"
     }
 
     override fun onCreate() {
         super.onCreate()
+
+        // Global crash handler to log unhandled exceptions
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            Log.e(TAG, "UNCAUGHT EXCEPTION on ${thread.name}", throwable)
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
+
         createNotificationChannels()
     }
 
