@@ -276,7 +276,22 @@ fun MainApp(
                 composable(Screen.Dashboard.route) { DashboardScreen(viewModel = dashboardViewModel) }
                 composable(Screen.Orders.route) { OrdersScreen() }
                 composable(Screen.Transactions.route) { TransactionListScreen() }
-                composable(Screen.SmsHistory.route) { SmsHistoryScreen() }
+                composable(Screen.SmsHistory.route) {
+                    try {
+                        SmsHistoryScreen()
+                    } catch (e: Exception) {
+                        android.util.Log.e("MainApp", "SmsHistoryScreen crash", e)
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "เกิดข้อผิดพลาด กรุณาเปิดแอพใหม่",
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                }
                 composable(Screen.Settings.route) { backStackEntry ->
                     // Observe QR scan results from savedStateHandle
                     val savedStateHandle = backStackEntry.savedStateHandle
