@@ -19,8 +19,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -53,8 +55,10 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
             .background(premiumBackgroundBrush()),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        // Gradient Header
-        item {
+        // ═══════════════════════════════════════
+        // GRADIENT HEADER with logo & controls
+        // ═══════════════════════════════════════
+        item(key = "header") {
             GradientHeader(isMonitoring = state.isMonitoring) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -65,7 +69,6 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // Logo
                         Image(
                             painter = painterResource(id = R.drawable.logo),
                             contentDescription = "Logo",
@@ -84,7 +87,7 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                                 "Checker",
                                 style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF66BB6A) // Light green accent
+                                color = Color(0xFF66BB6A)
                             )
                         }
                     }
@@ -124,50 +127,167 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
             }
         }
 
-        // Content area with padding
-        item { Spacer(modifier = Modifier.height(16.dp)) }
+        item(key = "spacer_1") { Spacer(modifier = Modifier.height(16.dp)) }
 
-        // Summary Cards
-        item {
-            Row(
+        // ═══════════════════════════════════════
+        // NET BALANCE CARD (big prominent card)
+        // ═══════════════════════════════════════
+        item(key = "net_balance") {
+            val netBalance = state.todayCredit - state.todayDebit
+            val netColor = if (netBalance >= 0) AppColors.CreditGreen else AppColors.DebitRed
+            val netPrefix = if (netBalance >= 0) "+" else ""
+
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(horizontal = 16.dp)
+                    .border(
+                        1.dp,
+                        Brush.horizontalGradient(
+                            listOf(
+                                netColor.copy(alpha = 0.5f),
+                                AppColors.GoldAccent.copy(alpha = 0.3f),
+                                netColor.copy(alpha = 0.5f)
+                            )
+                        ),
+                        RoundedCornerShape(20.dp)
+                    ),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
-                SummaryCard(
-                    modifier = Modifier.weight(1f),
-                    title = strings.todayIncome,
-                    amount = state.todayCredit,
-                    icon = Icons.Default.TrendingUp,
-                    color = AppColors.CreditGreen,
-                    gradientBrush = Brush.linearGradient(
-                        colors = listOf(
-                            AppColors.CreditGreen.copy(alpha = 0.15f),
-                            AppColors.CreditGreen.copy(alpha = 0.05f)
+                Column(
+                    modifier = Modifier
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    netColor.copy(alpha = 0.12f),
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                )
+                            )
                         )
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        strings.netBalance,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        letterSpacing = 1.sp
                     )
-                )
-                SummaryCard(
-                    modifier = Modifier.weight(1f),
-                    title = strings.todayExpense,
-                    amount = state.todayDebit,
-                    icon = Icons.Default.TrendingDown,
-                    color = AppColors.DebitRed,
-                    gradientBrush = Brush.linearGradient(
-                        colors = listOf(
-                            AppColors.DebitRed.copy(alpha = 0.15f),
-                            AppColors.DebitRed.copy(alpha = 0.05f)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "$netPrefix${strings.bahtSymbol}${String.format("%,.2f", kotlin.math.abs(netBalance))}",
+                        style = MaterialTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = netColor
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        MiniStat(
+                            label = strings.todayIncome,
+                            value = "+${strings.bahtSymbol}${String.format("%,.0f", state.todayCredit)}",
+                            color = AppColors.CreditGreen
                         )
-                    )
-                )
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(32.dp)
+                                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                        )
+                        MiniStat(
+                            label = strings.todayExpense,
+                            value = "-${strings.bahtSymbol}${String.format("%,.0f", state.todayDebit)}",
+                            color = AppColors.DebitRed
+                        )
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(32.dp)
+                                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                        )
+                        MiniStat(
+                            label = strings.todayCount,
+                            value = "${state.todayTransactionCount}",
+                            color = AppColors.InfoBlue
+                        )
+                    }
+                }
             }
         }
 
-        item { Spacer(modifier = Modifier.height(12.dp)) }
+        item(key = "spacer_2") { Spacer(modifier = Modifier.height(12.dp)) }
 
-        // Sync Status Card
-        item {
+        // ═══════════════════════════════════════
+        // SYSTEM OVERVIEW - 4 stat boxes in grid
+        // ═══════════════════════════════════════
+        item(key = "system_overview") {
+            SectionTitle(
+                strings.systemOverview,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+        }
+        item(key = "spacer_overview") { Spacer(modifier = Modifier.height(8.dp)) }
+
+        item(key = "stat_grid") {
+            val syncRate = if (state.totalTransactionCount > 0) {
+                (state.syncedCount * 100) / state.totalTransactionCount
+            } else 0
+
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    StatBox(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Default.Sms,
+                        label = strings.totalMessages,
+                        value = "${state.totalTransactionCount}",
+                        color = AppColors.InfoBlue
+                    )
+                    StatBox(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Default.CloudDone,
+                        label = strings.syncRate,
+                        value = "$syncRate%",
+                        color = AppColors.CreditGreen
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    StatBox(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Default.Dns,
+                        label = strings.connectedServers,
+                        value = "${state.serverHealthList.size}",
+                        color = AppColors.GoldAccent
+                    )
+                    StatBox(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Default.PendingActions,
+                        label = strings.offlineQueueLabel,
+                        value = "${state.offlineQueueCount}",
+                        color = if (state.offlineQueueCount > 0) AppColors.WarningOrange else AppColors.CreditGreen
+                    )
+                }
+            }
+        }
+
+        item(key = "spacer_3") { Spacer(modifier = Modifier.height(12.dp)) }
+
+        // ═══════════════════════════════════════
+        // SYNC STATUS CARD
+        // ═══════════════════════════════════════
+        item(key = "sync_status") {
             GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -225,20 +345,71 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                         }
                     }
                 }
+
+                // Sync progress bar
+                if (state.totalTransactionCount > 0) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    val progress = if (state.totalTransactionCount > 0) {
+                        state.syncedCount.toFloat() / state.totalTransactionCount.toFloat()
+                    } else 0f
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        LinearProgressIndicator(
+                            progress = progress.coerceIn(0f, 1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp)),
+                            color = AppColors.CreditGreen,
+                            trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                        )
+                        Text(
+                            "${state.syncedCount}/${state.totalTransactionCount}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
 
-        // Server Health
+        // ═══════════════════════════════════════
+        // SERVER HEALTH
+        // ═══════════════════════════════════════
         if (state.serverHealthList.isNotEmpty()) {
-            item { Spacer(modifier = Modifier.height(12.dp)) }
-            item {
+            item(key = "spacer_server") { Spacer(modifier = Modifier.height(12.dp)) }
+            item(key = "server_health") {
                 GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Text(
-                        strings.serverStatus,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Medium,
-                        color = AppColors.GoldAccent
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            strings.serverStatus,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = AppColors.GoldAccent
+                        )
+                        // Server count badge
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(AppColors.GoldAccent.copy(alpha = 0.15f))
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                "${state.serverHealthList.size}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = AppColors.GoldAccent
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
                     state.serverHealthList.forEach { health ->
                         val statusColor = when {
@@ -292,9 +463,11 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
             }
         }
 
-        // Order Approvals Summary
-        item { Spacer(modifier = Modifier.height(12.dp)) }
-        item {
+        // ═══════════════════════════════════════
+        // ORDER APPROVALS SUMMARY
+        // ═══════════════════════════════════════
+        item(key = "spacer_order") { Spacer(modifier = Modifier.height(12.dp)) }
+        item(key = "order_approval") {
             OrderApprovalSummaryCard(
                 stats = state.orderStats,
                 pendingCount = state.pendingApprovalCount,
@@ -302,19 +475,37 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
             )
         }
 
-        // Recent Transactions Header
-        item { Spacer(modifier = Modifier.height(16.dp)) }
-        item {
-            SectionTitle(
-                strings.recentTransactions,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
+        // ═══════════════════════════════════════
+        // RECENT TRANSACTIONS
+        // ═══════════════════════════════════════
+        item(key = "spacer_tx_header") { Spacer(modifier = Modifier.height(16.dp)) }
+        item(key = "tx_header") {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SectionTitle(
+                    strings.recentTransactions,
+                    modifier = Modifier.weight(1f)
+                )
+                if (state.recentTransactions.isNotEmpty()) {
+                    Text(
+                        "${state.recentTransactions.size} ${strings.totalLabel}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp
+                    )
+                }
+            }
         }
-        item { Spacer(modifier = Modifier.height(8.dp)) }
+        item(key = "spacer_tx") { Spacer(modifier = Modifier.height(8.dp)) }
 
         // Transaction List
         if (state.recentTransactions.isEmpty() && !state.isLoading) {
-            item {
+            item(key = "empty_tx") {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -322,18 +513,27 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.Inbox,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(80.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Inbox,
+                                contentDescription = null,
+                                modifier = Modifier.size(40.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                            )
+                        }
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
                             strings.noTransactions,
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onBackground
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             strings.smsAutoDisplay,
                             style = MaterialTheme.typography.bodySmall,
@@ -355,7 +555,92 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
         }
 
         // Bottom spacing for nav bar
-        item { Spacer(modifier = Modifier.height(8.dp)) }
+        item(key = "bottom_space") { Spacer(modifier = Modifier.height(16.dp)) }
+    }
+}
+
+// ═══════════════════════════════════════
+// HELPER COMPOSABLES
+// ═══════════════════════════════════════
+
+@Composable
+private fun MiniStat(
+    label: String,
+    value: String,
+    color: Color
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            value,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = color
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun StatBox(
+    modifier: Modifier = Modifier,
+    icon: ImageVector,
+    label: String,
+    value: String,
+    color: Color
+) {
+    Card(
+        modifier = modifier
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp)),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            color.copy(alpha = 0.1f),
+                            color.copy(alpha = 0.03f)
+                        )
+                    )
+                )
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(color.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+            }
+            Column {
+                Text(
+                    value,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Text(
+                    label,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
+        }
     }
 }
 
@@ -390,7 +675,7 @@ private fun OrderApprovalSummaryCard(
                         "$pendingCount ${strings.pending}",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onBackground
+                        color = Color.White
                     )
                 }
             }
@@ -445,7 +730,7 @@ fun SummaryCard(
     modifier: Modifier = Modifier,
     title: String,
     amount: Double,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     color: Color,
     gradientBrush: Brush = Brush.linearGradient(
         colors = listOf(color.copy(alpha = 0.15f), color.copy(alpha = 0.05f))

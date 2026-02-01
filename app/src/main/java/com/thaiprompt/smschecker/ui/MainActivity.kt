@@ -246,11 +246,11 @@ fun MainApp(
                                 }
                             },
                             colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = AppColors.GoldAccent,
+                                selectedIconColor = Color.White,
                                 selectedTextColor = AppColors.GoldAccent,
                                 unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                 unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                indicatorColor = AppColors.GoldAccent.copy(alpha = 0.12f)
+                                indicatorColor = AppColors.GoldAccent
                             )
                         )
                     }

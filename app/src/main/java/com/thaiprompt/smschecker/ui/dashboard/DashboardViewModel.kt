@@ -3,6 +3,7 @@ package com.thaiprompt.smschecker.ui.dashboard
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.thaiprompt.smschecker.data.db.TransactionDao
 import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.DashboardStats
 import com.thaiprompt.smschecker.data.model.TransactionType
@@ -32,14 +33,20 @@ data class DashboardState(
     val pendingApprovalCount: Int = 0,
     val orderStats: DashboardStats = DashboardStats(),
     val offlineQueueCount: Int = 0,
-    val serverHealthList: List<ServerHealth> = emptyList()
+    val serverHealthList: List<ServerHealth> = emptyList(),
+    val todayTransactionCount: Int = 0,
+    val totalTransactionCount: Int = 0,
+    val syncedCount: Int = 0,
+    val yesterdayCredit: Double = 0.0,
+    val yesterdayDebit: Double = 0.0
 )
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
     private val repository: TransactionRepository,
     private val orderRepository: OrderRepository,
-    private val secureStorage: SecureStorage
+    private val secureStorage: SecureStorage,
+    private val transactionDao: TransactionDao
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DashboardState())
@@ -90,13 +97,33 @@ class DashboardViewModel @Inject constructor(
             } catch (_: Exception) { }
         }
 
-        // Collect recent transactions
+        // Collect total transaction count
+        viewModelScope.launch {
+            try {
+                transactionDao.getTotalCount().collect { count ->
+                    _state.update { it.copy(totalTransactionCount = count) }
+                }
+            } catch (_: Exception) { }
+        }
+
+        // Collect synced count
+        viewModelScope.launch {
+            try {
+                transactionDao.getSyncedCount().collect { count ->
+                    _state.update { it.copy(syncedCount = count) }
+                }
+            } catch (_: Exception) { }
+        }
+
+        // Collect recent transactions + today count
         viewModelScope.launch {
             try {
                 repository.getAllTransactions().collect { transactions ->
+                    val todayCount = transactions.count { it.timestamp >= todayStart }
                     _state.update {
                         it.copy(
                             recentTransactions = transactions.take(10),
+                            todayTransactionCount = todayCount,
                             isLoading = false
                         )
                     }
