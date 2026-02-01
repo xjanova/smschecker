@@ -14,8 +14,8 @@ android {
         applicationId = "com.thaiprompt.smschecker"
         minSdk = 26
         targetSdk = 34
-        versionCode = 11
-        versionName = "1.7.2"
+        versionCode = 12
+        versionName = "1.7.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

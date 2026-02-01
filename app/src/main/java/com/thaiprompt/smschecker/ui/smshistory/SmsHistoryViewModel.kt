@@ -40,9 +40,8 @@ data class SmsHistoryUiState(
 )
 
 /**
- * Step 3: Add SmsInboxScanner + TransactionRepository back (inject only, not called).
- * If crash → Hilt can't create Scanner/Repository dependencies.
- * If works → dependencies are fine, crash is from actually calling scanInbox().
+ * Step 4: Enable scanInbox() — called via manual button only (no auto-scan).
+ * If crash on button press → scanner logic is the problem.
  */
 @HiltViewModel
 class SmsHistoryViewModel @Inject constructor(
@@ -55,15 +54,98 @@ class SmsHistoryViewModel @Inject constructor(
     val state: StateFlow<SmsHistoryUiState> = _state.asStateFlow()
 
     private var transactionsJob: Job? = null
+    private var scanJob: Job? = null
 
     init {
-        Log.d(TAG, "SmsHistoryViewModel init — Step 3 (all deps injected, scanner NOT called)")
+        Log.d(TAG, "SmsHistoryViewModel init — Step 4 (scanner enabled, manual only)")
         loadTransactions()
         loadCounts()
     }
 
     fun startInboxScan() {
-        Log.d(TAG, "startInboxScan called — skipped (scanner not added yet)")
+        if (_state.value.isScanning) return
+        scanJob?.cancel()
+
+        _state.update {
+            it.copy(
+                isScanning = true,
+                scanProgress = 0,
+                scanTotal = 0,
+                scanFoundCount = 0,
+                scanComplete = false,
+                scanError = null
+            )
+        }
+
+        scanJob = viewModelScope.launch {
+            try {
+                Log.d(TAG, "Starting SMS inbox scan...")
+                var foundCount = 0
+
+                val scannedMessages = smsInboxScanner.scanInbox(
+                    maxMessages = 200,
+                    onProgress = { processed, total ->
+                        _state.update {
+                            it.copy(scanProgress = processed, scanTotal = total)
+                        }
+                    }
+                )
+
+                val bankTransactions = scannedMessages.mapNotNull { it.parsedTransaction }
+                Log.d(TAG, "Scan complete: ${scannedMessages.size} messages, ${bankTransactions.size} bank transactions")
+
+                for (tx in bankTransactions) {
+                    try {
+                        val isDuplicate = repository.findDuplicate(
+                            bank = tx.bank,
+                            amount = tx.amount,
+                            type = tx.type,
+                            timestamp = tx.timestamp,
+                            windowMs = 60_000L
+                        )
+                        if (!isDuplicate) {
+                            repository.saveTransaction(tx)
+                            foundCount++
+                            _state.update { it.copy(scanFoundCount = foundCount) }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error saving scanned transaction", e)
+                    }
+                }
+
+                _state.update {
+                    it.copy(
+                        isScanning = false,
+                        scanComplete = true,
+                        scanFoundCount = foundCount,
+                        scanProgress = _state.value.scanTotal,
+                        scanTotal = _state.value.scanTotal
+                    )
+                }
+                Log.d(TAG, "Inbox scan finished. Saved $foundCount new transactions.")
+
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: SecurityException) {
+                Log.e(TAG, "SMS permission not granted", e)
+                _state.update {
+                    it.copy(
+                        isScanning = false,
+                        scanError = "ไม่ได้รับสิทธิ์อ่าน SMS กรุณาอนุญาตในตั้งค่า"
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Inbox scan failed", e)
+                _state.update {
+                    it.copy(
+                        isScanning = false,
+                        scanError = "สแกนไม่สำเร็จ: ${e.message}"
+                    )
+                }
+            }
+        }
     }
 
     private fun loadTransactions() {

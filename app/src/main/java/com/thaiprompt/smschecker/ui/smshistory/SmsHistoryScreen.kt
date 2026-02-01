@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -26,9 +27,8 @@ import com.thaiprompt.smschecker.ui.theme.AppColors
 import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 
 /**
- * MINIMAL VERSION — Pure UI, no data loading, no scanning.
- * Purpose: Isolate crash. If this works, crash is in data/scanner layer.
- * If this still crashes, crash is in navigation/Hilt/Compose infrastructure.
+ * Step 4: Manual scan button + scanning status.
+ * NO auto-scan. User presses button to trigger scan.
  */
 @Composable
 fun SmsHistoryScreen(
@@ -70,7 +70,7 @@ fun SmsHistoryScreen(
 
         item(key = "spacer_top") { Spacer(modifier = Modifier.height(12.dp)) }
 
-        // Stats Summary (static zeros)
+        // Stats Summary
         item(key = "stats") {
             GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
                 Row(
@@ -103,7 +103,7 @@ fun SmsHistoryScreen(
                     )
                     StatItem(
                         icon = Icons.Default.Pending,
-                        value = "0",
+                        value = "${maxOf(0, state.totalDetected - state.totalSynced)}",
                         label = strings.pendingLabel,
                         color = AppColors.WarningOrange
                     )
@@ -113,12 +113,110 @@ fun SmsHistoryScreen(
 
         item(key = "spacer_mid") { Spacer(modifier = Modifier.height(16.dp)) }
 
-        // Empty state — simple text
-        item(key = "empty") {
+        // Scanning status
+        if (state.isScanning) {
+            item(key = "scanning") {
+                GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(32.dp),
+                            color = AppColors.InfoBlue,
+                            strokeWidth = 3.dp
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                strings.scanning,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            if (state.scanTotal > 0) {
+                                Text(
+                                    "${state.scanProgress} / ${state.scanTotal}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (state.scanFoundCount > 0) {
+                                Text(
+                                    "${strings.foundMessages}: ${state.scanFoundCount}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = AppColors.CreditGreen,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            item(key = "spacer_scan") { Spacer(modifier = Modifier.height(12.dp)) }
+        }
+
+        // Scan complete
+        if (state.scanComplete && !state.isScanning) {
+            item(key = "scan_done") {
+                GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = AppColors.CreditGreen,
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            "${strings.scanComplete} — ${strings.foundMessages}: ${state.scanFoundCount}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = AppColors.CreditGreen,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+            item(key = "spacer_done") { Spacer(modifier = Modifier.height(12.dp)) }
+        }
+
+        // Scan error
+        val scanErr = state.scanError
+        if (scanErr != null && !state.isScanning) {
+            item(key = "scan_error") {
+                GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = AppColors.DebitRed,
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            scanErr,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AppColors.DebitRed,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+            item(key = "spacer_err") { Spacer(modifier = Modifier.height(12.dp)) }
+        }
+
+        // Scan button + empty state
+        item(key = "action") {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 48.dp),
+                    .padding(vertical = 32.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -142,9 +240,31 @@ fun SmsHistoryScreen(
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    // Manual scan button
+                    Button(
+                        onClick = { viewModel.startInboxScan() },
+                        enabled = !state.isScanning,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = AppColors.GoldAccent,
+                            contentColor = Color.Black
+                        )
+                    ) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            strings.scanInbox,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "v1.7.2 — Step 3: All deps injected",
+                        "v1.7.3 — Step 4: Manual scan",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                         fontSize = 10.sp
