@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.thaiprompt.smschecker.data.db.TransactionDao
 import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.TransactionType
+import com.thaiprompt.smschecker.data.repository.TransactionRepository
+import com.thaiprompt.smschecker.domain.scanner.SmsInboxScanner
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -38,12 +40,15 @@ data class SmsHistoryUiState(
 )
 
 /**
- * Step 2: Add TransactionDao back — load data from Room DB.
- * NO scanner yet. If this crashes → Room/Dao is the problem.
+ * Step 3: Add SmsInboxScanner + TransactionRepository back (inject only, not called).
+ * If crash → Hilt can't create Scanner/Repository dependencies.
+ * If works → dependencies are fine, crash is from actually calling scanInbox().
  */
 @HiltViewModel
 class SmsHistoryViewModel @Inject constructor(
-    private val transactionDao: TransactionDao
+    private val transactionDao: TransactionDao,
+    private val repository: TransactionRepository,
+    private val smsInboxScanner: SmsInboxScanner
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SmsHistoryUiState())
@@ -52,7 +57,7 @@ class SmsHistoryViewModel @Inject constructor(
     private var transactionsJob: Job? = null
 
     init {
-        Log.d(TAG, "SmsHistoryViewModel init — Step 2 (TransactionDao only)")
+        Log.d(TAG, "SmsHistoryViewModel init — Step 3 (all deps injected, scanner NOT called)")
         loadTransactions()
         loadCounts()
     }
