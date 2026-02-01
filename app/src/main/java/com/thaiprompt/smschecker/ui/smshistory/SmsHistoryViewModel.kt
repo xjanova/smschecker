@@ -80,20 +80,48 @@ class SmsHistoryViewModel @Inject constructor(
         scanJob = viewModelScope.launch {
             try {
                 Log.d(TAG, "Starting SMS inbox scan...")
-                var foundCount = 0
 
-                val scannedMessages = smsInboxScanner.scanInbox(
-                    maxMessages = 200,
-                    onProgress = { processed, total ->
-                        _state.update {
-                            it.copy(scanProgress = processed, scanTotal = total)
+                // Step 1: scan inbox (read-only, no DB writes)
+                val scannedMessages = try {
+                    smsInboxScanner.scanInbox(
+                        maxMessages = 200,
+                        onProgress = { processed, total ->
+                            _state.update {
+                                it.copy(scanProgress = processed, scanTotal = total)
+                            }
                         }
+                    )
+                } catch (t: Throwable) {
+                    Log.e(TAG, "scanInbox() threw: ${t.javaClass.name}: ${t.message}", t)
+                    _state.update {
+                        it.copy(
+                            isScanning = false,
+                            scanError = "scanInbox error: ${t.javaClass.simpleName}: ${t.message}"
+                        )
                     }
-                )
+                    return@launch
+                }
 
-                val bankTransactions = scannedMessages.mapNotNull { it.parsedTransaction }
-                Log.d(TAG, "Scan complete: ${scannedMessages.size} messages, ${bankTransactions.size} bank transactions")
+                Log.d(TAG, "scanInbox returned ${scannedMessages.size} messages")
 
+                // Step 2: filter bank transactions
+                val bankTransactions = try {
+                    scannedMessages.mapNotNull { it.parsedTransaction }
+                } catch (t: Throwable) {
+                    Log.e(TAG, "mapNotNull threw: ${t.javaClass.name}: ${t.message}", t)
+                    _state.update {
+                        it.copy(
+                            isScanning = false,
+                            scanError = "filter error: ${t.javaClass.simpleName}: ${t.message}"
+                        )
+                    }
+                    return@launch
+                }
+
+                Log.d(TAG, "Found ${bankTransactions.size} bank transactions")
+
+                // Step 3: save to DB (skip duplicates)
+                var foundCount = 0
                 for (tx in bankTransactions) {
                     try {
                         val isDuplicate = repository.findDuplicate(
@@ -110,8 +138,8 @@ class SmsHistoryViewModel @Inject constructor(
                         }
                     } catch (e: CancellationException) {
                         throw e
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Error saving scanned transaction", e)
+                    } catch (t: Throwable) {
+                        Log.w(TAG, "Error saving tx: ${t.javaClass.simpleName}: ${t.message}", t)
                     }
                 }
 
@@ -128,20 +156,13 @@ class SmsHistoryViewModel @Inject constructor(
 
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: SecurityException) {
-                Log.e(TAG, "SMS permission not granted", e)
+            } catch (t: Throwable) {
+                // Catch EVERYTHING including Error (NoSuchMethodError, etc.)
+                Log.e(TAG, "SCAN CRASH: ${t.javaClass.name}: ${t.message}", t)
                 _state.update {
                     it.copy(
                         isScanning = false,
-                        scanError = "ไม่ได้รับสิทธิ์อ่าน SMS กรุณาอนุญาตในตั้งค่า"
-                    )
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Inbox scan failed", e)
-                _state.update {
-                    it.copy(
-                        isScanning = false,
-                        scanError = "สแกนไม่สำเร็จ: ${e.message}"
+                        scanError = "${t.javaClass.simpleName}: ${t.message}"
                     )
                 }
             }

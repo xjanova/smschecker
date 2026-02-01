@@ -264,7 +264,7 @@ fun SmsHistoryScreen(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "v1.7.3 — Step 4: Manual scan",
+                        "v1.7.4 — Step 4b: Catch Throwable",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                         fontSize = 10.sp
