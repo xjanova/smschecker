@@ -1,6 +1,5 @@
 package com.thaiprompt.smschecker.data.db
 
-import android.util.Log
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
@@ -112,94 +111,6 @@ abstract class AppDatabase : RoomDatabase() {
                 if (!hasSourceType) {
                     db.execSQL("ALTER TABLE bank_transactions ADD COLUMN sourceType TEXT NOT NULL DEFAULT 'SMS'")
                 }
-            }
-        }
-
-        /**
-         * Callback that runs on every database open to ensure all tables and columns exist.
-         * This fixes corrupted databases from the period when fallbackToDestructiveMigration
-         * was removed but migrations were incomplete.
-         */
-        val SCHEMA_FIX_CALLBACK = object : RoomDatabase.Callback() {
-            override fun onOpen(db: SupportSQLiteDatabase) {
-                super.onOpen(db)
-                try {
-                    ensureAllTablesExist(db)
-                    ensureAllColumnsExist(db)
-                } catch (e: Exception) {
-                    Log.e("AppDatabase", "Error validating schema on open", e)
-                }
-            }
-        }
-
-        private fun ensureAllTablesExist(db: SupportSQLiteDatabase) {
-            // order_approvals
-            db.execSQL("""
-                CREATE TABLE IF NOT EXISTS order_approvals (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                    serverId INTEGER NOT NULL,
-                    remoteApprovalId INTEGER NOT NULL,
-                    notificationId INTEGER,
-                    matchedTransactionId INTEGER,
-                    approvalStatus TEXT NOT NULL DEFAULT 'PENDING_REVIEW',
-                    confidence TEXT NOT NULL DEFAULT 'HIGH',
-                    orderNumber TEXT,
-                    productName TEXT,
-                    productDetails TEXT,
-                    quantity INTEGER,
-                    websiteName TEXT,
-                    customerName TEXT,
-                    amount REAL NOT NULL DEFAULT 0.0,
-                    bank TEXT,
-                    paymentTimestamp INTEGER,
-                    approvedBy TEXT,
-                    approvedAt INTEGER,
-                    rejectedAt INTEGER,
-                    rejectionReason TEXT,
-                    syncedVersion INTEGER NOT NULL DEFAULT 0,
-                    lastSyncedAt INTEGER,
-                    pendingAction TEXT,
-                    createdAt INTEGER NOT NULL,
-                    updatedAt INTEGER NOT NULL,
-                    FOREIGN KEY(serverId) REFERENCES server_configs(id) ON DELETE CASCADE
-                )
-            """)
-            db.execSQL("CREATE INDEX IF NOT EXISTS index_order_approvals_serverId ON order_approvals(serverId)")
-            db.execSQL("CREATE INDEX IF NOT EXISTS index_order_approvals_approvalStatus ON order_approvals(approvalStatus)")
-            db.execSQL("CREATE INDEX IF NOT EXISTS index_order_approvals_syncedVersion ON order_approvals(syncedVersion)")
-            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_order_approvals_remoteApprovalId_serverId ON order_approvals(remoteApprovalId, serverId)")
-
-            // sms_sender_rules
-            db.execSQL("""
-                CREATE TABLE IF NOT EXISTS sms_sender_rules (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                    senderAddress TEXT NOT NULL,
-                    senderName TEXT,
-                    bankCode TEXT,
-                    isActive INTEGER NOT NULL DEFAULT 1,
-                    createdAt INTEGER NOT NULL,
-                    updatedAt INTEGER NOT NULL
-                )
-            """)
-            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_sms_sender_rules_senderAddress ON sms_sender_rules(senderAddress)")
-        }
-
-        private fun ensureAllColumnsExist(db: SupportSQLiteDatabase) {
-            // bank_transactions.sourceType
-            val cursor = db.query("PRAGMA table_info(bank_transactions)")
-            var hasSourceType = false
-            val nameColumnIndex = cursor.getColumnIndex("name")
-            if (nameColumnIndex >= 0) {
-                while (cursor.moveToNext()) {
-                    if (cursor.getString(nameColumnIndex) == "sourceType") {
-                        hasSourceType = true
-                        break
-                    }
-                }
-            }
-            cursor.close()
-            if (!hasSourceType) {
-                db.execSQL("ALTER TABLE bank_transactions ADD COLUMN sourceType TEXT NOT NULL DEFAULT 'SMS'")
             }
         }
     }
