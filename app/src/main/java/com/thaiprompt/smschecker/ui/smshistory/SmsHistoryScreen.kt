@@ -27,8 +27,7 @@ import com.thaiprompt.smschecker.ui.theme.AppColors
 import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 
 /**
- * Step 4: Manual scan button + scanning status.
- * NO auto-scan. User presses button to trigger scan.
+ * SMS History screen with manual scan button and improved status display.
  */
 @Composable
 fun SmsHistoryScreen(
@@ -264,10 +263,10 @@ fun SmsHistoryScreen(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "v1.7.5 — Step 4c: Direct SMS read",
+                        strings.scanInboxHint,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                        fontSize = 10.sp
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        fontSize = 11.sp
                     )
                 }
             }

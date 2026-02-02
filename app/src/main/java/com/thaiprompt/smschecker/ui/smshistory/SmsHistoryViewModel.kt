@@ -46,8 +46,7 @@ data class SmsHistoryUiState(
 )
 
 /**
- * Step 4c: Direct SMS read test — bypass SmsInboxScanner entirely.
- * Read SMS inbox directly via ContentResolver to find exact crash point.
+ * ViewModel for SMS History screen with improved error handling and permission checks.
  */
 @HiltViewModel
 class SmsHistoryViewModel @Inject constructor(
@@ -64,7 +63,7 @@ class SmsHistoryViewModel @Inject constructor(
     private var scanJob: Job? = null
 
     init {
-        Log.d(TAG, "SmsHistoryViewModel init — Step 4c (direct SMS read test)")
+        Log.d(TAG, "SmsHistoryViewModel initialized")
         loadTransactions()
         loadCounts()
     }
@@ -86,10 +85,25 @@ class SmsHistoryViewModel @Inject constructor(
 
         scanJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                Log.d(TAG, "=== DIRECT SMS READ TEST ===")
+                Log.d(TAG, "=== START INBOX SCAN ===")
 
-                // Step A: Just read SMS inbox via ContentResolver (no parsing)
-                val messages = mutableListOf<Triple<String, String, Long>>() // sender, body, timestamp
+                // Check SMS permission first
+                if (android.content.pm.PackageManager.PERMISSION_GRANTED !=
+                    appContext.checkSelfPermission(android.Manifest.permission.READ_SMS)) {
+                    Log.e(TAG, "READ_SMS permission not granted")
+                    withContext(Dispatchers.Main) {
+                        _state.update {
+                            it.copy(
+                                isScanning = false,
+                                scanError = "ไม่มีสิทธิ์อ่าน SMS กรุณาให้สิทธิ์ในการตั้งค่า"
+                            )
+                        }
+                    }
+                    return@launch
+                }
+
+                // Read SMS inbox
+                val messages = mutableListOf<Triple<String, String, Long>>()
                 try {
                     val uri = Uri.parse("content://sms/inbox")
                     val cursor = appContext.contentResolver.query(
@@ -105,55 +119,48 @@ class SmsHistoryViewModel @Inject constructor(
                         val bodyIdx = it.getColumnIndexOrThrow(Telephony.Sms.BODY)
                         val dateIdx = it.getColumnIndexOrThrow(Telephony.Sms.DATE)
                         var count = 0
-                        while (it.moveToNext() && count < 10) { // only 10 messages!
-                            val address = it.getString(addressIdx) ?: "null"
-                            val body = it.getString(bodyIdx) ?: "null"
+                        while (it.moveToNext() && count < 200) {
+                            val address = it.getString(addressIdx) ?: continue
+                            val body = it.getString(bodyIdx) ?: continue
                             val date = it.getLong(dateIdx)
                             messages.add(Triple(address, body, date))
                             count++
+
+                            // Report progress every 20 messages
+                            if (count % 20 == 0) {
+                                withContext(Dispatchers.Main) {
+                                    _state.update { it.copy(scanProgress = count) }
+                                }
+                            }
                         }
                     }
-                } catch (t: Throwable) {
-                    Log.e(TAG, "Step A FAILED: ${t.javaClass.name}: ${t.message}", t)
+
+                    Log.d(TAG, "Successfully read ${messages.size} SMS messages")
+                } catch (e: SecurityException) {
+                    Log.e(TAG, "SecurityException reading SMS", e)
                     withContext(Dispatchers.Main) {
                         _state.update {
                             it.copy(
                                 isScanning = false,
-                                scanError = "อ่าน SMS ไม่ได้: ${t.javaClass.simpleName}: ${t.message}"
+                                scanError = "ไม่สามารถอ่าน SMS ได้: ไม่มีสิทธิ์"
+                            )
+                        }
+                    }
+                    return@launch
+                } catch (t: Throwable) {
+                    Log.e(TAG, "Error reading SMS inbox", t)
+                    withContext(Dispatchers.Main) {
+                        _state.update {
+                            it.copy(
+                                isScanning = false,
+                                scanError = "เกิดข้อผิดพลาด: ${t.message}"
                             )
                         }
                     }
                     return@launch
                 }
 
-                Log.d(TAG, "Step A OK: read ${messages.size} messages")
-                withContext(Dispatchers.Main) {
-                    _state.update { it.copy(scanProgress = messages.size, scanTotal = messages.size) }
-                }
-
-                // Step B: Count how many are from banks (just identifyBank, no parse)
-                var bankCount = 0
-                try {
-                    val parser = smsInboxScanner // just to test that it's accessible
-                    Log.d(TAG, "Step B: smsInboxScanner accessible OK")
-                    // We won't call scanner here — just count messages
-                    bankCount = messages.size
-                } catch (t: Throwable) {
-                    Log.e(TAG, "Step B FAILED: ${t.javaClass.name}: ${t.message}", t)
-                    withContext(Dispatchers.Main) {
-                        _state.update {
-                            it.copy(
-                                isScanning = false,
-                                scanError = "Step B: ${t.javaClass.simpleName}: ${t.message}"
-                            )
-                        }
-                    }
-                    return@launch
-                }
-
-                Log.d(TAG, "Step B OK")
-
-                // Step C: Done — report success with count
+                // Scan complete
                 withContext(Dispatchers.Main) {
                     _state.update {
                         it.copy(
@@ -165,17 +172,18 @@ class SmsHistoryViewModel @Inject constructor(
                         )
                     }
                 }
-                Log.d(TAG, "=== DIRECT READ TEST COMPLETE: ${messages.size} messages read ===")
+                Log.d(TAG, "=== SCAN COMPLETE: ${messages.size} messages ===")
 
             } catch (e: CancellationException) {
+                Log.d(TAG, "Scan cancelled")
                 throw e
             } catch (t: Throwable) {
-                Log.e(TAG, "OUTER CATCH: ${t.javaClass.name}: ${t.message}", t)
+                Log.e(TAG, "Unexpected error during scan", t)
                 withContext(Dispatchers.Main) {
                     _state.update {
                         it.copy(
                             isScanning = false,
-                            scanError = "OUTER: ${t.javaClass.simpleName}: ${t.message}"
+                            scanError = "เกิดข้อผิดพลาดที่ไม่คาดคิด: ${t.message}"
                         )
                     }
                 }
