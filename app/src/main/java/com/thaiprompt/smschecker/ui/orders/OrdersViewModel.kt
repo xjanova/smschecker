@@ -49,6 +49,8 @@ class OrdersViewModel @Inject constructor(
         loadOrders()
         loadCounts()
         loadServers()
+        // Fetch orders from server on init
+        refresh()
     }
 
     private fun loadOrders() {

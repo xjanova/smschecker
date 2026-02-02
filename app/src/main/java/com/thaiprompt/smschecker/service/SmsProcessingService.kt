@@ -164,6 +164,12 @@ class SmsProcessingService : Service() {
                                     val approvalSuccess = orderRepository.approveOrder(match.id)
                                     if (approvalSuccess) {
                                         Log.d(TAG, "Successfully auto-approved order: ${match.orderNumber}")
+                                        // Fetch updated orders to reflect approval status
+                                        try {
+                                            orderRepository.fetchOrders()
+                                        } catch (e: Exception) {
+                                            Log.w(TAG, "Failed to fetch updated orders after approval", e)
+                                        }
                                     } else {
                                         Log.w(TAG, "Failed to auto-approve order: ${match.orderNumber}")
                                     }
@@ -276,6 +282,12 @@ class SmsProcessingService : Service() {
                                     val approvalSuccess = orderRepository.approveOrder(match.id)
                                     if (approvalSuccess) {
                                         Log.d(TAG, "Successfully auto-approved order from notification: ${match.orderNumber}")
+                                        // Fetch updated orders to reflect approval status
+                                        try {
+                                            orderRepository.fetchOrders()
+                                        } catch (e: Exception) {
+                                            Log.w(TAG, "Failed to fetch updated orders after notification approval", e)
+                                        }
                                     } else {
                                         Log.w(TAG, "Failed to auto-approve order from notification: ${match.orderNumber}")
                                     }
