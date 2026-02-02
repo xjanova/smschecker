@@ -162,8 +162,9 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                     strings.statusCancelled to ApprovalStatus.CANCELLED
                 )
                 items(filters) { (label, status) ->
+                    val isSelected = state.statusFilter == status
                     FilterChip(
-                        selected = state.statusFilter == status,
+                        selected = isSelected,
                         onClick = { viewModel.setStatusFilter(status) },
                         label = { Text(label, fontSize = 12.sp) },
                         colors = FilterChipDefaults.filterChipColors(
@@ -173,6 +174,8 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                             labelColor = MaterialTheme.colorScheme.onSurfaceVariant
                         ),
                         border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = isSelected,
                             borderColor = MaterialTheme.colorScheme.outline,
                             selectedBorderColor = AppColors.GoldAccent.copy(alpha = 0.5f)
                         )

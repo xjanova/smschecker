@@ -79,13 +79,14 @@ fun TransactionListScreen(viewModel: TransactionListViewModel = hiltViewModel())
                     TransactionFilter.CREDIT -> strings.filterCredit
                     TransactionFilter.DEBIT -> strings.filterDebit
                 }
+                val isSelected = selectedFilter == filter
                 FilterChip(
-                    selected = selectedFilter == filter,
+                    selected = isSelected,
                     onClick = { selectedFilter = filter },
                     label = {
                         Text(filterLabel, style = MaterialTheme.typography.bodySmall)
                     },
-                    leadingIcon = if (selectedFilter == filter) {
+                    leadingIcon = if (isSelected) {
                         {
                             Icon(
                                 Icons.Default.Check,
@@ -101,6 +102,8 @@ fun TransactionListScreen(viewModel: TransactionListViewModel = hiltViewModel())
                         labelColor = MaterialTheme.colorScheme.onSurfaceVariant
                     ),
                     border = FilterChipDefaults.filterChipBorder(
+                        enabled = true,
+                        selected = isSelected,
                         borderColor = MaterialTheme.colorScheme.outline,
                         selectedBorderColor = AppColors.GoldAccent.copy(alpha = 0.5f)
                     )
