@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -42,6 +43,48 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     var showDatePicker by remember { mutableStateOf(false) }
     val strings = LocalAppStrings.current
+
+    // Error handling - show error state if there's an error
+    if (state.error != null) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(premiumBackgroundBrush()),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(32.dp)
+            ) {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = AppColors.WarningOrange
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    "เกิดข้อผิดพลาด",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    state.error ?: "Unknown error",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(onClick = { viewModel.refresh() }) {
+                    Icon(Icons.Default.Refresh, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("ลองอีกครั้ง")
+                }
+            }
+        }
+        return
+    }
 
     LazyColumn(
         modifier = Modifier

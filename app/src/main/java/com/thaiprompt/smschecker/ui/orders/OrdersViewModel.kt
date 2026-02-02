@@ -47,11 +47,16 @@ class OrdersViewModel @Inject constructor(
     private var serversJob: Job? = null
 
     init {
-        loadOrders()
-        loadCounts()
-        loadServers()
-        // Fetch orders from server on init
-        refresh()
+        try {
+            loadOrders()
+            loadCounts()
+            loadServers()
+            // Fetch orders from server on init
+            refresh()
+        } catch (e: Exception) {
+            Log.e("OrdersViewModel", "Error initializing OrdersViewModel", e)
+            _state.update { it.copy(isLoading = false, error = "Failed to initialize: ${e.message}") }
+        }
     }
 
     private fun loadOrders() {
