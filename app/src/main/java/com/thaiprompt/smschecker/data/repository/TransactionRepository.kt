@@ -8,6 +8,7 @@ import com.thaiprompt.smschecker.data.db.TransactionDao
 import com.thaiprompt.smschecker.data.model.*
 import com.thaiprompt.smschecker.security.CryptoManager
 import com.thaiprompt.smschecker.security.SecureStorage
+import com.thaiprompt.smschecker.util.RetryHelper
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -106,7 +107,8 @@ class TransactionRepository @Inject constructor(
         )
         val logId = syncLogDao.insert(syncLog)
 
-        return try {
+        // Retry with exponential backoff for unstable network
+        val success = RetryHelper.withRetryBoolean {
             val nonce = cryptoManager.generateNonce()
             val timestamp = System.currentTimeMillis().toString()
 
@@ -143,30 +145,24 @@ class TransactionRepository @Inject constructor(
                 body = EncryptedPayload(data = encryptedData)
             )
 
-            if (response.isSuccessful && response.body()?.success == true) {
-                syncLogDao.update(syncLog.copy(
-                    id = logId,
-                    status = SyncStatus.SUCCESS,
-                    httpStatusCode = response.code(),
-                    responseBody = gson.toJson(response.body()),
-                    respondedAt = System.currentTimeMillis()
-                ))
-                true
-            } else {
-                syncLogDao.update(syncLog.copy(
-                    id = logId,
-                    status = SyncStatus.FAILED,
-                    httpStatusCode = response.code(),
-                    responseBody = response.errorBody()?.string(),
-                    respondedAt = System.currentTimeMillis()
-                ))
-                false
-            }
-        } catch (e: Exception) {
+            response.isSuccessful && response.body()?.success == true
+        }
+
+        return if (success) {
+            syncLogDao.update(syncLog.copy(
+                id = logId,
+                status = SyncStatus.SUCCESS,
+                httpStatusCode = 200,
+                responseBody = "Success",
+                respondedAt = System.currentTimeMillis()
+            ))
+            true
+        } else {
             syncLogDao.update(syncLog.copy(
                 id = logId,
                 status = SyncStatus.FAILED,
-                errorMessage = e.message,
+                httpStatusCode = 0,
+                responseBody = "Failed after retries",
                 respondedAt = System.currentTimeMillis()
             ))
             false

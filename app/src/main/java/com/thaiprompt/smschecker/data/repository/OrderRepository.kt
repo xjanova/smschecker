@@ -5,6 +5,7 @@ import com.thaiprompt.smschecker.data.db.OrderApprovalDao
 import com.thaiprompt.smschecker.data.db.ServerConfigDao
 import com.thaiprompt.smschecker.data.model.*
 import com.thaiprompt.smschecker.security.SecureStorage
+import com.thaiprompt.smschecker.util.RetryHelper
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -43,7 +44,9 @@ class OrderRepository @Inject constructor(
 
         for (server in activeServers) {
             val apiKey = secureStorage.getApiKey(server.id) ?: continue
-            try {
+
+            // Retry with exponential backoff for unstable network
+            val success = RetryHelper.withRetryBoolean {
                 val client = apiClientFactory.getClient(server.baseUrl)
                 val response = client.getOrders(apiKey, deviceId)
                 if (response.isSuccessful) {
@@ -52,15 +55,19 @@ class OrderRepository @Inject constructor(
                         val localOrders = orders.map { it.toLocalEntity(server.id) }
                         orderApprovalDao.insertAll(localOrders)
                     }
+                    true
+                } else {
+                    false
+                }
+            }
+
+            try {
+                if (success) {
                     serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "success")
                 } else {
                     serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
                 }
-            } catch (e: Exception) {
-                try {
-                    serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
-                } catch (e: Exception) { }
-            }
+            } catch (e: Exception) { }
         }
     }
 
@@ -69,16 +76,17 @@ class OrderRepository @Inject constructor(
         val apiKey = secureStorage.getApiKey(server.id) ?: return
         val deviceId = secureStorage.getDeviceId() ?: return
 
-        try {
+        // Retry with exponential backoff for unstable network
+        val success = RetryHelper.withRetryBoolean {
             val client = apiClientFactory.getClient(server.baseUrl)
             val response = client.approveOrder(apiKey, deviceId, order.remoteApprovalId)
-            if (response.isSuccessful) {
-                orderApprovalDao.updateStatus(order.id, ApprovalStatus.MANUALLY_APPROVED, null)
-            } else {
-                // Queue for offline sync
-                orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
-            }
-        } catch (e: Exception) {
+            response.isSuccessful
+        }
+
+        if (success) {
+            orderApprovalDao.updateStatus(order.id, ApprovalStatus.MANUALLY_APPROVED, null)
+        } else {
+            // Queue for offline sync
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
         }
     }
@@ -88,31 +96,31 @@ class OrderRepository @Inject constructor(
      * Returns true if successfully approved, false if failed or order not found
      */
     suspend fun approveOrder(orderId: Long): Boolean {
-        return try {
-            val order = orderApprovalDao.getOrderById(orderId) ?: return false
+        val order = orderApprovalDao.getOrderById(orderId) ?: return false
 
-            // Skip if already approved
-            if (order.approvalStatus == ApprovalStatus.AUTO_APPROVED ||
-                order.approvalStatus == ApprovalStatus.MANUALLY_APPROVED) {
-                return true
-            }
+        // Skip if already approved
+        if (order.approvalStatus == ApprovalStatus.AUTO_APPROVED ||
+            order.approvalStatus == ApprovalStatus.MANUALLY_APPROVED) {
+            return true
+        }
 
-            val server = serverConfigDao.getById(order.serverId) ?: return false
-            val apiKey = secureStorage.getApiKey(server.id) ?: return false
-            val deviceId = secureStorage.getDeviceId() ?: return false
+        val server = serverConfigDao.getById(order.serverId) ?: return false
+        val apiKey = secureStorage.getApiKey(server.id) ?: return false
+        val deviceId = secureStorage.getDeviceId() ?: return false
 
+        // Retry with exponential backoff for unstable network
+        val success = RetryHelper.withRetryBoolean {
             val client = apiClientFactory.getClient(server.baseUrl)
             val response = client.approveOrder(apiKey, deviceId, order.remoteApprovalId)
+            response.isSuccessful
+        }
 
-            if (response.isSuccessful) {
-                orderApprovalDao.updateStatus(order.id, ApprovalStatus.AUTO_APPROVED, null)
-                true
-            } else {
-                // Queue for offline sync
-                orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
-                false
-            }
-        } catch (e: Exception) {
+        return if (success) {
+            orderApprovalDao.updateStatus(order.id, ApprovalStatus.AUTO_APPROVED, null)
+            true
+        } else {
+            // Queue for offline sync
+            orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
             false
         }
     }
@@ -122,15 +130,16 @@ class OrderRepository @Inject constructor(
         val apiKey = secureStorage.getApiKey(server.id) ?: return
         val deviceId = secureStorage.getDeviceId() ?: return
 
-        try {
+        // Retry with exponential backoff for unstable network
+        val success = RetryHelper.withRetryBoolean {
             val client = apiClientFactory.getClient(server.baseUrl)
             val response = client.rejectOrder(apiKey, deviceId, order.remoteApprovalId, RejectBody(reason))
-            if (response.isSuccessful) {
-                orderApprovalDao.updateStatus(order.id, ApprovalStatus.REJECTED, null)
-            } else {
-                orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.REJECT)
-            }
-        } catch (e: Exception) {
+            response.isSuccessful
+        }
+
+        if (success) {
+            orderApprovalDao.updateStatus(order.id, ApprovalStatus.REJECTED, null)
+        } else {
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.REJECT)
         }
     }
@@ -143,9 +152,10 @@ class OrderRepository @Inject constructor(
             val server = serverConfigDao.getById(order.serverId) ?: continue
             val apiKey = secureStorage.getApiKey(server.id) ?: continue
 
-            try {
+            // Retry with exponential backoff for unstable network
+            val success = RetryHelper.withRetryBoolean {
                 val client = apiClientFactory.getClient(server.baseUrl)
-                val success = when (order.pendingAction) {
+                when (order.pendingAction) {
                     PendingAction.APPROVE -> {
                         val resp = client.approveOrder(apiKey, deviceId, order.remoteApprovalId)
                         resp.isSuccessful
@@ -159,18 +169,17 @@ class OrderRepository @Inject constructor(
                     }
                     null -> true
                 }
-
-                if (success) {
-                    val newStatus = when (order.pendingAction) {
-                        PendingAction.APPROVE -> ApprovalStatus.MANUALLY_APPROVED
-                        PendingAction.REJECT -> ApprovalStatus.REJECTED
-                        null -> order.approvalStatus
-                    }
-                    orderApprovalDao.updateStatus(order.id, newStatus, null)
-                }
-            } catch (e: Exception) {
-                // Keep pending, retry next sync
             }
+
+            if (success) {
+                val newStatus = when (order.pendingAction) {
+                    PendingAction.APPROVE -> ApprovalStatus.MANUALLY_APPROVED
+                    PendingAction.REJECT -> ApprovalStatus.REJECTED
+                    null -> order.approvalStatus
+                }
+                orderApprovalDao.updateStatus(order.id, newStatus, null)
+            }
+            // Keep pending if failed, will retry next sync
         }
     }
 
@@ -180,7 +189,9 @@ class OrderRepository @Inject constructor(
 
         for (server in activeServers) {
             val apiKey = secureStorage.getApiKey(server.id) ?: continue
-            try {
+
+            // Retry with exponential backoff for unstable network
+            val success = RetryHelper.withRetryBoolean {
                 val sinceVersion = orderApprovalDao.getLatestSyncVersion(server.id)
                 val client = apiClientFactory.getClient(server.baseUrl)
                 val response = client.syncOrders(apiKey, deviceId, sinceVersion)
@@ -211,13 +222,19 @@ class OrderRepository @Inject constructor(
                             orderApprovalDao.insert(local)
                         }
                     }
+                    true
+                } else {
+                    false
+                }
+            }
+
+            try {
+                if (success) {
                     serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "success")
                 } else {
                     serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
                 }
-            } catch (e: Exception) {
-                serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
-            }
+            } catch (e: Exception) { }
         }
     }
 
