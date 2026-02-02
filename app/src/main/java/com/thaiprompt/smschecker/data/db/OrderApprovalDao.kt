@@ -49,6 +49,9 @@ interface OrderApprovalDao {
     @Query("SELECT * FROM order_approvals WHERE id = :id")
     suspend fun getById(id: Long): OrderApproval?
 
+    @Query("SELECT * FROM order_approvals WHERE id = :id")
+    suspend fun getOrderById(id: Long): OrderApproval?
+
     @Query("SELECT * FROM order_approvals WHERE remoteApprovalId = :remoteId AND serverId = :serverId")
     suspend fun getByRemoteId(remoteId: Long, serverId: Long): OrderApproval?
 

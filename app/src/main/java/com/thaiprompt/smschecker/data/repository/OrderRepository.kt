@@ -83,6 +83,40 @@ class OrderRepository @Inject constructor(
         }
     }
 
+    /**
+     * Auto-approve order by local ID (used for automatic approval after SMS match)
+     * Returns true if successfully approved, false if failed or order not found
+     */
+    suspend fun approveOrder(orderId: Long): Boolean {
+        return try {
+            val order = orderApprovalDao.getOrderById(orderId) ?: return false
+
+            // Skip if already approved
+            if (order.approvalStatus == ApprovalStatus.AUTO_APPROVED ||
+                order.approvalStatus == ApprovalStatus.MANUALLY_APPROVED) {
+                return true
+            }
+
+            val server = serverConfigDao.getById(order.serverId) ?: return false
+            val apiKey = secureStorage.getApiKey(server.id) ?: return false
+            val deviceId = secureStorage.getDeviceId() ?: return false
+
+            val client = apiClientFactory.getClient(server.baseUrl)
+            val response = client.approveOrder(apiKey, deviceId, order.remoteApprovalId)
+
+            if (response.isSuccessful) {
+                orderApprovalDao.updateStatus(order.id, ApprovalStatus.AUTO_APPROVED, null)
+                true
+            } else {
+                // Queue for offline sync
+                orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
+                false
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     suspend fun rejectOrder(order: OrderApproval, reason: String = "") {
         val server = serverConfigDao.getById(order.serverId) ?: return
         val apiKey = secureStorage.getApiKey(server.id) ?: return

@@ -156,8 +156,20 @@ class SmsProcessingService : Service() {
                             matchedOrderNumber = match?.orderNumber
                             if (match != null) {
                                 sessionMatchedCount++
-                                Log.d(TAG, "Matched transaction with order: ${match.orderNumber}")
+                                Log.d(TAG, "Matched transaction with order: ${match.orderNumber} (ID: ${match.id})")
                                 updateNotification("กำลังทำงาน | ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
+
+                                // Auto-approve matched order
+                                try {
+                                    val approvalSuccess = orderRepository.approveOrder(match.id)
+                                    if (approvalSuccess) {
+                                        Log.d(TAG, "Successfully auto-approved order: ${match.orderNumber}")
+                                    } else {
+                                        Log.w(TAG, "Failed to auto-approve order: ${match.orderNumber}")
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Error auto-approving order: ${match.orderNumber}", e)
+                                }
                             }
                         }
                     } catch (e: Exception) {
@@ -256,8 +268,20 @@ class SmsProcessingService : Service() {
                             matchedOrderNumber = match?.orderNumber
                             if (match != null) {
                                 sessionMatchedCount++
-                                Log.d(TAG, "Matched notification with order: ${match.orderNumber}")
+                                Log.d(TAG, "Matched notification with order: ${match.orderNumber} (ID: ${match.id})")
                                 updateNotification("กำลังทำงาน | ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
+
+                                // Auto-approve matched order
+                                try {
+                                    val approvalSuccess = orderRepository.approveOrder(match.id)
+                                    if (approvalSuccess) {
+                                        Log.d(TAG, "Successfully auto-approved order from notification: ${match.orderNumber}")
+                                    } else {
+                                        Log.w(TAG, "Failed to auto-approve order from notification: ${match.orderNumber}")
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Error auto-approving order from notification: ${match.orderNumber}", e)
+                                }
                             }
                         }
                     } catch (e: Exception) {
