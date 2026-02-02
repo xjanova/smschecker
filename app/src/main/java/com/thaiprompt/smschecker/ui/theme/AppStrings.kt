@@ -201,6 +201,7 @@ data class AppStrings(
     val matchedWithOrder: String,
     val noMatchingOrder: String,
     val scanInbox: String,
+    val scanInboxHint: String,
     val scanning: String,
     val scanComplete: String,
     val foundMessages: String,  // "{count} messages found"
@@ -444,6 +445,7 @@ val ThaiStrings = AppStrings(
     matchedWithOrder = "ตรงกับออเดอร์",
     noMatchingOrder = "ไม่พบออเดอร์ที่ตรงกัน",
     scanInbox = "สแกนกล่องข้อความ",
+    scanInboxHint = "กดปุ่มด้านบนเพื่อสแกนข้อความ SMS ในเครื่อง",
     scanning = "กำลังสแกน...",
     scanComplete = "สแกนเสร็จสิ้น",
     foundMessages = "พบข้อความ",
@@ -687,6 +689,7 @@ val EnglishStrings = AppStrings(
     matchedWithOrder = "Matched with order",
     noMatchingOrder = "No matching order",
     scanInbox = "Scan Inbox",
+    scanInboxHint = "Tap the button above to scan SMS messages on device",
     scanning = "Scanning...",
     scanComplete = "Scan Complete",
     foundMessages = "messages found",
