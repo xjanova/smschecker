@@ -161,17 +161,17 @@ class SmsProcessingService : Service() {
                             }
 
                             val ordersList = orderRepository.getAllOrders().first()
-                            Log.d(TAG, "Found ${ordersList.size} orders in database")
+                            val pendingOrders = ordersList.filter { it.approvalStatus == ApprovalStatus.PENDING_REVIEW }
+                            Log.d(TAG, "Found ${ordersList.size} total orders, ${pendingOrders.size} pending")
 
                             // Log all pending orders for debugging
-                            ordersList.filter { it.approvalStatus == ApprovalStatus.PENDING_REVIEW }
-                                .forEach { order ->
-                                    val matches = order.amount == amountDouble
-                                    Log.d(TAG, "Order ${order.orderNumber}: amount=${order.amount}, sms=${amountDouble}, exact_match=$matches, status=${order.approvalStatus}")
-                                }
+                            pendingOrders.forEach { order ->
+                                val matches = order.amount == amountDouble
+                                Log.d(TAG, "Pending order ${order.orderNumber}: amount=${order.amount}, sms=${amountDouble}, exact_match=$matches")
+                            }
 
-                            // Exact match only - no tolerance, no rounding
-                            val match = ordersList.find { order ->
+                            // Exact match only with PENDING_REVIEW orders
+                            val match = pendingOrders.find { order ->
                                 order.amount == amountDouble
                             }
                             matchedOrderNumber = match?.orderNumber
@@ -299,17 +299,17 @@ class SmsProcessingService : Service() {
                             }
 
                             val ordersList = orderRepository.getAllOrders().first()
-                            Log.d(TAG, "Found ${ordersList.size} orders in database")
+                            val pendingOrders = ordersList.filter { it.approvalStatus == ApprovalStatus.PENDING_REVIEW }
+                            Log.d(TAG, "Found ${ordersList.size} total orders, ${pendingOrders.size} pending")
 
                             // Log all pending orders for debugging
-                            ordersList.filter { it.approvalStatus == ApprovalStatus.PENDING_REVIEW }
-                                .forEach { order ->
-                                    val matches = order.amount == amountDouble
-                                    Log.d(TAG, "Order ${order.orderNumber}: amount=${order.amount}, sms=${amountDouble}, exact_match=$matches, status=${order.approvalStatus}")
-                                }
+                            pendingOrders.forEach { order ->
+                                val matches = order.amount == amountDouble
+                                Log.d(TAG, "Pending order ${order.orderNumber}: amount=${order.amount}, sms=${amountDouble}, exact_match=$matches")
+                            }
 
-                            // Exact match only - no tolerance, no rounding
-                            val match = ordersList.find { order ->
+                            // Exact match only with PENDING_REVIEW orders
+                            val match = pendingOrders.find { order ->
                                 order.amount == amountDouble
                             }
                             matchedOrderNumber = match?.orderNumber
