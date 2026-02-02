@@ -384,12 +384,12 @@ fun OrderCard(
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
             // Status color bar with gradient
             Box(
                 modifier = Modifier
                     .width(4.dp)
-                    .height(IntrinsicSize.Max)
+                    .fillMaxHeight()
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(statusColor, statusColor.copy(alpha = 0.4f))
