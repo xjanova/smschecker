@@ -2,6 +2,7 @@
 
 package com.thaiprompt.smschecker.ui.orders
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -173,11 +174,10 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                             labelColor = MaterialTheme.colorScheme.onSurfaceVariant
                         ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            enabled = true,
-                            selected = isSelected,
-                            borderColor = MaterialTheme.colorScheme.outline,
-                            selectedBorderColor = AppColors.GoldAccent.copy(alpha = 0.5f)
+                        border = BorderStroke(
+                            1.dp,
+                            if (isSelected) AppColors.GoldAccent.copy(alpha = 0.5f)
+                            else MaterialTheme.colorScheme.outline
                         )
                     )
                 }
