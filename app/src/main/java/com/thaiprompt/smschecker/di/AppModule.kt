@@ -34,7 +34,6 @@ object AppModule {
             "smschecker_database"
         )
             .addMigrations(AppDatabase.MIGRATION_3_4)
-            .fallbackToDestructiveMigration()
             .build()
     }
 
