@@ -12,6 +12,7 @@ import androidx.core.app.NotificationCompat
 import com.thaiprompt.smschecker.R
 import com.thaiprompt.smschecker.SmsCheckerApp
 import com.thaiprompt.smschecker.data.db.SmsSenderRuleDao
+import com.thaiprompt.smschecker.data.model.ApprovalStatus
 import com.thaiprompt.smschecker.data.model.TransactionSource
 import com.thaiprompt.smschecker.data.model.TransactionType
 import com.thaiprompt.smschecker.data.repository.OrderRepository
