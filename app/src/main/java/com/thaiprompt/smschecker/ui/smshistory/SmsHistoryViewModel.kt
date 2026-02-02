@@ -35,14 +35,7 @@ data class SmsHistoryUiState(
     val totalSynced: Int = 0,
     val isLoading: Boolean = true,
     val editingTransaction: BankTransaction? = null,
-    val isSaving: Boolean = false,
-    // Scanning state
-    val isScanning: Boolean = false,
-    val scanProgress: Int = 0,
-    val scanTotal: Int = 0,
-    val scanFoundCount: Int = 0,
-    val scanComplete: Boolean = false,
-    val scanError: String? = null
+    val isSaving: Boolean = false
 )
 
 /**
@@ -52,7 +45,6 @@ data class SmsHistoryUiState(
 class SmsHistoryViewModel @Inject constructor(
     private val transactionDao: TransactionDao,
     private val repository: TransactionRepository,
-    private val smsInboxScanner: SmsInboxScanner,
     @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
@@ -60,136 +52,20 @@ class SmsHistoryViewModel @Inject constructor(
     val state: StateFlow<SmsHistoryUiState> = _state.asStateFlow()
 
     private var transactionsJob: Job? = null
-    private var scanJob: Job? = null
 
     init {
-        Log.d(TAG, "SmsHistoryViewModel initialized")
+        Log.d(TAG, "SmsHistoryViewModel initialized - Real-time detection only")
         loadTransactions()
         loadCounts()
     }
 
-    fun startInboxScan() {
-        if (_state.value.isScanning) return
-        scanJob?.cancel()
-
-        _state.update {
-            it.copy(
-                isScanning = true,
-                scanProgress = 0,
-                scanTotal = 0,
-                scanFoundCount = 0,
-                scanComplete = false,
-                scanError = null
-            )
-        }
-
-        scanJob = viewModelScope.launch(Dispatchers.IO) {
-            try {
-                Log.d(TAG, "=== START INBOX SCAN ===")
-
-                // Check SMS permission first
-                if (android.content.pm.PackageManager.PERMISSION_GRANTED !=
-                    appContext.checkSelfPermission(android.Manifest.permission.READ_SMS)) {
-                    Log.e(TAG, "READ_SMS permission not granted")
-                    withContext(Dispatchers.Main) {
-                        _state.update {
-                            it.copy(
-                                isScanning = false,
-                                scanError = "ไม่มีสิทธิ์อ่าน SMS กรุณาให้สิทธิ์ในการตั้งค่า"
-                            )
-                        }
-                    }
-                    return@launch
-                }
-
-                // Read SMS inbox
-                val messages = mutableListOf<Triple<String, String, Long>>()
-                try {
-                    val uri = Uri.parse("content://sms/inbox")
-                    val cursor = appContext.contentResolver.query(
-                        uri,
-                        arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE),
-                        null,
-                        null,
-                        "${Telephony.Sms.DATE} DESC"
-                    )
-
-                    cursor?.use {
-                        val addressIdx = it.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
-                        val bodyIdx = it.getColumnIndexOrThrow(Telephony.Sms.BODY)
-                        val dateIdx = it.getColumnIndexOrThrow(Telephony.Sms.DATE)
-                        var count = 0
-                        while (it.moveToNext() && count < 200) {
-                            val address = it.getString(addressIdx) ?: continue
-                            val body = it.getString(bodyIdx) ?: continue
-                            val date = it.getLong(dateIdx)
-                            messages.add(Triple(address, body, date))
-                            count++
-
-                            // Report progress every 20 messages
-                            if (count % 20 == 0) {
-                                withContext(Dispatchers.Main) {
-                                    _state.update { it.copy(scanProgress = count) }
-                                }
-                            }
-                        }
-                    }
-
-                    Log.d(TAG, "Successfully read ${messages.size} SMS messages")
-                } catch (e: SecurityException) {
-                    Log.e(TAG, "SecurityException reading SMS", e)
-                    withContext(Dispatchers.Main) {
-                        _state.update {
-                            it.copy(
-                                isScanning = false,
-                                scanError = "ไม่สามารถอ่าน SMS ได้: ไม่มีสิทธิ์"
-                            )
-                        }
-                    }
-                    return@launch
-                } catch (t: Throwable) {
-                    Log.e(TAG, "Error reading SMS inbox", t)
-                    withContext(Dispatchers.Main) {
-                        _state.update {
-                            it.copy(
-                                isScanning = false,
-                                scanError = "เกิดข้อผิดพลาด: ${t.message}"
-                            )
-                        }
-                    }
-                    return@launch
-                }
-
-                // Scan complete
-                withContext(Dispatchers.Main) {
-                    _state.update {
-                        it.copy(
-                            isScanning = false,
-                            scanComplete = true,
-                            scanFoundCount = messages.size,
-                            scanProgress = messages.size,
-                            scanTotal = messages.size
-                        )
-                    }
-                }
-                Log.d(TAG, "=== SCAN COMPLETE: ${messages.size} messages ===")
-
-            } catch (e: CancellationException) {
-                Log.d(TAG, "Scan cancelled")
-                throw e
-            } catch (t: Throwable) {
-                Log.e(TAG, "Unexpected error during scan", t)
-                withContext(Dispatchers.Main) {
-                    _state.update {
-                        it.copy(
-                            isScanning = false,
-                            scanError = "เกิดข้อผิดพลาดที่ไม่คาดคิด: ${t.message}"
-                        )
-                    }
-                }
-            }
-        }
-    }
+    // Removed manual inbox scanning - app now uses real-time SMS detection only
+    // via SmsProcessingService which handles:
+    // - Automatic detection of new SMS
+    // - Bank identification and parsing
+    // - Order matching
+    // - Database storage
+    // - Server synchronization
 
     private fun loadTransactions() {
         transactionsJob?.cancel()

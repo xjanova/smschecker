@@ -6,7 +6,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -16,7 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -24,6 +23,7 @@ import com.thaiprompt.smschecker.ui.components.GlassCard
 import com.thaiprompt.smschecker.ui.components.GradientHeader
 import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
 import com.thaiprompt.smschecker.ui.theme.AppColors
+import com.thaiprompt.smschecker.ui.theme.AppStrings
 import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 
 /**
@@ -112,162 +112,82 @@ fun SmsHistoryScreen(
 
         item(key = "spacer_mid") { Spacer(modifier = Modifier.height(16.dp)) }
 
-        // Scanning status
-        if (state.isScanning) {
-            item(key = "scanning") {
-                GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(32.dp),
-                            color = AppColors.InfoBlue,
-                            strokeWidth = 3.dp
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                strings.scanning,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            if (state.scanTotal > 0) {
-                                Text(
-                                    "${state.scanProgress} / ${state.scanTotal}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            if (state.scanFoundCount > 0) {
-                                Text(
-                                    "${strings.foundMessages}: ${state.scanFoundCount}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = AppColors.CreditGreen,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-                    }
+        // Filter tabs
+        if (state.transactions.isNotEmpty() || state.isLoading) {
+            item(key = "filter_tabs") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = state.filter == HistoryFilter.ALL,
+                        onClick = { viewModel.setFilter(HistoryFilter.ALL) },
+                        label = { Text(strings.allTypes) }
+                    )
+                    FilterChip(
+                        selected = state.filter == HistoryFilter.CREDIT,
+                        onClick = { viewModel.setFilter(HistoryFilter.CREDIT) },
+                        label = { Text(strings.creditOnly) }
+                    )
+                    FilterChip(
+                        selected = state.filter == HistoryFilter.DEBIT,
+                        onClick = { viewModel.setFilter(HistoryFilter.DEBIT) },
+                        label = { Text(strings.debitOnly) }
+                    )
                 }
             }
-            item(key = "spacer_scan") { Spacer(modifier = Modifier.height(12.dp)) }
+            item(key = "spacer_filter") { Spacer(modifier = Modifier.height(12.dp)) }
         }
 
-        // Scan complete
-        if (state.scanComplete && !state.isScanning) {
-            item(key = "scan_done") {
-                GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = AppColors.CreditGreen,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            "${strings.scanComplete} — ${strings.foundMessages}: ${state.scanFoundCount}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = AppColors.CreditGreen,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+        // Transaction list
+        if (state.transactions.isNotEmpty()) {
+            items(state.transactions.size, key = { state.transactions[it].id }) { index ->
+                val tx = state.transactions[index]
+                TransactionItem(
+                    transaction = tx,
+                    strings = strings,
+                    onEdit = { viewModel.startEditing(tx) }
+                )
+                if (index < state.transactions.size - 1) {
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
             }
-            item(key = "spacer_done") { Spacer(modifier = Modifier.height(12.dp)) }
         }
 
-        // Scan error
-        val scanErr = state.scanError
-        if (scanErr != null && !state.isScanning) {
-            item(key = "scan_error") {
-                GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+        // Empty state
+        if (state.transactions.isEmpty() && !state.isLoading) {
+            item(key = "empty_state") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 48.dp, horizontal = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Icon(
-                            Icons.Default.Warning,
+                            Icons.Default.Textsms,
                             contentDescription = null,
-                            tint = AppColors.DebitRed,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            scanErr,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = AppColors.DebitRed,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
-            item(key = "spacer_err") { Spacer(modifier = Modifier.height(12.dp)) }
-        }
-
-        // Scan button + empty state
-        item(key = "action") {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 32.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(
-                        modifier = Modifier
-                            .size(80.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Default.Inbox,
-                            contentDescription = null,
-                            modifier = Modifier.size(40.dp),
+                            modifier = Modifier.size(64.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
                         )
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        strings.noTransactionsYet,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    // Manual scan button
-                    Button(
-                        onClick = { viewModel.startInboxScan() },
-                        enabled = !state.isScanning,
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = AppColors.GoldAccent,
-                            contentColor = Color.Black
-                        )
-                    ) {
-                        Icon(
-                            Icons.Default.Search,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            strings.scanInbox,
-                            fontWeight = FontWeight.Bold
+                            strings.noTransactionsYet,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            strings.smsAutoDisplay,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        strings.scanInboxHint,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        fontSize = 11.sp
-                    )
                 }
             }
         }
@@ -307,5 +227,67 @@ private fun StatItem(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 10.sp
         )
+    }
+}
+
+@Composable
+private fun TransactionItem(
+    transaction: com.thaiprompt.smschecker.data.model.BankTransaction,
+    strings: AppStrings,
+    onEdit: () -> Unit
+) {
+    GlassCard(
+        modifier = Modifier.padding(horizontal = 16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    transaction.bank,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    transaction.getFormattedTimestamp(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (transaction.synced) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.CloudDone,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = AppColors.CreditGreen
+                        )
+                        Text(
+                            strings.syncedLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 10.sp,
+                            color = AppColors.CreditGreen
+                        )
+                    }
+                }
+            }
+
+            val typeColor = if (transaction.type == com.thaiprompt.smschecker.data.model.TransactionType.CREDIT) {
+                AppColors.CreditGreen
+            } else {
+                AppColors.DebitRed
+            }
+
+            Text(
+                transaction.getFormattedAmount(),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = typeColor
+            )
+        }
     }
 }
