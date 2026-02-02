@@ -1,5 +1,6 @@
 package com.thaiprompt.smschecker.data.repository
 
+import android.util.Log
 import com.thaiprompt.smschecker.data.api.*
 import com.thaiprompt.smschecker.data.db.OrderApprovalDao
 import com.thaiprompt.smschecker.data.db.ServerConfigDao
@@ -45,29 +46,42 @@ class OrderRepository @Inject constructor(
         for (server in activeServers) {
             val apiKey = secureStorage.getApiKey(server.id) ?: continue
 
-            // Retry with exponential backoff for unstable network
-            val success = RetryHelper.withRetryBoolean {
-                val client = apiClientFactory.getClient(server.baseUrl)
-                val response = client.getOrders(apiKey, deviceId)
-                if (response.isSuccessful) {
-                    val orders = response.body()?.data?.data ?: emptyList()
-                    if (orders.isNotEmpty()) {
-                        val localOrders = orders.map { it.toLocalEntity(server.id) }
-                        orderApprovalDao.insertAll(localOrders)
-                    }
-                    true
-                } else {
-                    false
-                }
-            }
-
             try {
-                if (success) {
-                    serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "success")
-                } else {
-                    serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
+                // Retry with exponential backoff for unstable network
+                val success = RetryHelper.withRetryBoolean {
+                    val client = apiClientFactory.getClient(server.baseUrl)
+                    val response = client.getOrders(apiKey, deviceId)
+                    if (response.isSuccessful) {
+                        val orders = response.body()?.data?.data ?: emptyList()
+                        if (orders.isNotEmpty()) {
+                            val localOrders = orders.map { it.toLocalEntity(server.id) }
+                            try {
+                                orderApprovalDao.insertAll(localOrders)
+                            } catch (e: Exception) {
+                                // Database error - don't fail the entire operation
+                                Log.e("OrderRepository", "Failed to insert orders", e)
+                            }
+                        }
+                        true
+                    } else {
+                        false
+                    }
                 }
-            } catch (e: Exception) { }
+
+                try {
+                    if (success) {
+                        serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "success")
+                    } else {
+                        serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
+                    }
+                } catch (e: Exception) { }
+            } catch (e: Exception) {
+                // Catch any exceptions from retry logic to prevent crash
+                Log.e("OrderRepository", "Error fetching orders from server ${server.id}", e)
+                try {
+                    serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
+                } catch (e: Exception) { }
+            }
         }
     }
 
