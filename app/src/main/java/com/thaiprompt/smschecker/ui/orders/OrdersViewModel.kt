@@ -1,5 +1,6 @@
 package com.thaiprompt.smschecker.ui.orders
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.thaiprompt.smschecker.data.model.ApprovalStatus
@@ -63,10 +64,11 @@ class OrdersViewModel @Inject constructor(
                     startTime = _state.value.dateFrom,
                     endTime = _state.value.dateTo
                 ).collect { orders ->
-                    _state.update { it.copy(orders = orders, isLoading = false) }
+                    _state.update { it.copy(orders = orders, isLoading = false, error = null) }
                 }
             } catch (e: Exception) {
-                _state.update { it.copy(isLoading = false) }
+                Log.e("OrdersViewModel", "Error loading orders", e)
+                _state.update { it.copy(isLoading = false, error = e.message) }
             }
         }
     }
@@ -79,14 +81,18 @@ class OrdersViewModel @Inject constructor(
                 orderRepository.getPendingReviewCount().collect { count ->
                     _state.update { it.copy(pendingCount = count) }
                 }
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                Log.e("OrdersViewModel", "Error loading pending count", e)
+            }
         }
         offlineQueueJob = viewModelScope.launch {
             try {
                 orderRepository.getOfflineQueueCount().collect { count ->
                     _state.update { it.copy(offlineQueueCount = count) }
                 }
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                Log.e("OrdersViewModel", "Error loading offline queue count", e)
+            }
         }
     }
 
@@ -97,7 +103,9 @@ class OrdersViewModel @Inject constructor(
                 transactionRepository.getAllServerConfigs().collect { servers ->
                     _state.update { it.copy(servers = servers) }
                 }
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                Log.e("OrdersViewModel", "Error loading servers", e)
+            }
         }
     }
 
@@ -140,7 +148,9 @@ class OrdersViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 orderRepository.approveOrder(order)
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                Log.e("OrdersViewModel", "Error approving order ${order.id}", e)
+            }
         }
     }
 
@@ -148,7 +158,9 @@ class OrdersViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 orderRepository.rejectOrder(order)
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                Log.e("OrdersViewModel", "Error rejecting order ${order.id}", e)
+            }
         }
     }
 
@@ -159,7 +171,9 @@ class OrdersViewModel @Inject constructor(
                 for (order in pending) {
                     orderRepository.approveOrder(order)
                 }
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                Log.e("OrdersViewModel", "Error bulk approving orders", e)
+            }
         }
     }
 }
