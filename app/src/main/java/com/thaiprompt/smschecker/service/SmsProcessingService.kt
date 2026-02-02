@@ -149,9 +149,29 @@ class SmsProcessingService : Service() {
                     try {
                         val amountDouble = transaction.amount.toDoubleOrNull()
                         if (amountDouble != null) {
+                            Log.d(TAG, "Attempting to match transaction amount: $amountDouble")
+
+                            // Fetch latest orders from server before matching (for late payments)
+                            try {
+                                orderRepository.fetchOrders()
+                                Log.d(TAG, "Fetched latest orders from server for matching")
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Failed to fetch orders before matching, using cached orders", e)
+                            }
+
                             val ordersList = orderRepository.getAllOrders().first()
+                            Log.d(TAG, "Found ${ordersList.size} orders in database")
+
+                            // Log all pending orders for debugging
+                            ordersList.filter { it.approvalStatus == ApprovalStatus.PENDING_REVIEW }
+                                .forEach { order ->
+                                    val matches = order.amount == amountDouble
+                                    Log.d(TAG, "Order ${order.orderNumber}: amount=${order.amount}, sms=${amountDouble}, exact_match=$matches, status=${order.approvalStatus}")
+                                }
+
+                            // Exact match only - no tolerance, no rounding
                             val match = ordersList.find { order ->
-                                kotlin.math.abs(order.amount - amountDouble) < 0.01
+                                order.amount == amountDouble
                             }
                             matchedOrderNumber = match?.orderNumber
                             if (match != null) {
@@ -267,9 +287,29 @@ class SmsProcessingService : Service() {
                     try {
                         val amountDouble = notifTransaction.amount.toDoubleOrNull()
                         if (amountDouble != null) {
+                            Log.d(TAG, "Attempting to match notification amount: $amountDouble")
+
+                            // Fetch latest orders from server before matching (for late payments)
+                            try {
+                                orderRepository.fetchOrders()
+                                Log.d(TAG, "Fetched latest orders from server for matching")
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Failed to fetch orders before matching, using cached orders", e)
+                            }
+
                             val ordersList = orderRepository.getAllOrders().first()
+                            Log.d(TAG, "Found ${ordersList.size} orders in database")
+
+                            // Log all pending orders for debugging
+                            ordersList.filter { it.approvalStatus == ApprovalStatus.PENDING_REVIEW }
+                                .forEach { order ->
+                                    val matches = order.amount == amountDouble
+                                    Log.d(TAG, "Order ${order.orderNumber}: amount=${order.amount}, sms=${amountDouble}, exact_match=$matches, status=${order.approvalStatus}")
+                                }
+
+                            // Exact match only - no tolerance, no rounding
                             val match = ordersList.find { order ->
-                                kotlin.math.abs(order.amount - amountDouble) < 0.01
+                                order.amount == amountDouble
                             }
                             matchedOrderNumber = match?.orderNumber
                             if (match != null) {
