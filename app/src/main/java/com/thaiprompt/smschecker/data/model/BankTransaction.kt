@@ -40,6 +40,22 @@ data class BankTransaction(
         }
     }
 
+    fun getFormattedTimestamp(): String {
+        val now = System.currentTimeMillis()
+        val diff = now - timestamp
+
+        return when {
+            diff < 60_000 -> "เมื่อสักครู่"
+            diff < 3600_000 -> "${diff / 60_000} นาทีที่แล้ว"
+            diff < 86400_000 -> "${diff / 3600_000} ชั่วโมงที่แล้ว"
+            diff < 604800_000 -> "${diff / 86400_000} วันที่แล้ว"
+            else -> {
+                val sdf = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault())
+                sdf.format(java.util.Date(timestamp))
+            }
+        }
+    }
+
     fun getMaskedAccount(): String {
         return if (accountNumber.length > 4) {
             "xxx-${accountNumber.takeLast(4)}"
