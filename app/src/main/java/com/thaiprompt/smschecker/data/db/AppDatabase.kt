@@ -31,6 +31,20 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun smsSenderRuleDao(): SmsSenderRuleDao
 
     companion object {
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Migration from version 1 to 2
+                // Add any schema changes needed
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Migration from version 2 to 3
+                // Add any schema changes needed
+            }
+        }
+
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE bank_transactions ADD COLUMN sourceType TEXT NOT NULL DEFAULT 'SMS'")

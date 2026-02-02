@@ -33,8 +33,12 @@ object AppModule {
             AppDatabase::class.java,
             "smschecker_database"
         )
-            .addMigrations(AppDatabase.MIGRATION_3_4)
-            .fallbackToDestructiveMigrationOnDowngrade()
+            .addMigrations(
+                AppDatabase.MIGRATION_1_2,
+                AppDatabase.MIGRATION_2_3,
+                AppDatabase.MIGRATION_3_4
+            )
+            .fallbackToDestructiveMigration()
             .build()
     }
 
