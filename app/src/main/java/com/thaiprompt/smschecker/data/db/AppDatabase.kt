@@ -96,11 +96,14 @@ abstract class AppDatabase : RoomDatabase() {
                 // Check if column exists before adding
                 val cursor = db.query("PRAGMA table_info(bank_transactions)")
                 var hasSourceType = false
-                while (cursor.moveToNext()) {
-                    val columnName = cursor.getString(cursor.getColumnIndex("name"))
-                    if (columnName == "sourceType") {
-                        hasSourceType = true
-                        break
+                val nameColumnIndex = cursor.getColumnIndex("name")
+                if (nameColumnIndex >= 0) {
+                    while (cursor.moveToNext()) {
+                        val columnName = cursor.getString(nameColumnIndex)
+                        if (columnName == "sourceType") {
+                            hasSourceType = true
+                            break
+                        }
                     }
                 }
                 cursor.close()
