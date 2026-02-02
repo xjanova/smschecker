@@ -8,7 +8,4 @@
 
     <!-- Exclude sensitive security files -->
     <exclude domain="sharedpref" path="androidx.security.crypto.EncryptedSharedPreferences.xml" />
-
-    <!-- Exclude cache -->
-    <exclude domain="file" path="cache/" />
 </full-backup-content>
