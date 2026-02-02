@@ -38,6 +38,7 @@ object AppModule {
                 AppDatabase.MIGRATION_2_3,
                 AppDatabase.MIGRATION_3_4
             )
+            .addCallback(AppDatabase.SCHEMA_FIX_CALLBACK)
             .fallbackToDestructiveMigration()
             .build()
     }
