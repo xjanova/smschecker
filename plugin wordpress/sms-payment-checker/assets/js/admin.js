@@ -9,6 +9,36 @@
 (function($) {
     'use strict';
 
+    /**
+     * Generate QR Code using qrcodejs library
+     * @param {HTMLElement} container - Element to render QR code into
+     * @param {string} data - Data to encode
+     * @param {number} size - QR code size in pixels
+     */
+    function generateQRCode(container, data, size) {
+        size = size || 200;
+        $(container).html(''); // Clear container
+
+        if (typeof QRCode !== 'undefined') {
+            try {
+                new QRCode(container, {
+                    text: data,
+                    width: size,
+                    height: size,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+            } catch (error) {
+                console.error('QR Code error:', error);
+                $(container).html('<p style="color:red;">Failed to generate QR code</p>');
+            }
+        } else {
+            console.error('QRCode library not loaded');
+            $(container).html('<p style="color:red;">QR Code library not loaded</p>');
+        }
+    }
+
     // ═══ Create Device ═══
     $('#spc-add-device-form').on('submit', function(e) {
         e.preventDefault();
@@ -45,12 +75,7 @@
                         deviceId: d.device_id
                     });
 
-                    if (typeof QRCode !== 'undefined') {
-                        var canvas = document.createElement('canvas');
-                        QRCode.toCanvas(canvas, qrData, { width: 200 }, function() {
-                            $('#spc-qr-code').html('').append(canvas);
-                        });
-                    }
+                    generateQRCode(document.getElementById('spc-qr-code'), qrData, 200);
 
                     $('#device_name').val('');
 
@@ -113,16 +138,9 @@
     $(document).on('click', '.spc-show-qr', function() {
         var qrData = JSON.stringify($(this).data('qr'));
         var $modal = $('#spc-qr-modal');
-        var $qr = $('#spc-modal-qr').html('');
+        var qrContainer = document.getElementById('spc-modal-qr');
 
-        if (typeof QRCode !== 'undefined') {
-            var canvas = document.createElement('canvas');
-            QRCode.toCanvas(canvas, qrData, { width: 250 }, function() {
-                $qr.append(canvas);
-            });
-        } else {
-            $qr.html('<p>QR Code library not loaded.</p>');
-        }
+        generateQRCode(qrContainer, qrData, 250);
 
         $modal.show();
     });

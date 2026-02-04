@@ -111,8 +111,8 @@ class SPC_Admin {
             ),
         ) );
 
-        // QR Code library
-        wp_enqueue_script( 'qrcode-js', 'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js', array(), '1.5.3', true );
+        // QR Code library (Browser-compatible)
+        wp_enqueue_script( 'qrcode-js', 'https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js', array(), '1.0.0', true );
     }
 
     // ═══════════════════════════════════════
