@@ -178,7 +178,37 @@ The Android app (`QrScannerScreen.kt`) performs these validations:
 ### Browser (JavaScript)
 - **Recommended**: `qrcodejs@1.0.0` via CDN
 - **CDN**: `https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js`
+- **Alternative CDN**: `https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js`
 - **Note**: Do NOT use `qrcode@1.5.3` (Node.js library, not browser-compatible)
+
+### QR Code Generation Settings
+
+**IMPORTANT**: Use these settings for best scanning results:
+
+```javascript
+new QRCode(container, {
+    text: JSON.stringify(qrData),
+    width: 280,              // Recommended size
+    height: 280,
+    colorDark: '#000000',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M   // IMPORTANT: Use M, not H!
+});
+```
+
+**Error Correction Levels:**
+| Level | Error Correction | QR Density | Recommendation |
+|-------|-----------------|------------|----------------|
+| L (Low) | 7% | Least dense | Not recommended |
+| M (Medium) | 15% | Moderate | ✅ **Recommended** |
+| Q (Quartile) | 25% | Dense | OK for short data |
+| H (High) | 30% | Very dense | ❌ Too hard to scan |
+
+**Why use M instead of H?**
+- The QR code contains a lot of data (JSON with keys)
+- H level makes the QR code very dense with tiny modules
+- Dense QR codes are harder for phone cameras to scan
+- M provides good balance between error correction and scannability
 
 ### PHP (Server-side)
 - **Recommended**: `simplesoftwareio/simple-qrcode` for Laravel
@@ -191,6 +221,8 @@ The Android app (`QrScannerScreen.kt`) performs these validations:
 2. Verify `type` is exactly `"smschecker_config"`
 3. Ensure URL is base URL only (no API paths)
 4. Confirm all keys use camelCase
+5. **Use `correctLevel: M` not `H`** - High error correction makes QR too dense
+6. Ensure QR code size is at least 250x250 pixels (280x280 recommended)
 
 ### "QR Code read but not smschecker_config format"
 - The `type` field is wrong or missing

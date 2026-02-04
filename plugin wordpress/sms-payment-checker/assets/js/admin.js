@@ -16,18 +16,20 @@
      * @param {number} size - QR code size in pixels
      */
     function generateQRCode(container, data, size) {
-        size = size || 200;
+        size = size || 280;
         $(container).html(''); // Clear container
 
         if (typeof QRCode !== 'undefined') {
             try {
+                // Use correctLevel M (Medium) for better scanning
+                // H (High) makes QR too dense and harder to scan
                 new QRCode(container, {
                     text: data,
                     width: size,
                     height: size,
                     colorDark: '#000000',
                     colorLight: '#ffffff',
-                    correctLevel: QRCode.CorrectLevel.H
+                    correctLevel: QRCode.CorrectLevel.M
                 });
             } catch (error) {
                 console.error('QR Code error:', error);
