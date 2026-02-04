@@ -100,6 +100,11 @@ class SPC_Unique_Amount {
      * @param string $bank      Bank code
      * @param string $reference Reference number (optional fallback matching)
      * @return object|null Matched unique_amount record or null
+     *
+     * Returns object with properties:
+     * - id, base_amount, unique_amount, decimal_suffix
+     * - transaction_id, transaction_type, order_id
+     * - status, expires_at, matched_at
      */
     public static function match( $amount, $bank = '', $reference = '' ) {
         global $wpdb;
@@ -126,6 +131,12 @@ class SPC_Unique_Amount {
                 array( '%s', '%s' ),
                 array( '%d' )
             );
+
+            // Ensure transaction_type has a default value
+            if ( empty( $match->transaction_type ) ) {
+                $match->transaction_type = 'order';
+            }
+
             return $match;
         }
 
@@ -162,5 +173,71 @@ class SPC_Unique_Amount {
             "UPDATE {$tables['amounts']} SET status = 'expired' WHERE status = 'reserved' AND expires_at < %s",
             current_time( 'mysql' )
         ) );
+    }
+
+    /**
+     * Regenerate unique amount for an existing transaction
+     *
+     * Expires the old unique amount and generates a new one.
+     * Useful for "pay later" scenarios.
+     *
+     * @param int    $old_unique_amount_id The ID of the old unique amount to expire
+     * @param float  $base_amount          Base amount for the new unique amount
+     * @param string $transaction_id       Transaction ID (e.g., wallet topup ID)
+     * @param string $transaction_type     Transaction type (e.g., 'wallet_topup')
+     * @param int    $order_id             Optional WooCommerce order ID
+     * @param int    $expiry_minutes       Expiry time in minutes (default 30)
+     * @return array|WP_Error New unique amount data or error
+     */
+    public static function regenerate( $old_unique_amount_id, $base_amount, $transaction_id = null, $transaction_type = null, $order_id = null, $expiry_minutes = 30 ) {
+        // Expire the old unique amount
+        if ( $old_unique_amount_id ) {
+            self::cancel( $old_unique_amount_id );
+        }
+
+        // Generate new unique amount
+        return self::generate( $base_amount, $transaction_id, $transaction_type, $order_id, $expiry_minutes );
+    }
+
+    /**
+     * Get unique amount by transaction
+     *
+     * @param string $transaction_id   Transaction ID
+     * @param string $transaction_type Transaction type
+     * @return object|null
+     */
+    public static function get_by_transaction( $transaction_id, $transaction_type = 'order' ) {
+        global $wpdb;
+        $tables = SPC_Database::get_table_names();
+
+        return $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$tables['amounts']}
+             WHERE transaction_id = %s AND transaction_type = %s AND status = 'reserved'
+             ORDER BY created_at DESC LIMIT 1",
+            $transaction_id,
+            $transaction_type
+        ) );
+    }
+
+    /**
+     * Check if a unique amount has expired
+     *
+     * @param int $id Unique amount ID
+     * @return bool
+     */
+    public static function is_expired( $id ) {
+        global $wpdb;
+        $tables = SPC_Database::get_table_names();
+
+        $record = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$tables['amounts']} WHERE id = %d",
+            $id
+        ) );
+
+        if ( ! $record ) {
+            return true;
+        }
+
+        return strtotime( $record->expires_at ) < time() || $record->status !== 'reserved';
     }
 }

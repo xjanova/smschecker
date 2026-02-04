@@ -115,8 +115,9 @@ class SPC_Payment_Service {
         $amount_match = SPC_Unique_Amount::match( $data['amount'], $data['bank'], $data['reference_number'] );
 
         if ( $amount_match ) {
-            $order_id       = $amount_match->order_id;
-            $transaction_id = $amount_match->transaction_id;
+            $transaction_type = $amount_match->transaction_type ?? 'order';
+            $transaction_id   = $amount_match->transaction_id;
+            $order_id         = $amount_match->order_id;
 
             // Update notification status
             $wpdb->update(
@@ -131,12 +132,23 @@ class SPC_Payment_Service {
                 array( '%d' )
             );
 
-            // Create order approval record
+            // Determine approval status
             $approval_status = 'auto_approved';
             if ( isset( $settings['approval_mode'] ) && $settings['approval_mode'] === 'manual' ) {
                 $approval_status = 'pending_review';
             }
 
+            // Handle based on transaction type
+            if ( $transaction_type === 'wallet_topup' ) {
+                return self::handle_wallet_topup_match(
+                    $notification_id,
+                    $transaction_id,
+                    $data,
+                    $approval_status
+                );
+            }
+
+            // Default: WooCommerce order handling
             $wpdb->insert(
                 $tables['orders'],
                 array(
@@ -166,9 +178,10 @@ class SPC_Payment_Service {
             return array(
                 'matched' => true,
                 'details' => array(
-                    'order_id'        => $order_id,
-                    'transaction_id'  => $transaction_id,
-                    'approval_status' => $approval_status,
+                    'order_id'         => $order_id,
+                    'transaction_id'   => $transaction_id,
+                    'transaction_type' => $transaction_type,
+                    'approval_status'  => $approval_status,
                 ),
             );
         }
@@ -224,6 +237,51 @@ class SPC_Payment_Service {
         }
 
         return array( 'matched' => false );
+    }
+
+    /**
+     * Handle wallet topup match
+     *
+     * Fires action hook for external handling (e.g., custom wallet plugins)
+     *
+     * @param int    $notification_id
+     * @param string $transaction_id  Wallet topup ID
+     * @param array  $data            Notification data
+     * @param string $approval_status
+     * @return array
+     */
+    private static function handle_wallet_topup_match( $notification_id, $transaction_id, $data, $approval_status ) {
+        global $wpdb;
+        $tables = SPC_Database::get_table_names();
+
+        // Create order approval record for tracking
+        $wpdb->insert(
+            $tables['orders'],
+            array(
+                'notification_id'        => $notification_id,
+                'order_id'               => 0, // No WooCommerce order
+                'matched_transaction_id' => $transaction_id,
+                'device_id'              => $data['device_id'],
+                'approval_status'        => $approval_status,
+                'confidence'             => 'high',
+                'approved_by'            => $approval_status === 'auto_approved' ? 'system' : null,
+                'approved_at'            => $approval_status === 'auto_approved' ? current_time( 'mysql' ) : null,
+            ),
+            array( '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s' )
+        );
+
+        // Fire action hook for wallet topup handling
+        // External plugins can hook into this to process wallet topups
+        do_action( 'spc_wallet_topup_matched', $notification_id, $transaction_id, $data, $approval_status );
+
+        return array(
+            'matched' => true,
+            'details' => array(
+                'transaction_id'   => $transaction_id,
+                'transaction_type' => 'wallet_topup',
+                'approval_status'  => $approval_status,
+            ),
+        );
     }
 
     /**
@@ -528,5 +586,47 @@ class SPC_Payment_Service {
             }
         }
         return '127.0.0.1';
+    }
+
+    /**
+     * Generate unique amount for a wallet topup
+     *
+     * Helper method specifically for wallet topup transactions.
+     *
+     * @param float  $amount         Base amount
+     * @param string $transaction_id Transaction ID (e.g., topup ID)
+     * @param int    $expiry_minutes Expiry time in minutes (default 30)
+     * @return array|WP_Error Unique amount data or error
+     */
+    public static function generate_wallet_topup_amount( $amount, $transaction_id, $expiry_minutes = 30 ) {
+        return SPC_Unique_Amount::generate(
+            $amount,
+            $transaction_id,
+            'wallet_topup',
+            null, // No WooCommerce order ID
+            $expiry_minutes
+        );
+    }
+
+    /**
+     * Regenerate unique amount for an existing wallet topup
+     *
+     * Used when user wants to pay later and needs a new unique amount.
+     *
+     * @param int    $old_unique_amount_id Old unique amount ID to expire
+     * @param float  $amount               Base amount
+     * @param string $transaction_id       Transaction ID
+     * @param int    $expiry_minutes       Expiry time in minutes (default 30)
+     * @return array|WP_Error New unique amount data or error
+     */
+    public static function regenerate_wallet_topup_amount( $old_unique_amount_id, $amount, $transaction_id, $expiry_minutes = 30 ) {
+        return SPC_Unique_Amount::regenerate(
+            $old_unique_amount_id,
+            $amount,
+            $transaction_id,
+            'wallet_topup',
+            null,
+            $expiry_minutes
+        );
     }
 }
