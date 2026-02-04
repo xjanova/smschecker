@@ -197,6 +197,18 @@ class SPC_Device_Manager {
     /**
      * Generate QR code data for a device
      *
+     * IMPORTANT: This format MUST match what the Android app expects.
+     * See: SmsChecker/app/src/main/java/com/thaiprompt/smschecker/ui/qrscanner/QrScannerScreen.kt
+     *
+     * Required fields:
+     * - type: Must be exactly "smschecker_config" (no underscore between sms and checker)
+     * - version: Integer, currently 2
+     * - url: Base URL only (e.g., https://example.com) - Android app adds /api/v1/sms-payment/* paths
+     * - apiKey: camelCase, min 16 characters
+     * - secretKey: camelCase, min 16 characters
+     * - deviceId: camelCase
+     * - deviceName: camelCase
+     *
      * @param int $device_id Database ID
      * @return array|false QR payload or false
      */
@@ -207,9 +219,9 @@ class SPC_Device_Manager {
         }
 
         return array(
-            'type'       => 'sms_checker_config',
+            'type'       => 'smschecker_config',  // IMPORTANT: No underscore between "sms" and "checker"
             'version'    => 2,
-            'url'        => rest_url( 'sms-payment/v1' ),
+            'url'        => home_url(),           // Base URL only - Android app adds API paths
             'apiKey'     => $device->api_key,
             'secretKey'  => $device->secret_key,
             'deviceName' => $device->device_name,

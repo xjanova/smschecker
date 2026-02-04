@@ -65,10 +65,13 @@
                     $('#spc-new-device-result').slideDown();
 
                     // Generate QR code
+                    // IMPORTANT: Format must match Android app expectations
+                    // - type: "smschecker_config" (no underscore between sms and checker)
+                    // - url: Base URL only (Android app adds /api/v1/sms-payment/* paths)
                     var qrData = JSON.stringify({
-                        type: 'sms_checker_config',
+                        type: 'smschecker_config',
                         version: 2,
-                        url: spcAdmin.rest_url,
+                        url: spcAdmin.site_url,  // Base URL only
                         apiKey: d.api_key,
                         secretKey: d.secret_key,
                         deviceName: d.device_name,

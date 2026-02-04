@@ -102,6 +102,7 @@ class SPC_Admin {
             'ajax_url' => admin_url( 'admin-ajax.php' ),
             'nonce'    => wp_create_nonce( 'spc_admin_nonce' ),
             'rest_url' => rest_url( 'sms-payment/v1/' ),
+            'site_url' => home_url(),  // Base URL for QR code (Android app adds API paths)
             'strings'  => array(
                 'confirm_delete' => __( 'Are you sure you want to delete this device?', 'sms-payment-checker' ),
                 'confirm_approve' => __( 'Approve this order?', 'sms-payment-checker' ),
