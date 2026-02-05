@@ -18,10 +18,6 @@ class OrderSyncWorker @AssistedInject constructor(
     private val orphanRepository: OrphanTransactionRepository
 ) : CoroutineWorker(appContext, workerParams) {
 
-    companion object {
-        private const val TAG = "OrderSyncWorker"
-    }
-
     override suspend fun doWork(): Result {
         val startTime = System.currentTimeMillis()
 
@@ -114,6 +110,7 @@ class OrderSyncWorker @AssistedInject constructor(
     }
 
     companion object {
+        private const val TAG = "OrderSyncWorker"
         private const val WORK_NAME_PERIODIC = "order_sync_periodic"
         private const val WORK_NAME_ONE_TIME = "order_sync_one_time"
 

@@ -70,7 +70,4 @@ enum class OrphanStatus(val displayName: String) {
     IGNORED("Ignored")                   // ผู้ใช้ไม่สนใจ
 }
 
-enum class TransactionSource {
-    SMS,
-    NOTIFICATION
-}
+// TransactionSource is defined in BankTransaction.kt - reuse that enum
