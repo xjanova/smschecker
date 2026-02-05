@@ -69,10 +69,11 @@ fun SettingsScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Check notification access permission when screen resumes
+    // Check notification access and SMS permission when screen resumes
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             viewModel.checkNotificationAccess(context)
+            viewModel.checkSmsPermission(context)
         }
     }
 
@@ -186,53 +187,93 @@ fun SettingsScreen(
         // Monitoring Toggle
         item {
             GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (state.isMonitoring) AppColors.CreditGreen.copy(alpha = 0.15f)
+                                        else AppColors.DebitRed.copy(alpha = 0.15f)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.MonitorHeart,
+                                    contentDescription = null,
+                                    tint = if (state.isMonitoring) AppColors.CreditGreen else AppColors.DebitRed,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    strings.monitorSms,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                                Text(
+                                    if (state.isMonitoring) strings.monitoringActive
+                                    else strings.monitoringPaused,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = state.isMonitoring,
+                            onCheckedChange = {
+                                if (!state.isSmsPermissionGranted && !state.isMonitoring) {
+                                    // Open app settings to grant SMS permission
+                                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                        data = android.net.Uri.fromParts("package", context.packageName, null)
+                                    }
+                                    context.startActivity(intent)
+                                } else {
+                                    viewModel.toggleMonitoring()
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = AppColors.CreditGreen,
+                                checkedTrackColor = AppColors.CreditGreen.copy(alpha = 0.3f)
+                            )
+                        )
+                    }
+                    // Warning if SMS permission not granted
+                    if (!state.isSmsPermissionGranted) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
                             modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (state.isMonitoring) AppColors.CreditGreen.copy(alpha = 0.15f)
-                                    else AppColors.DebitRed.copy(alpha = 0.15f)
-                                ),
-                            contentAlignment = Alignment.Center
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(AppColors.WarningOrange.copy(alpha = 0.1f))
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                Icons.Default.MonitorHeart,
+                                Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = if (state.isMonitoring) AppColors.CreditGreen else AppColors.DebitRed,
-                                modifier = Modifier.size(20.dp)
+                                tint = AppColors.WarningOrange,
+                                modifier = Modifier.size(16.dp)
                             )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                strings.monitorSms,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                            Text(
-                                if (state.isMonitoring) strings.monitoringActive
-                                else strings.monitoringPaused,
+                                strings.smsPermissionRequired,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = AppColors.WarningOrange
                             )
                         }
                     }
-                    Switch(
-                        checked = state.isMonitoring,
-                        onCheckedChange = { viewModel.toggleMonitoring() },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = AppColors.CreditGreen,
-                            checkedTrackColor = AppColors.CreditGreen.copy(alpha = 0.3f)
-                        )
-                    )
                 }
             }
         }

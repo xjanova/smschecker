@@ -232,6 +232,9 @@ data class AppStrings(
     val notificationAccessRequired: String,
     val notificationBadge: String,
 
+    // === SMS Permission ===
+    val smsPermissionRequired: String,
+
     // === SMS History Edit ===
     val editTransaction: String,
     val editBank: String,
@@ -364,7 +367,7 @@ val ThaiStrings = AppStrings(
     secretKeyLabel = "Secret Key (สำหรับเข้ารหัส)",
     setAsDefault = "ตั้งเป็นเซิร์ฟเวอร์หลัก",
     saveButton = "บันทึก",
-    versionInfo = "SMS Payment Checker v1.8.4\n\u00A9 2025 Xman Studio",
+    versionInfo = "SMS Payment Checker v1.9.1\n\u00A9 2025 Xman Studio",
 
     // Theme
     themeMode = "ธีม",
@@ -475,6 +478,9 @@ val ThaiStrings = AppStrings(
     notificationListeningPaused = "ปิดอยู่",
     notificationAccessRequired = "ต้องเปิดสิทธิ์การเข้าถึงการแจ้งเตือนในตั้งค่าระบบ",
     notificationBadge = "แจ้งเตือน",
+
+    // SMS Permission
+    smsPermissionRequired = "ต้องเปิดสิทธิ์รับ SMS ในตั้งค่าแอป",
 
     // SMS History Edit
     editTransaction = "แก้ไขรายการ",
@@ -608,7 +614,7 @@ val EnglishStrings = AppStrings(
     secretKeyLabel = "Secret Key (encryption)",
     setAsDefault = "Set as default server",
     saveButton = "Save",
-    versionInfo = "SMS Payment Checker v1.8.4\n\u00A9 2025 Xman Studio",
+    versionInfo = "SMS Payment Checker v1.9.1\n\u00A9 2025 Xman Studio",
 
     // Theme
     themeMode = "Theme",
@@ -719,6 +725,9 @@ val EnglishStrings = AppStrings(
     notificationListeningPaused = "Disabled",
     notificationAccessRequired = "Enable Notification Access in system settings",
     notificationBadge = "Notification",
+
+    // SMS Permission
+    smsPermissionRequired = "Enable SMS permission in app settings",
 
     // SMS History Edit
     editTransaction = "Edit Transaction",

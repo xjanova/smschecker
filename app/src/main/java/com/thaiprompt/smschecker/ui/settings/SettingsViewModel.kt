@@ -1,7 +1,10 @@
 package com.thaiprompt.smschecker.ui.settings
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.provider.Settings
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.thaiprompt.smschecker.data.model.ApprovalMode
@@ -37,6 +40,7 @@ data class SettingsState(
     val ttsSpeakOrder: Boolean = true,
     val isNotificationListening: Boolean = false,
     val isNotificationAccessGranted: Boolean = false,
+    val isSmsPermissionGranted: Boolean = false,
     // Sync status
     val isSyncing: Boolean = false,
     val lastSyncTime: Long? = null,
@@ -284,6 +288,16 @@ class SettingsViewModel @Inject constructor(
             val packageName = context.packageName
             val isGranted = enabledListeners.contains(packageName)
             _state.update { it.copy(isNotificationAccessGranted = isGranted) }
+        } catch (e: Exception) { }
+    }
+
+    fun checkSmsPermission(context: Context) {
+        try {
+            val isGranted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECEIVE_SMS
+            ) == PackageManager.PERMISSION_GRANTED
+            _state.update { it.copy(isSmsPermissionGranted = isGranted) }
         } catch (e: Exception) { }
     }
 
