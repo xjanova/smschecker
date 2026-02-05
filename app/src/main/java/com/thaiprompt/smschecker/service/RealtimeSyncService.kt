@@ -102,8 +102,9 @@ class RealtimeSyncService : Service() {
     private var isRunning = false
 
     // Periodic sync job - using polling instead of WebSocket
+    // Now using match-only mode, so polling is less frequent (for orphan recovery only)
     private var periodicSyncJob: Job? = null
-    private var syncIntervalMs: Long = 5_000L // Default 5 seconds, will be updated from server config
+    private var syncIntervalMs: Long = 60_000L // Default 60 seconds (match-only mode queries servers on SMS receive)
 
     // Orphan cleanup job
     private var orphanCleanupJob: Job? = null

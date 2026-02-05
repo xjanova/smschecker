@@ -406,6 +406,119 @@ class OrderRepository @Inject constructor(
             }
         }
     }
+
+    // =====================================================================
+    // Match-Only Mode: Query servers with SMS amount
+    // =====================================================================
+
+    /**
+     * Match order by SMS amount - queries all active servers in PARALLEL.
+     * Called when SMS is received instead of fetching all orders.
+     *
+     * @param amount The exact SMS amount to match (e.g., "500.37")
+     * @return MatchResult containing the matched order and server ID, or null if not found
+     */
+    suspend fun matchOrderByAmount(amount: Double): MatchResult? {
+        val activeServers = try {
+            serverConfigDao.getActiveConfigs()
+        } catch (e: Exception) {
+            Log.e("OrderRepository", "Failed to get active servers", e)
+            return null
+        }
+        val deviceId = secureStorage.getDeviceId() ?: return null
+
+        if (activeServers.isEmpty()) {
+            Log.d("OrderRepository", "No active servers to query")
+            return null
+        }
+
+        val amountStr = "%.2f".format(amount)
+        Log.i("OrderRepository", "Matching order by amount: $amountStr on ${activeServers.size} servers")
+
+        // Query all servers in PARALLEL
+        val serverList = activeServers.mapNotNull { server ->
+            val apiKey = secureStorage.getApiKey(server.id)
+            if (apiKey != null) server.id to server.name else null
+        }
+
+        var matchedResult: MatchResult? = null
+
+        val results = ParallelSyncHelper.executeParallel(
+            servers = serverList,
+            maxConcurrency = 5,
+            timeoutMs = 15_000L
+        ) { serverId ->
+            val result = matchOrderFromServer(serverId, deviceId, amountStr)
+            if (result != null) {
+                matchedResult = result
+            }
+        }
+
+        if (matchedResult != null) {
+            Log.i("OrderRepository", "Order matched! server=${matchedResult!!.serverId}, order=${matchedResult!!.order.remoteApprovalId}")
+        } else {
+            Log.d("OrderRepository", "No matching order found on any server for amount $amountStr")
+        }
+
+        return matchedResult
+    }
+
+    /**
+     * Query a single server for matching order by amount.
+     */
+    private suspend fun matchOrderFromServer(serverId: Long, deviceId: String, amount: String): MatchResult? {
+        val server = serverConfigDao.getById(serverId) ?: return null
+        val apiKey = secureStorage.getApiKey(serverId) ?: return null
+
+        return try {
+            val client = apiClientFactory.getClient(server.baseUrl)
+            val response = client.matchOrderByAmount(apiKey, deviceId, amount)
+
+            if (response.isSuccessful) {
+                val data = response.body()?.data
+                if (data?.matched == true && data.order != null) {
+                    val localOrder = data.order.toLocalEntity(serverId)
+                    // Save to local database
+                    try {
+                        val existingId = orderApprovalDao.getByRemoteId(data.order.id, serverId)?.id
+                        if (existingId != null) {
+                            orderApprovalDao.update(localOrder.copy(id = existingId))
+                        } else {
+                            orderApprovalDao.insert(localOrder)
+                        }
+                    } catch (e: Exception) {
+                        Log.e("OrderRepository", "Failed to save matched order", e)
+                    }
+
+                    // Update sync status
+                    serverConfigDao.updateSyncStatus(serverId, System.currentTimeMillis(), "success")
+
+                    MatchResult(
+                        serverId = serverId,
+                        serverName = server.name,
+                        order = localOrder
+                    )
+                } else {
+                    null
+                }
+            } else {
+                Log.w("OrderRepository", "Match request failed for ${server.name}: ${response.code()}")
+                null
+            }
+        } catch (e: Exception) {
+            Log.e("OrderRepository", "Match request error for ${server.name}", e)
+            null
+        }
+    }
+
+    /**
+     * Result of matching order by amount.
+     */
+    data class MatchResult(
+        val serverId: Long,
+        val serverName: String,
+        val order: OrderApproval
+    )
 }
 
 fun RemoteOrderApproval.toLocalEntity(serverId: Long): OrderApproval {

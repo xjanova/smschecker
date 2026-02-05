@@ -146,69 +146,46 @@ class SmsProcessingService : Service() {
                 // Update foreground notification with counters
                 updateNotification("กำลังทำงาน | ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
 
-                // Try to match with orders (by amount for credit transactions)
+                // Try to match with orders using MATCH-ONLY MODE
+                // Query servers with SMS amount instead of fetching all orders
                 var matchedOrderNumber: String? = null
                 if (transaction.type == TransactionType.CREDIT) {
                     try {
                         val amountDouble = transaction.amount.toDoubleOrNull()
                         if (amountDouble != null) {
-                            Log.d(TAG, "Attempting to match transaction amount: $amountDouble")
+                            Log.d(TAG, "🔍 MATCH-ONLY MODE: Querying servers for amount: $amountDouble")
 
-                            // Fetch latest orders from server before matching (for late payments)
-                            try {
-                                orderRepository.fetchOrders()
-                                Log.d(TAG, "Fetched latest orders from server for matching")
-                            } catch (e: Exception) {
-                                Log.w(TAG, "Failed to fetch orders before matching, using cached orders", e)
-                            }
+                            // Use match-only mode: query servers with amount
+                            val matchResult = orderRepository.matchOrderByAmount(amountDouble)
 
-                            val ordersList = orderRepository.getAllOrders().first()
-                            val pendingOrders = ordersList.filter { it.approvalStatus == ApprovalStatus.PENDING_REVIEW }
-                            Log.d(TAG, "Found ${ordersList.size} total orders, ${pendingOrders.size} pending")
-
-                            // Log all pending orders for debugging
-                            pendingOrders.forEach { order ->
-                                val matches = order.amount == amountDouble
-                                Log.d(TAG, "Pending order ${order.orderNumber}: amount=${order.amount}, sms=${amountDouble}, exact_match=$matches")
-                            }
-
-                            // Exact match only with PENDING_REVIEW orders
-                            val match = pendingOrders.find { order ->
-                                order.amount == amountDouble
-                            }
-                            matchedOrderNumber = match?.orderNumber
-                            if (match != null) {
+                            if (matchResult != null) {
+                                val matchedOrder = matchResult.order
                                 sessionMatchedCount++
-                                Log.d(TAG, "Matched transaction with order: ${match.orderNumber} (ID: ${match.id})")
+                                matchedOrderNumber = matchedOrder.orderNumber
+                                Log.d(TAG, "✅ Matched transaction with order: ${matchedOrder.orderNumber} on server ${matchResult.serverName}")
                                 updateNotification("กำลังทำงาน | ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
 
                                 // Auto-approve matched order
                                 try {
-                                    val approvalSuccess = orderRepository.approveOrder(match.id)
+                                    val approvalSuccess = orderRepository.approveOrder(matchedOrder.id)
                                     if (approvalSuccess) {
-                                        Log.d(TAG, "Successfully auto-approved order: ${match.orderNumber}")
-                                        // Fetch updated orders to reflect approval status
-                                        try {
-                                            orderRepository.fetchOrders()
-                                        } catch (e: Exception) {
-                                            Log.w(TAG, "Failed to fetch updated orders after approval", e)
-                                        }
+                                        Log.d(TAG, "✅ Successfully auto-approved order: ${matchedOrder.orderNumber}")
                                     } else {
-                                        Log.w(TAG, "Failed to auto-approve order: ${match.orderNumber}")
+                                        Log.w(TAG, "⚠️ Failed to auto-approve order: ${matchedOrder.orderNumber}")
                                     }
                                 } catch (e: Exception) {
-                                    Log.e(TAG, "Error auto-approving order: ${match.orderNumber}", e)
+                                    Log.e(TAG, "Error auto-approving order: ${matchedOrder.orderNumber}", e)
                                 }
                             } else {
                                 // ไม่พบออเดอร์ที่ตรงกัน → เก็บเป็น Orphan Transaction
                                 // เพื่อให้จับคู่ได้ภายหลังเมื่อออเดอร์มาถึง
-                                Log.d(TAG, "No matching order for amount $amountDouble, saving as orphan")
+                                Log.d(TAG, "⏳ No matching order for amount $amountDouble, saving as orphan")
                                 try {
                                     orphanRepository.saveAsOrphan(
                                         transaction = savedTransaction,
                                         source = com.thaiprompt.smschecker.data.model.TransactionSource.SMS
                                     )
-                                    Log.i(TAG, "Saved orphan transaction: ${savedTransaction.bank} ${savedTransaction.amount}")
+                                    Log.i(TAG, "💾 Saved orphan transaction: ${savedTransaction.bank} ${savedTransaction.amount}")
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Failed to save orphan transaction", e)
                                 }
@@ -297,68 +274,45 @@ class SmsProcessingService : Service() {
                 // Update foreground notification with counters
                 updateNotification("กำลังทำงาน | ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
 
-                // Try to match with orders (by amount for credit transactions)
+                // Try to match with orders using MATCH-ONLY MODE
+                // Query servers with notification amount instead of fetching all orders
                 var matchedOrderNumber: String? = null
                 if (notifTransaction.type == TransactionType.CREDIT) {
                     try {
                         val amountDouble = notifTransaction.amount.toDoubleOrNull()
                         if (amountDouble != null) {
-                            Log.d(TAG, "Attempting to match notification amount: $amountDouble")
+                            Log.d(TAG, "🔍 MATCH-ONLY MODE: Querying servers for notification amount: $amountDouble")
 
-                            // Fetch latest orders from server before matching (for late payments)
-                            try {
-                                orderRepository.fetchOrders()
-                                Log.d(TAG, "Fetched latest orders from server for matching")
-                            } catch (e: Exception) {
-                                Log.w(TAG, "Failed to fetch orders before matching, using cached orders", e)
-                            }
+                            // Use match-only mode: query servers with amount
+                            val matchResult = orderRepository.matchOrderByAmount(amountDouble)
 
-                            val ordersList = orderRepository.getAllOrders().first()
-                            val pendingOrders = ordersList.filter { it.approvalStatus == ApprovalStatus.PENDING_REVIEW }
-                            Log.d(TAG, "Found ${ordersList.size} total orders, ${pendingOrders.size} pending")
-
-                            // Log all pending orders for debugging
-                            pendingOrders.forEach { order ->
-                                val matches = order.amount == amountDouble
-                                Log.d(TAG, "Pending order ${order.orderNumber}: amount=${order.amount}, sms=${amountDouble}, exact_match=$matches")
-                            }
-
-                            // Exact match only with PENDING_REVIEW orders
-                            val match = pendingOrders.find { order ->
-                                order.amount == amountDouble
-                            }
-                            matchedOrderNumber = match?.orderNumber
-                            if (match != null) {
+                            if (matchResult != null) {
+                                val matchedOrder = matchResult.order
                                 sessionMatchedCount++
-                                Log.d(TAG, "Matched notification with order: ${match.orderNumber} (ID: ${match.id})")
+                                matchedOrderNumber = matchedOrder.orderNumber
+                                Log.d(TAG, "✅ Matched notification with order: ${matchedOrder.orderNumber} on server ${matchResult.serverName}")
                                 updateNotification("กำลังทำงาน | ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
 
                                 // Auto-approve matched order
                                 try {
-                                    val approvalSuccess = orderRepository.approveOrder(match.id)
+                                    val approvalSuccess = orderRepository.approveOrder(matchedOrder.id)
                                     if (approvalSuccess) {
-                                        Log.d(TAG, "Successfully auto-approved order from notification: ${match.orderNumber}")
-                                        // Fetch updated orders to reflect approval status
-                                        try {
-                                            orderRepository.fetchOrders()
-                                        } catch (e: Exception) {
-                                            Log.w(TAG, "Failed to fetch updated orders after notification approval", e)
-                                        }
+                                        Log.d(TAG, "✅ Successfully auto-approved order from notification: ${matchedOrder.orderNumber}")
                                     } else {
-                                        Log.w(TAG, "Failed to auto-approve order from notification: ${match.orderNumber}")
+                                        Log.w(TAG, "⚠️ Failed to auto-approve order from notification: ${matchedOrder.orderNumber}")
                                     }
                                 } catch (e: Exception) {
-                                    Log.e(TAG, "Error auto-approving order from notification: ${match.orderNumber}", e)
+                                    Log.e(TAG, "Error auto-approving order from notification: ${matchedOrder.orderNumber}", e)
                                 }
                             } else {
                                 // ไม่พบออเดอร์ที่ตรงกัน → เก็บเป็น Orphan Transaction
-                                Log.d(TAG, "No matching order for notification amount $amountDouble, saving as orphan")
+                                Log.d(TAG, "⏳ No matching order for notification amount $amountDouble, saving as orphan")
                                 try {
                                     orphanRepository.saveAsOrphan(
                                         transaction = savedTransaction,
                                         source = com.thaiprompt.smschecker.data.model.TransactionSource.NOTIFICATION
                                     )
-                                    Log.i(TAG, "Saved orphan transaction from notification: ${savedTransaction.bank} ${savedTransaction.amount}")
+                                    Log.i(TAG, "💾 Saved orphan transaction from notification: ${savedTransaction.bank} ${savedTransaction.amount}")
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Failed to save orphan transaction from notification", e)
                                 }

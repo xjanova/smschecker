@@ -69,6 +69,18 @@ interface PaymentApiService {
         @Query("since_version") sinceVersion: Long = 0
     ): Response<SyncResponse>
 
+    /**
+     * Match-only mode: Find order by SMS amount.
+     * Called when SMS is received instead of fetching all orders.
+     * Returns only the order that matches the exact amount (unique decimal).
+     */
+    @GET("api/v1/sms-payment/orders/match")
+    suspend fun matchOrderByAmount(
+        @Header("X-Api-Key") apiKey: String,
+        @Header("X-Device-Id") deviceId: String,
+        @Query("amount") amount: String
+    ): Response<MatchOrderResponse>
+
     @GET("api/v1/sms-payment/device-settings")
     suspend fun getDeviceSettings(
         @Header("X-Api-Key") apiKey: String,
@@ -219,4 +231,17 @@ data class RemoteDailyStats(
     val approved: Int = 0,
     val rejected: Int = 0,
     val amount: Double = 0.0
+)
+
+// --- Match Order Response (for match-only mode) ---
+
+data class MatchOrderResponse(
+    val success: Boolean,
+    val data: MatchOrderData? = null
+)
+
+data class MatchOrderData(
+    val matched: Boolean = false,
+    val order: RemoteOrderApproval? = null,
+    val message: String? = null
 )
