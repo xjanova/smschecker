@@ -699,74 +699,277 @@ val signature = Base64.encodeToString(mac.doFinal(signatureData.toByteArray()), 
 
 ---
 
-## WebSocket Real-time Sync (v1.6+)
+## FCM Push Notifications
 
-The Android app can maintain a persistent WebSocket connection for real-time updates instead of polling.
+Firebase Cloud Messaging (FCM) is used to send push notifications to the Android app.
 
-### WebSocket Endpoint
+### POST /register-fcm-token
 
+Register or update the FCM token for push notifications.
+
+**Headers:**
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Api-Key` | Yes | Device API key |
+| `X-Device-Id` | Yes | Device identifier |
+
+**Body:**
+
+```json
+{
+  "fcm_token": "your-fcm-token-from-firebase"
+}
 ```
-wss://your-domain.com/ws/device?api_key={api_key}&device_id={device_id}
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "FCM token registered successfully"
+}
 ```
 
-### Message Types
+### FCM Message Types
 
-**Server → Client:**
+| Type | Visible | Description |
+|------|---------|-------------|
+| `new_order` | Yes | New order created awaiting payment |
+| `payment_matched` | Yes | Payment was matched to an order |
+| `order_update` | Yes | Order status changed |
+| `sync` | No | Silent push to trigger sync |
 
-| Type | Description |
-|------|-------------|
-| `new_order` | A new order has been created that may match this device |
-| `order_update` | An existing order's status has changed |
-| `sync_request` | Server requests the device to sync |
-| `pong` | Response to client ping |
-
-**Client → Server:**
-
-| Type | Description |
-|------|-------------|
-| `ping` | Heartbeat to keep connection alive |
-
-### Message Format
+### FCM Data Payload
 
 ```json
 {
   "type": "new_order",
-  "data": {
-    "order_id": 123,
+  "order_id": "123",
+  "order_number": "ORD-2025-001",
+  "amount": "500.37",
+  "customer_name": "Customer Name"
+}
+```
+
+---
+
+## Pusher/WebSocket Real-time Sync (v1.6+)
+
+The app uses Pusher for real-time event broadcasting.
+
+### POST /pusher/auth
+
+Authenticate for Pusher private channels.
+
+**Headers:**
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Api-Key` | Yes | Device API key |
+| `X-Device-Id` | Yes | Device identifier |
+
+**Body:**
+
+```json
+{
+  "socket_id": "123.456",
+  "channel_name": "private-sms-checker.device.DEVICE_ID"
+}
+```
+
+**Response:**
+
+```json
+{
+  "auth": "key:signature"
+}
+```
+
+### Channels
+
+| Channel | Type | Description |
+|---------|------|-------------|
+| `sms-checker.broadcast` | Public | All devices receive |
+| `private-sms-checker.device.{device_id}` | Private | Device-specific events |
+
+### Events
+
+| Event | Channel | Description |
+|-------|---------|-------------|
+| `payment.matched` | Both | Payment matched to order |
+| `order.created` | broadcast | New order created |
+| `order.status_changed` | broadcast | Order status updated |
+
+### Event Payload Example
+
+```json
+{
+  "type": "payment_matched",
+  "order": {
+    "id": 123,
+    "order_number": "ORD-2025-001",
+    "customer_name": "Customer",
+    "total": 500.37,
+    "status": "confirmed"
+  },
+  "notification": {
+    "id": 42,
+    "bank": "KBANK",
+    "bank_name": "ธนาคารกสิกรไทย",
     "amount": 500.37,
-    "order_number": "ORD-2025-001"
+    "status": "confirmed"
+  },
+  "timestamp": "2025-01-29T15:00:00+07:00"
+}
+```
+
+### Pusher Client Configuration (Android)
+
+```kotlin
+val options = PusherOptions().apply {
+    setCluster("ap1")
+    setAuthorizationCallback { channelName, socketId ->
+        // Call /pusher/auth endpoint
+        apiService.pusherAuth(channelName, socketId)
+    }
+}
+val pusher = Pusher("YOUR_PUSHER_KEY", options)
+pusher.connect()
+```
+
+---
+
+## Sync Endpoints
+
+### GET /sync
+
+Get changes since last sync for delta synchronization.
+
+**Headers:**
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Api-Key` | Yes | Device API key |
+| `X-Device-Id` | Yes | Device identifier |
+
+**Query Parameters:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `since_version` | int | Version number from last sync |
+| `since_timestamp` | string | ISO 8601 timestamp of last sync |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "version": 1706540000,
+    "has_changes": true,
+    "orders": [
+      {
+        "id": 1,
+        "order_number": "ORD-2025-001",
+        "customer_name": "Customer",
+        "total": 500.37,
+        "unique_amount": 500.37,
+        "payment_status": "confirmed",
+        "sms_verification_status": "confirmed",
+        "created_at": "2025-01-29T14:30:05+07:00",
+        "updated_at": "2025-01-29T15:00:00+07:00"
+      }
+    ],
+    "server_time": "2025-01-29T15:30:00+07:00"
   }
 }
 ```
 
-### Laravel WebSocket Implementation
+### GET /sync-version
 
-To enable WebSocket support, you'll need to implement a WebSocket server. Options include:
+Get current sync version number.
 
-1. **Laravel WebSockets** package
-2. **Pusher** with Laravel Broadcasting
-3. **Custom Node.js WebSocket server**
+**Headers:**
 
-Example broadcast event:
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Api-Key` | Yes | Device API key |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "version": 1706540000,
+    "server_time": "2025-01-29T15:30:00+07:00"
+  }
+}
+```
+
+---
+
+## Laravel Server Setup
+
+### Required Packages
+
+```bash
+composer require pusher/pusher-php-server
+composer require kreait/laravel-firebase  # For FCM
+```
+
+### Environment Variables
+
+```env
+# Pusher Configuration
+BROADCAST_CONNECTION=pusher
+PUSHER_APP_ID=your_app_id
+PUSHER_APP_KEY=your_app_key
+PUSHER_APP_SECRET=your_app_secret
+PUSHER_APP_CLUSTER=ap1
+
+# Firebase Configuration
+FIREBASE_CREDENTIALS=/path/to/firebase-credentials.json
+FIREBASE_PROJECT_ID=your-project-id
+
+# SMS Checker Notifications
+SMSCHECKER_FCM_ON_MATCH=true
+SMSCHECKER_FCM_ON_NEW_ORDER=true
+SMSCHECKER_WEBSOCKET_ENABLED=true
+```
+
+### Broadcasting Events
 
 ```php
-// app/Events/NewOrderForDevice.php
-class NewOrderForDevice implements ShouldBroadcast
+// app/Events/PaymentMatched.php
+class PaymentMatched implements ShouldBroadcast
 {
-    public function __construct(
-        public string $deviceId,
-        public int $orderId,
-        public float $amount
-    ) {}
+    use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public function broadcastOn(): Channel
+    public Order $order;
+    public SmsPaymentNotification $notification;
+
+    public function broadcastOn(): array
     {
-        return new PrivateChannel("device.{$this->deviceId}");
+        return [
+            new Channel('sms-checker.broadcast'),
+        ];
     }
 
     public function broadcastAs(): string
     {
-        return 'new_order';
+        return 'payment.matched';
+    }
+
+    public function broadcastWith(): array
+    {
+        return [
+            'type' => 'payment_matched',
+            'order' => [...],
+            'notification' => [...],
+            'timestamp' => now()->toIso8601String(),
+        ];
     }
 }
 ```
