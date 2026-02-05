@@ -43,7 +43,8 @@ class RealtimeSyncService : Service() {
         private const val CHANNEL_NAME = "Real-time Sync"
 
         private const val WAKELOCK_TAG = "SmsChecker:RealtimeSyncWakeLock"
-        private const val WAKELOCK_TIMEOUT_MS = 10 * 60 * 1000L // 10 minutes max
+        // WakeLock renewal interval - renew before timeout to keep sync alive
+        private const val WAKELOCK_RENEWAL_INTERVAL_MS = 5 * 60 * 1000L // 5 minutes
 
         // Actions
         const val ACTION_START = "com.thaiprompt.smschecker.action.START_SYNC"
@@ -107,6 +108,9 @@ class RealtimeSyncService : Service() {
     // Orphan cleanup job
     private var orphanCleanupJob: Job? = null
     private val ORPHAN_CLEANUP_INTERVAL_MS = 60 * 60 * 1000L // 1 hour
+
+    // WakeLock renewal job - keeps sync alive indefinitely
+    private var wakeLockRenewalJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -194,6 +198,9 @@ class RealtimeSyncService : Service() {
         // Start orphan cleanup
         startOrphanCleanup()
 
+        // Start WakeLock renewal to keep sync alive indefinitely
+        startWakeLockRenewal()
+
         // Initial sync
         serviceScope.launch {
             try {
@@ -212,6 +219,7 @@ class RealtimeSyncService : Service() {
 
         periodicSyncJob?.cancel()
         orphanCleanupJob?.cancel()
+        wakeLockRenewalJob?.cancel()
         webSocketManager.disconnectAll()
         serviceScope.cancel()
         releaseWakeLock()
@@ -402,6 +410,26 @@ class RealtimeSyncService : Service() {
     // Wake Lock Management
     // =====================================================================
 
+    /**
+     * Start a job that periodically renews the WakeLock to keep sync alive indefinitely.
+     * This prevents Android from killing the sync process after WakeLock timeout.
+     */
+    private fun startWakeLockRenewal() {
+        wakeLockRenewalJob?.cancel()
+        wakeLockRenewalJob = serviceScope.launch {
+            while (isActive) {
+                delay(WAKELOCK_RENEWAL_INTERVAL_MS)
+                try {
+                    // Release and re-acquire to reset the timeout
+                    renewWakeLock()
+                    Log.d(TAG, "WakeLock renewed, sync continues...")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to renew WakeLock", e)
+                }
+            }
+        }
+    }
+
     private fun acquireWakeLock() {
         if (wakeLock == null) {
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -409,10 +437,21 @@ class RealtimeSyncService : Service() {
                 PowerManager.PARTIAL_WAKE_LOCK,
                 WAKELOCK_TAG
             ).apply {
-                acquire(WAKELOCK_TIMEOUT_MS)
+                // Acquire indefinitely (no timeout) - we manage renewal ourselves
+                acquire()
             }
-            Log.d(TAG, "WakeLock acquired")
+            Log.d(TAG, "WakeLock acquired (indefinite)")
         }
+    }
+
+    private fun renewWakeLock() {
+        wakeLock?.let { wl ->
+            if (wl.isHeld) {
+                wl.release()
+            }
+        }
+        wakeLock = null
+        acquireWakeLock()
     }
 
     private fun releaseWakeLock() {
