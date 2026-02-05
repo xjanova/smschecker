@@ -68,6 +68,7 @@ private val LightColorScheme = lightColorScheme(
 )
 
 object AppColors {
+    val SuccessGreen = Color(0xFF3FB950)  // Exported for external use
     val CreditGreen = SuccessGreen
     val DebitRed = ErrorRed
     val InfoBlue = Color(0xFF58A6FF)
