@@ -202,7 +202,8 @@ class TransactionRepository @Inject constructor(
         baseUrl: String,
         apiKey: String,
         secretKey: String,
-        isDefault: Boolean = false
+        isDefault: Boolean = false,
+        syncInterval: Int = 5  // Default 5 seconds
     ): Long {
         // ป้องกัน URL ซ้ำ — normalize URL ก่อนเช็ค
         val normalizedUrl = baseUrl.trimEnd('/')
@@ -220,7 +221,8 @@ class TransactionRepository @Inject constructor(
             baseUrl = normalizedUrl,
             apiKey = "", // Stored separately in SecureStorage
             secretKey = "", // Stored separately in SecureStorage
-            isDefault = isDefault
+            isDefault = isDefault,
+            syncInterval = syncInterval.coerceIn(3, 60)  // Enforce 3-60 second range
         )
 
         val id = serverConfigDao.insert(config)

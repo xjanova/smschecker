@@ -21,7 +21,7 @@ import com.thaiprompt.smschecker.data.model.SyncLog
         SmsSenderRule::class,
         OrphanTransaction::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -149,6 +149,13 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_orphan_transactions_status ON orphan_transactions(status)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_orphan_transactions_createdAt ON orphan_transactions(createdAt)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_orphan_transactions_amount_bank_status ON orphan_transactions(amount, bank, status)")
+            }
+        }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Add syncInterval column to server_configs table (default 5 seconds)
+                db.execSQL("ALTER TABLE server_configs ADD COLUMN syncInterval INTEGER NOT NULL DEFAULT 5")
             }
         }
     }

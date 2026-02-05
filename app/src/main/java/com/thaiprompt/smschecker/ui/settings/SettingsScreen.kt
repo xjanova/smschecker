@@ -58,6 +58,7 @@ fun SettingsScreen(
     qrApiKey: String? = null,
     qrSecretKey: String? = null,
     qrDeviceId: String? = null,
+    qrSyncInterval: Int = 5,  // Sync interval from QR code (default 5 seconds)
     onQrResultConsumed: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
@@ -82,7 +83,8 @@ fun SettingsScreen(
                 apiKey = qrApiKey,
                 secretKey = qrSecretKey,
                 isDefault = true,
-                deviceId = qrDeviceId
+                deviceId = qrDeviceId,
+                syncInterval = qrSyncInterval
             )
             onQrResultConsumed()
         }

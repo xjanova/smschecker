@@ -93,13 +93,16 @@ class RealtimeSyncService : Service() {
     @Inject
     lateinit var orphanRepository: OrphanTransactionRepository
 
+    @Inject
+    lateinit var serverConfigDao: com.thaiprompt.smschecker.data.db.ServerConfigDao
+
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var wakeLock: PowerManager.WakeLock? = null
     private var isRunning = false
 
-    // Periodic sync job
+    // Periodic sync job - using polling instead of WebSocket
     private var periodicSyncJob: Job? = null
-    private val PERIODIC_SYNC_INTERVAL_MS = 5 * 60 * 1000L // 5 minutes (more aggressive than WorkManager)
+    private var syncIntervalMs: Long = 5_000L // Default 5 seconds, will be updated from server config
 
     // Orphan cleanup job
     private var orphanCleanupJob: Job? = null
@@ -248,22 +251,29 @@ class RealtimeSyncService : Service() {
     }
 
     // =====================================================================
-    // Periodic Sync (Backup for WebSocket failures)
+    // Periodic Sync (Primary sync mechanism - polling-based)
     // =====================================================================
 
     private fun startPeriodicSync() {
         periodicSyncJob?.cancel()
         periodicSyncJob = serviceScope.launch {
+            // Load sync interval from server config (minimum across all active servers)
+            val configInterval = serverConfigDao.getMinSyncInterval() ?: 5
+            syncIntervalMs = (configInterval * 1000L).coerceIn(3_000L, 60_000L)
+            Log.i(TAG, "Starting periodic sync with interval: ${syncIntervalMs/1000}s")
+
             while (isActive) {
-                delay(PERIODIC_SYNC_INTERVAL_MS)
+                delay(syncIntervalMs)
                 try {
-                    Log.d(TAG, "Running periodic sync")
+                    Log.d(TAG, "Running periodic sync (every ${syncIntervalMs/1000}s)")
                     orderRepository.syncOfflineQueue()
                     orderRepository.pullServerChanges()
                     orderRepository.fetchOrders()
                     checkOrphansForNewOrders()
+                    updateNotification("Syncing", "Last sync: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}")
                 } catch (e: Exception) {
                     Log.e(TAG, "Periodic sync failed", e)
+                    updateNotification("Sync Error", e.message ?: "Unknown error")
                 }
             }
         }

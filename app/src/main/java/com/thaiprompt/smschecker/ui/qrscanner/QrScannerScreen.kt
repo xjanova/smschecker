@@ -60,7 +60,8 @@ data class QrConfigResult(
     val apiKey: String,
     val secretKey: String,
     val deviceId: String?,
-    val deviceName: String
+    val deviceName: String,
+    val syncInterval: Int = 5  // Sync interval in seconds (default 5s)
 )
 
 // Scanner options: QR_CODE format + enableAllPotentialBarcodes for dense/large QR codes
@@ -545,6 +546,7 @@ private fun parseQrConfig(raw: String): QrConfigResult? {
         }
 
         val deviceId = obj.optString("deviceId", "").ifBlank { null }
+        val syncInterval = obj.optInt("sync_interval", 5).coerceIn(3, 60) // 3-60 seconds, default 5
 
         QrConfigResult(
             type = type,
@@ -553,9 +555,10 @@ private fun parseQrConfig(raw: String): QrConfigResult? {
             apiKey = apiKey,
             secretKey = secretKey,
             deviceId = deviceId,
-            deviceName = obj.optString("deviceName", "\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C\u0E08\u0E32\u0E01 QR")
+            deviceName = obj.optString("deviceName", "\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C\u0E08\u0E32\u0E01 QR"),
+            syncInterval = syncInterval
         ).also {
-            Log.d(TAG, "✓ Parsed config: url=${it.url}, deviceId=${it.deviceId}, device=${it.deviceName}")
+            Log.d(TAG, "✓ Parsed config: url=${it.url}, deviceId=${it.deviceId}, syncInterval=${it.syncInterval}s")
         }
     } catch (e: Exception) {
         Log.e(TAG, "JSON parse error: ${e.message}", e)

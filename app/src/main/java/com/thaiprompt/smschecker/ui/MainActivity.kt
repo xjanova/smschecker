@@ -287,6 +287,7 @@ fun MainApp(
                     val qrApiKey = savedStateHandle.get<String>("qr_api_key")
                     val qrSecretKey = savedStateHandle.get<String>("qr_secret_key")
                     val qrDeviceId = savedStateHandle.get<String>("qr_device_id")
+                    val qrSyncInterval = savedStateHandle.get<Int>("qr_sync_interval") ?: 5
 
                     SettingsScreen(
                         onNavigateToQrScanner = {
@@ -302,12 +303,14 @@ fun MainApp(
                         qrApiKey = qrApiKey,
                         qrSecretKey = qrSecretKey,
                         qrDeviceId = qrDeviceId,
+                        qrSyncInterval = qrSyncInterval,
                         onQrResultConsumed = {
                             savedStateHandle.remove<String>("qr_server_name")
                             savedStateHandle.remove<String>("qr_server_url")
                             savedStateHandle.remove<String>("qr_api_key")
                             savedStateHandle.remove<String>("qr_secret_key")
                             savedStateHandle.remove<String>("qr_device_id")
+                            savedStateHandle.remove<Int>("qr_sync_interval")
                         }
                     )
                 }
@@ -321,6 +324,7 @@ fun MainApp(
                                     set("qr_server_url", result.url)
                                     set("qr_api_key", result.apiKey)
                                     set("qr_secret_key", result.secretKey)
+                                    set("qr_sync_interval", result.syncInterval)
                                     if (result.deviceId != null) {
                                         set("qr_device_id", result.deviceId)
                                     }

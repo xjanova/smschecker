@@ -36,4 +36,7 @@ interface ServerConfigDao {
 
     @Query("SELECT * FROM server_configs WHERE LOWER(TRIM(baseUrl, '/')) = LOWER(TRIM(:baseUrl, '/')) LIMIT 1")
     suspend fun findByBaseUrl(baseUrl: String): ServerConfig?
+
+    @Query("SELECT MIN(syncInterval) FROM server_configs WHERE isActive = 1")
+    suspend fun getMinSyncInterval(): Int?
 }

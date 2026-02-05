@@ -13,6 +13,7 @@ data class ServerConfig(
     val secretKey: String,      // Encrypted secret for HMAC
     val isActive: Boolean = true,
     val isDefault: Boolean = false,
+    val syncInterval: Int = 5,  // Sync interval in seconds (default 5s for fast order updates)
     val lastSyncAt: Long? = null,
     val lastSyncStatus: String? = null, // success, failed, timeout
     val createdAt: Long = System.currentTimeMillis(),

@@ -120,7 +120,7 @@ class SettingsViewModel @Inject constructor(
         _state.update { it.copy(showAddDialog = false) }
     }
 
-    fun addServer(name: String, url: String, apiKey: String, secretKey: String, isDefault: Boolean, deviceId: String? = null) {
+    fun addServer(name: String, url: String, apiKey: String, secretKey: String, isDefault: Boolean, deviceId: String? = null, syncInterval: Int = 5) {
         viewModelScope.launch {
             try {
                 _state.update { it.copy(addServerError = null) }
@@ -135,7 +135,8 @@ class SettingsViewModel @Inject constructor(
                     baseUrl = url,
                     apiKey = apiKey,
                     secretKey = secretKey,
-                    isDefault = isDefault
+                    isDefault = isDefault,
+                    syncInterval = syncInterval
                 )
                 _state.update { it.copy(showAddDialog = false, addServerError = null) }
 
