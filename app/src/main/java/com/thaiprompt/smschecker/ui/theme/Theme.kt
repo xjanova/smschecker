@@ -49,10 +49,14 @@ private val DarkColorScheme = darkColorScheme(
     outlineVariant = Color(0xFF21262D),
 )
 
+// Light palette - Green theme to match app branding
+private val PrimaryGreen = Color(0xFF2E7D32)  // Main green
+private val DarkGreen = Color(0xFF1B5E20)     // Darker green for contrast
+
 private val LightColorScheme = lightColorScheme(
-    primary = Color(0xFF1A237E),
+    primary = PrimaryGreen,
     secondary = GoldPrimary,
-    tertiary = Color(0xFF0D47A1),
+    tertiary = DarkGreen,
     background = Color(0xFFF6F8FA),
     surface = Color.White,
     surfaceVariant = Color(0xFFF0F2F5),
@@ -72,8 +76,8 @@ object AppColors {
     val GoldLight = Color(0xFFE8D48B)
     val GoldDark = GoldSecondary
 
-    val CardGradientStart = Color(0xFF1A237E)
-    val CardGradientEnd = Color(0xFF0D47A1)
+    val CardGradientStart = Color(0xFF2E7D32)  // Green gradient
+    val CardGradientEnd = Color(0xFF1B5E20)
     val DarkCardGradientStart = DarkSurfaceVariant
     val DarkCardGradientEnd = DarkSurface
 
@@ -100,7 +104,7 @@ object AppColors {
     val GlassCardBorderLight = Color(0xFFD0D7DE)
 
     val HeaderGradientLight = Brush.verticalGradient(
-        colors = listOf(Color(0xFF1A237E), Color(0xFF283593), Color(0xFF3949AB))
+        colors = listOf(Color(0xFF2E7D32), Color(0xFF388E3C), Color(0xFF43A047))  // Green gradient
     )
 
     val NavBarGradientLight = Brush.verticalGradient(
@@ -129,7 +133,7 @@ fun SmsCheckerTheme(
         SideEffect {
             val window = (view.context as? Activity)?.window
             if (window != null) {
-                window.statusBarColor = if (darkTheme) DarkNavy.toArgb() else Color(0xFF1A237E).toArgb()
+                window.statusBarColor = if (darkTheme) DarkNavy.toArgb() else Color(0xFF2E7D32).toArgb()  // Green status bar
                 WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
             }
         }

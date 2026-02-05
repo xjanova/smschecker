@@ -36,7 +36,12 @@ data class SettingsState(
     val ttsSpeakType: Boolean = true,
     val ttsSpeakOrder: Boolean = true,
     val isNotificationListening: Boolean = false,
-    val isNotificationAccessGranted: Boolean = false
+    val isNotificationAccessGranted: Boolean = false,
+    // Sync status
+    val isSyncing: Boolean = false,
+    val lastSyncTime: Long? = null,
+    val syncIntervalSeconds: Int = 5,
+    val pendingOrdersCount: Int = 0
 )
 
 @HiltViewModel
@@ -101,6 +106,41 @@ class SettingsViewModel @Inject constructor(
                 }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e
             } catch (e: Exception) { }
+        }
+
+        // Start periodic sync status check (every 5 seconds)
+        viewModelScope.launch {
+            while (true) {
+                try {
+                    triggerSync()
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e
+                } catch (e: Exception) { }
+                kotlinx.coroutines.delay(5000L) // 5 seconds
+            }
+        }
+
+        // Listen for pending orders count
+        viewModelScope.launch {
+            try {
+                orderRepository.getPendingReviewCount().collect { count ->
+                    _state.update { it.copy(pendingOrdersCount = count) }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Exception) { }
+        }
+    }
+
+    private suspend fun triggerSync() {
+        _state.update { it.copy(isSyncing = true) }
+        try {
+            orderRepository.fetchOrders()
+            orderRepository.pullServerChanges()
+            _state.update { it.copy(
+                isSyncing = false,
+                lastSyncTime = System.currentTimeMillis()
+            ) }
+        } catch (e: Exception) {
+            _state.update { it.copy(isSyncing = false) }
         }
     }
 

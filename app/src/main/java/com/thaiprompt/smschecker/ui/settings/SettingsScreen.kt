@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -44,6 +45,7 @@ import com.thaiprompt.smschecker.ui.theme.LanguageMode
 import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 import com.thaiprompt.smschecker.ui.theme.LocalLanguageMode
 import com.thaiprompt.smschecker.ui.theme.ThemeMode
+import androidx.compose.animation.core.*
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -128,6 +130,19 @@ fun SettingsScreen(
         }
 
         item { Spacer(modifier = Modifier.height(16.dp)) }
+
+        // Sync Status Card with Animation
+        item {
+            SyncStatusCard(
+                isSyncing = state.isSyncing,
+                lastSyncTime = state.lastSyncTime,
+                syncInterval = state.syncIntervalSeconds,
+                pendingOrdersCount = state.pendingOrdersCount,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+        }
+
+        item { Spacer(modifier = Modifier.height(12.dp)) }
 
         // Device Info
         item {
@@ -1127,6 +1142,159 @@ fun ServerCard(
                 }
             }
         )
+    }
+}
+
+@Composable
+fun SyncStatusCard(
+    isSyncing: Boolean,
+    lastSyncTime: Long?,
+    syncInterval: Int,
+    pendingOrdersCount: Int,
+    modifier: Modifier = Modifier
+) {
+    val strings = LocalAppStrings.current
+
+    // Pulsing animation for sync indicator
+    val infiniteTransition = rememberInfiniteTransition(label = "sync")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+
+    // Rotation animation for sync icon
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotation"
+    )
+
+    GlassCard(modifier = modifier) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Animated sync indicator
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isSyncing) AppColors.CreditGreen.copy(alpha = pulseAlpha * 0.3f)
+                            else AppColors.CreditGreen.copy(alpha = 0.15f)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Sync,
+                        contentDescription = null,
+                        tint = AppColors.CreditGreen,
+                        modifier = Modifier
+                            .size(22.dp)
+                            .then(
+                                if (isSyncing) Modifier.graphicsLayer { rotationZ = rotation }
+                                else Modifier
+                            )
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Server Sync",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        if (isSyncing) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(AppColors.CreditGreen.copy(alpha = pulseAlpha * 0.3f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    "SYNCING",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = AppColors.CreditGreen
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        if (lastSyncTime != null) {
+                            val timeAgo = (System.currentTimeMillis() - lastSyncTime) / 1000
+                            "Last sync: ${timeAgo}s ago • Every ${syncInterval}s"
+                        } else {
+                            "Waiting for first sync..."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            // Pending orders badge
+            if (pendingOrdersCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(AppColors.WarningOrange.copy(alpha = 0.15f))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            pendingOrdersCount.toString(),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = AppColors.WarningOrange
+                        )
+                        Text(
+                            "Pending",
+                            fontSize = 9.sp,
+                            color = AppColors.WarningOrange
+                        )
+                    }
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(AppColors.CreditGreen.copy(alpha = 0.15f))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = AppColors.CreditGreen,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "OK",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = AppColors.CreditGreen
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
