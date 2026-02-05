@@ -1,5 +1,6 @@
 package com.thaiprompt.smschecker.data.repository
 
+import android.util.Log
 import com.google.gson.Gson
 import com.thaiprompt.smschecker.data.api.*
 import com.thaiprompt.smschecker.data.db.ServerConfigDao
@@ -8,6 +9,7 @@ import com.thaiprompt.smschecker.data.db.TransactionDao
 import com.thaiprompt.smschecker.data.model.*
 import com.thaiprompt.smschecker.security.CryptoManager
 import com.thaiprompt.smschecker.security.SecureStorage
+import com.thaiprompt.smschecker.util.ParallelSyncHelper
 import com.thaiprompt.smschecker.util.RetryHelper
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
@@ -45,28 +47,47 @@ class TransactionRepository @Inject constructor(
     }
 
     /**
-     * Sync a transaction to all active servers.
+     * Sync a transaction to all active servers in PARALLEL.
      * Returns true if at least one server confirmed the transaction.
+     *
+     * CRITICAL: This is the main entry point for syncing SMS/notification transactions.
+     * Using parallel sync reduces latency from O(n * timeout) to O(timeout).
      */
     suspend fun syncTransaction(transaction: BankTransaction): Boolean {
         val activeServers = serverConfigDao.getActiveConfigs()
         if (activeServers.isEmpty()) return false
 
         val deviceId = secureStorage.getDeviceId() ?: return false
-        var anySynced = false
 
-        for (server in activeServers) {
-            val result = syncToServer(transaction, server, deviceId)
-            if (result) {
-                anySynced = true
-                transactionDao.markAsSynced(transaction.id, server.id, "OK")
-                serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "success")
-            } else {
-                serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
+        // Prepare server list for parallel execution
+        val serverList = activeServers.map { it.id to it.name }
+
+        // Execute sync to all servers in parallel
+        val results = ParallelSyncHelper.executeParallelBoolean(
+            servers = serverList,
+            maxConcurrency = 5,
+            timeoutMs = 10_000L  // 10s per server (reduced for real-time)
+        ) { serverId ->
+            val server = serverConfigDao.getById(serverId) ?: return@executeParallelBoolean false
+            syncToServer(transaction, server, deviceId)
+        }
+
+        // Update status for each server
+        for (result in results.results) {
+            try {
+                if (result.success) {
+                    transactionDao.markAsSynced(transaction.id, result.serverId, "OK")
+                    serverConfigDao.updateSyncStatus(result.serverId, System.currentTimeMillis(), "success")
+                } else {
+                    serverConfigDao.updateSyncStatus(result.serverId, System.currentTimeMillis(), "failed")
+                }
+            } catch (e: Exception) {
+                Log.e("TransactionRepository", "Failed to update status for ${result.serverName}", e)
             }
         }
 
-        return anySynced
+        Log.d("TransactionRepository", "Parallel sync: ${results.successCount}/${results.results.size} in ${results.totalDurationMs}ms")
+        return results.anySucceeded
     }
 
     /**

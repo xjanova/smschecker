@@ -696,3 +696,119 @@ val mac = Mac.getInstance("HmacSHA256")
 mac.init(hmacKey)
 val signature = Base64.encodeToString(mac.doFinal(signatureData.toByteArray()), Base64.NO_WRAP)
 ```
+
+---
+
+## WebSocket Real-time Sync (v1.6+)
+
+The Android app can maintain a persistent WebSocket connection for real-time updates instead of polling.
+
+### WebSocket Endpoint
+
+```
+wss://your-domain.com/ws/device?api_key={api_key}&device_id={device_id}
+```
+
+### Message Types
+
+**Server → Client:**
+
+| Type | Description |
+|------|-------------|
+| `new_order` | A new order has been created that may match this device |
+| `order_update` | An existing order's status has changed |
+| `sync_request` | Server requests the device to sync |
+| `pong` | Response to client ping |
+
+**Client → Server:**
+
+| Type | Description |
+|------|-------------|
+| `ping` | Heartbeat to keep connection alive |
+
+### Message Format
+
+```json
+{
+  "type": "new_order",
+  "data": {
+    "order_id": 123,
+    "amount": 500.37,
+    "order_number": "ORD-2025-001"
+  }
+}
+```
+
+### Laravel WebSocket Implementation
+
+To enable WebSocket support, you'll need to implement a WebSocket server. Options include:
+
+1. **Laravel WebSockets** package
+2. **Pusher** with Laravel Broadcasting
+3. **Custom Node.js WebSocket server**
+
+Example broadcast event:
+
+```php
+// app/Events/NewOrderForDevice.php
+class NewOrderForDevice implements ShouldBroadcast
+{
+    public function __construct(
+        public string $deviceId,
+        public int $orderId,
+        public float $amount
+    ) {}
+
+    public function broadcastOn(): Channel
+    {
+        return new PrivateChannel("device.{$this->deviceId}");
+    }
+
+    public function broadcastAs(): string
+    {
+        return 'new_order';
+    }
+}
+```
+
+---
+
+## Orphan Transaction Recovery
+
+When a payment comes in but no matching order exists (e.g., order expired), the Android app saves it as an "orphan transaction" for later matching.
+
+### How It Works
+
+1. SMS/Notification received → App parses transaction
+2. App tries to match with pending orders by exact amount
+3. **If no match found** → Save to `orphan_transactions` table
+4. When new orders arrive → Check orphans first
+5. **If orphan matches** → Auto-approve order + mark orphan as matched
+
+### Orphan Status Flow
+
+```
+PENDING → MATCHED    (order arrived and matched)
+PENDING → EXPIRED    (7 days passed, no match)
+PENDING → IGNORED    (user manually dismissed)
+PENDING → MANUALLY_RESOLVED (user resolved outside app)
+```
+
+### Configuration
+
+In `OrphanTransactionRepository.kt`:
+
+```kotlin
+const val ORPHAN_EXPIRY_DAYS = 7      // Keep orphans for 7 days
+const val ORPHAN_DELETE_DAYS = 30     // Delete old orphans after 30 days
+const val MATCH_TIME_WINDOW_MS = 30 * 60 * 1000L  // ±30 min for time-based matching
+```
+
+### Recovery Scenarios
+
+| Scenario | What Happens |
+|----------|--------------|
+| Customer pays before order | Payment saved as orphan → Auto-matched when order created |
+| Network timeout during match | Payment saved as orphan → Matched on next sync |
+| Order expired, customer paid | Payment saved as orphan → Notification shown to admin |
+| Multiple payments same amount | First orphan matched, others remain pending |

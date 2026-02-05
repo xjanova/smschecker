@@ -1,9 +1,11 @@
 package com.thaiprompt.smschecker.service
 
 import android.content.Context
+import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.*
 import com.thaiprompt.smschecker.data.repository.OrderRepository
+import com.thaiprompt.smschecker.data.repository.OrphanTransactionRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.util.concurrent.TimeUnit
@@ -12,26 +14,84 @@ import java.util.concurrent.TimeUnit
 class OrderSyncWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted workerParams: WorkerParameters,
-    private val orderRepository: OrderRepository
+    private val orderRepository: OrderRepository,
+    private val orphanRepository: OrphanTransactionRepository
 ) : CoroutineWorker(appContext, workerParams) {
 
+    companion object {
+        private const val TAG = "OrderSyncWorker"
+    }
+
     override suspend fun doWork(): Result {
+        val startTime = System.currentTimeMillis()
+
         return try {
             // 0. Sync FCM token if needed
             syncFcmTokenIfNeeded()
 
-            // 1. Push offline queued actions first
+            // 1. Push offline queued actions first (PARALLEL)
             orderRepository.syncOfflineQueue()
 
-            // 2. Pull server changes (version-based sync)
+            // 2. Pull server changes (PARALLEL - version-based sync)
             orderRepository.pullServerChanges()
 
-            // 3. Fetch latest orders list
+            // 3. Fetch latest orders list (PARALLEL)
             orderRepository.fetchOrders()
+
+            // 4. Check orphan transactions for matching with new orders
+            checkOrphansForNewOrders()
+
+            // 5. Cleanup old orphan transactions
+            runOrphanCleanup()
+
+            val duration = System.currentTimeMillis() - startTime
+            Log.d(TAG, "Sync completed in ${duration}ms")
 
             Result.success()
         } catch (e: Exception) {
+            Log.e(TAG, "Sync failed", e)
             if (runAttemptCount < 3) Result.retry() else Result.failure()
+        }
+    }
+
+    /**
+     * Check if any orphan transactions match newly received orders.
+     */
+    private suspend fun checkOrphansForNewOrders() {
+        try {
+            val pendingOrders = orderRepository.getPendingOrdersList()
+            if (pendingOrders.isEmpty()) return
+
+            val matches = orphanRepository.findMatchesForOrders(pendingOrders)
+
+            for ((orderId, orphan) in matches) {
+                val order = pendingOrders.find { it.id == orderId } ?: continue
+
+                Log.i(TAG, "Found orphan match: order=${order.id}, orphan=${orphan.id}, amount=${orphan.amount}")
+
+                // Auto-approve the order
+                val approved = orderRepository.approveOrder(orderId)
+                if (approved) {
+                    // Mark orphan as matched
+                    orphanRepository.markAsMatched(orphan.id, orderId, order.serverId)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to check orphans for new orders", e)
+        }
+    }
+
+    /**
+     * Cleanup old orphan transactions.
+     */
+    private suspend fun runOrphanCleanup() {
+        try {
+            val result = orphanRepository.runCleanup()
+            if (result.expiredCount > 0 || result.deletedCount > 0) {
+                Log.d(TAG, "Orphan cleanup: expired=${result.expiredCount}, deleted=${result.deletedCount}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Orphan cleanup failed", e)
         }
     }
 

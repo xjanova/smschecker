@@ -7,6 +7,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.OrderApproval
+import com.thaiprompt.smschecker.data.model.OrphanTransaction
 import com.thaiprompt.smschecker.data.model.ServerConfig
 import com.thaiprompt.smschecker.data.model.SmsSenderRule
 import com.thaiprompt.smschecker.data.model.SyncLog
@@ -17,9 +18,10 @@ import com.thaiprompt.smschecker.data.model.SyncLog
         ServerConfig::class,
         SyncLog::class,
         OrderApproval::class,
-        SmsSenderRule::class
+        SmsSenderRule::class,
+        OrphanTransaction::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -29,6 +31,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun syncLogDao(): SyncLogDao
     abstract fun orderApprovalDao(): OrderApprovalDao
     abstract fun smsSenderRuleDao(): SmsSenderRuleDao
+    abstract fun orphanTransactionDao(): OrphanTransactionDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -111,6 +114,41 @@ abstract class AppDatabase : RoomDatabase() {
                 if (!hasSourceType) {
                     db.execSQL("ALTER TABLE bank_transactions ADD COLUMN sourceType TEXT NOT NULL DEFAULT 'SMS'")
                 }
+            }
+        }
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Create orphan_transactions table for recovering unmatched decimal payments
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS orphan_transactions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        transactionId INTEGER NOT NULL,
+                        amount REAL NOT NULL,
+                        amountString TEXT NOT NULL,
+                        bank TEXT NOT NULL,
+                        accountNumber TEXT NOT NULL DEFAULT '',
+                        senderOrReceiver TEXT NOT NULL DEFAULT '',
+                        referenceNumber TEXT NOT NULL DEFAULT '',
+                        rawMessage TEXT NOT NULL DEFAULT '',
+                        status TEXT NOT NULL DEFAULT 'PENDING',
+                        matchAttempts INTEGER NOT NULL DEFAULT 0,
+                        lastMatchAttemptAt INTEGER,
+                        matchedOrderId INTEGER,
+                        matchedServerId INTEGER,
+                        matchedAt INTEGER,
+                        transactionTimestamp INTEGER NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        source TEXT NOT NULL DEFAULT 'SMS',
+                        notes TEXT
+                    )
+                """)
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_orphan_transactions_amount ON orphan_transactions(amount)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_orphan_transactions_bank ON orphan_transactions(bank)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_orphan_transactions_status ON orphan_transactions(status)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_orphan_transactions_createdAt ON orphan_transactions(createdAt)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_orphan_transactions_amount_bank_status ON orphan_transactions(amount, bank, status)")
             }
         }
     }

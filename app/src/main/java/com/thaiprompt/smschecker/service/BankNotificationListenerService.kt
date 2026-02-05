@@ -22,15 +22,34 @@ class BankNotificationListenerService : NotificationListenerService() {
         /**
          * Maps Thai banking app package names to bank codes.
          * These codes match the ones used by BankSmsParser.
+         *
+         * Supports 15 Thai banks:
+         * - Major banks: KBANK, SCB, KTB, BBL, BAY, TTB, GSB
+         * - Other banks: CIMB, KKP, LH, TISCO, UOB, ICBC, BAAC, PromptPay
          */
         val BANK_APP_PACKAGES = mapOf(
+            // === Major Banks ===
             "com.kasikorn.retail.mbanking.wap" to "KBANK",  // K PLUS
             "com.scb.phone" to "SCB",                        // SCB EASY
             "com.ktb.netbank" to "KTB",                      // Krungthai NEXT
             "com.bbl.mobilebanking" to "BBL",                // Bualuang mBanking
-            "com.gsb.mymo" to "GSB",                         // MyMo
-            "com.krungsri.kma" to "BAY",                     // KMA
+            "com.gsb.mymo" to "GSB",                         // MyMo by GSB
+            "com.krungsri.kma" to "BAY",                     // KMA (Krungsri)
             "com.ttb.touchapp" to "TTB",                     // ttb touch
+
+            // === Other Thai Banks ===
+            "com.cimb.th.digi" to "CIMB",                    // CIMB THAI Digital Banking
+            "com.cimbthai.paynow" to "CIMB",                 // CIMB Thai PayNow
+            "th.co.kiatnakin.kiatnakinphatra" to "KKP",      // KKP Mobile
+            "com.lhbank.lhmobile" to "LH",                   // LH Bank M Choice
+            "com.tisco.tiscoapp" to "TISCO",                 // TISCO My Wealth
+            "com.uob.mightyth" to "UOB",                     // UOB Mighty Thailand
+            "com.icbc.mobilethailand" to "ICBC",             // ICBC Mobile Banking (Thailand)
+            "com.baac.baacmobile" to "BAAC",                 // BAAC Mobile (ธ.ก.ส.)
+            "th.or.baac.baaconnect" to "BAAC",               // BAAC Connect
+
+            // === PromptPay / National Payment ===
+            "th.or.itmx.promptpay" to "PROMPTPAY",           // PromptPay Official App
         )
 
         /**

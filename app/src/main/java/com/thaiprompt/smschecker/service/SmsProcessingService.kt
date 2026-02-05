@@ -16,6 +16,7 @@ import com.thaiprompt.smschecker.data.model.ApprovalStatus
 import com.thaiprompt.smschecker.data.model.TransactionSource
 import com.thaiprompt.smschecker.data.model.TransactionType
 import com.thaiprompt.smschecker.data.repository.OrderRepository
+import com.thaiprompt.smschecker.data.repository.OrphanTransactionRepository
 import com.thaiprompt.smschecker.data.repository.TransactionRepository
 import com.thaiprompt.smschecker.domain.parser.BankSmsParser
 import com.thaiprompt.smschecker.security.SecureStorage
@@ -57,6 +58,7 @@ class SmsProcessingService : Service() {
     @Inject lateinit var parser: BankSmsParser
     @Inject lateinit var ttsManager: TtsManager
     @Inject lateinit var orderRepository: OrderRepository
+    @Inject lateinit var orphanRepository: OrphanTransactionRepository
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -197,6 +199,19 @@ class SmsProcessingService : Service() {
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Error auto-approving order: ${match.orderNumber}", e)
                                 }
+                            } else {
+                                // ไม่พบออเดอร์ที่ตรงกัน → เก็บเป็น Orphan Transaction
+                                // เพื่อให้จับคู่ได้ภายหลังเมื่อออเดอร์มาถึง
+                                Log.d(TAG, "No matching order for amount $amountDouble, saving as orphan")
+                                try {
+                                    orphanRepository.saveAsOrphan(
+                                        transaction = savedTransaction,
+                                        source = com.thaiprompt.smschecker.data.model.TransactionSource.SMS
+                                    )
+                                    Log.i(TAG, "Saved orphan transaction: ${savedTransaction.bank} ${savedTransaction.amount}")
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to save orphan transaction", e)
+                                }
                             }
                         }
                     } catch (e: Exception) {
@@ -334,6 +349,18 @@ class SmsProcessingService : Service() {
                                     }
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Error auto-approving order from notification: ${match.orderNumber}", e)
+                                }
+                            } else {
+                                // ไม่พบออเดอร์ที่ตรงกัน → เก็บเป็น Orphan Transaction
+                                Log.d(TAG, "No matching order for notification amount $amountDouble, saving as orphan")
+                                try {
+                                    orphanRepository.saveAsOrphan(
+                                        transaction = savedTransaction,
+                                        source = com.thaiprompt.smschecker.data.model.TransactionSource.NOTIFICATION
+                                    )
+                                    Log.i(TAG, "Saved orphan transaction from notification: ${savedTransaction.bank} ${savedTransaction.amount}")
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to save orphan transaction from notification", e)
                                 }
                             }
                         }

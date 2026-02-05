@@ -5,8 +5,10 @@ import androidx.room.Room
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.thaiprompt.smschecker.data.api.ApiClientFactory
+import com.thaiprompt.smschecker.data.api.WebSocketManager
 import com.thaiprompt.smschecker.data.db.AppDatabase
 import com.thaiprompt.smschecker.data.db.OrderApprovalDao
+import com.thaiprompt.smschecker.data.db.OrphanTransactionDao
 import com.thaiprompt.smschecker.data.db.ServerConfigDao
 import com.thaiprompt.smschecker.data.db.SmsSenderRuleDao
 import com.thaiprompt.smschecker.data.db.SyncLogDao
@@ -36,7 +38,8 @@ object AppModule {
             .addMigrations(
                 AppDatabase.MIGRATION_1_2,
                 AppDatabase.MIGRATION_2_3,
-                AppDatabase.MIGRATION_3_4
+                AppDatabase.MIGRATION_3_4,
+                AppDatabase.MIGRATION_4_5
             )
             .fallbackToDestructiveMigration()
             .build()
@@ -58,8 +61,20 @@ object AppModule {
     fun provideSmsSenderRuleDao(db: AppDatabase): SmsSenderRuleDao = db.smsSenderRuleDao()
 
     @Provides
+    fun provideOrphanTransactionDao(db: AppDatabase): OrphanTransactionDao = db.orphanTransactionDao()
+
+    @Provides
     @Singleton
     fun provideGson(): Gson = GsonBuilder().create()
+
+    @Provides
+    @Singleton
+    fun provideWebSocketManager(
+        @ApplicationContext context: Context,
+        serverConfigDao: ServerConfigDao,
+        secureStorage: SecureStorage,
+        gson: Gson
+    ): WebSocketManager = WebSocketManager(context, serverConfigDao, secureStorage, gson)
 
     @Provides
     @Singleton

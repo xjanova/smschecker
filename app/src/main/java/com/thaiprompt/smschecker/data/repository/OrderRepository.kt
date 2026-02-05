@@ -6,6 +6,7 @@ import com.thaiprompt.smschecker.data.db.OrderApprovalDao
 import com.thaiprompt.smschecker.data.db.ServerConfigDao
 import com.thaiprompt.smschecker.data.model.*
 import com.thaiprompt.smschecker.security.SecureStorage
+import com.thaiprompt.smschecker.util.ParallelSyncHelper
 import com.thaiprompt.smschecker.util.RetryHelper
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
@@ -35,6 +36,15 @@ class OrderRepository @Inject constructor(
 
     fun getOfflineQueueCount(): Flow<Int> = orderApprovalDao.getOfflineQueueCount()
 
+    /**
+     * Get list of pending review orders (for orphan matching).
+     */
+    suspend fun getPendingOrdersList(): List<OrderApproval> = orderApprovalDao.getPendingReviewOrders()
+
+    /**
+     * Fetch orders from all active servers in PARALLEL.
+     * Much faster than sequential fetch, especially with multiple servers.
+     */
     suspend fun fetchOrders() {
         val activeServers = try {
             serverConfigDao.getActiveConfigs()
@@ -43,44 +53,62 @@ class OrderRepository @Inject constructor(
         }
         val deviceId = secureStorage.getDeviceId() ?: return
 
-        for (server in activeServers) {
-            val apiKey = secureStorage.getApiKey(server.id) ?: continue
+        if (activeServers.isEmpty()) return
 
+        // Prepare server list for parallel execution
+        val serverList = activeServers.mapNotNull { server ->
+            val apiKey = secureStorage.getApiKey(server.id)
+            if (apiKey != null) server.id to server.name else null
+        }
+
+        // Execute in parallel with 15s timeout per server
+        val results = ParallelSyncHelper.executeParallel(
+            servers = serverList,
+            maxConcurrency = 5,
+            timeoutMs = 15_000L
+        ) { serverId ->
+            fetchOrdersFromServer(serverId, deviceId)
+        }
+
+        // Update sync status for each server
+        for (result in results.results) {
             try {
-                // Retry with exponential backoff for unstable network
-                val success = RetryHelper.withRetryBoolean {
-                    val client = apiClientFactory.getClient(server.baseUrl)
-                    val response = client.getOrders(apiKey, deviceId)
-                    if (response.isSuccessful) {
-                        val orders = response.body()?.data?.data ?: emptyList()
-                        if (orders.isNotEmpty()) {
-                            val localOrders = orders.map { it.toLocalEntity(server.id) }
-                            try {
-                                orderApprovalDao.insertAll(localOrders)
-                            } catch (e: Exception) {
-                                // Database error - don't fail the entire operation
-                                Log.e("OrderRepository", "Failed to insert orders", e)
-                            }
-                        }
-                        true
-                    } else {
-                        false
+                serverConfigDao.updateSyncStatus(
+                    result.serverId,
+                    System.currentTimeMillis(),
+                    if (result.success) "success" else "failed"
+                )
+            } catch (e: Exception) {
+                Log.e("OrderRepository", "Failed to update sync status for ${result.serverName}", e)
+            }
+        }
+
+        Log.d("OrderRepository", "Parallel fetch completed: ${results.successCount}/${results.results.size} servers in ${results.totalDurationMs}ms")
+    }
+
+    /**
+     * Fetch orders from a single server (used internally).
+     */
+    private suspend fun fetchOrdersFromServer(serverId: Long, deviceId: String): Boolean {
+        val server = serverConfigDao.getById(serverId) ?: return false
+        val apiKey = secureStorage.getApiKey(serverId) ?: return false
+
+        return RetryHelper.withRetryBoolean(maxRetries = 2) {
+            val client = apiClientFactory.getClient(server.baseUrl)
+            val response = client.getOrders(apiKey, deviceId)
+            if (response.isSuccessful) {
+                val orders = response.body()?.data?.data ?: emptyList()
+                if (orders.isNotEmpty()) {
+                    val localOrders = orders.map { it.toLocalEntity(serverId) }
+                    try {
+                        orderApprovalDao.insertAll(localOrders)
+                    } catch (e: Exception) {
+                        Log.e("OrderRepository", "Failed to insert orders", e)
                     }
                 }
-
-                try {
-                    if (success) {
-                        serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "success")
-                    } else {
-                        serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
-                    }
-                } catch (e: Exception) { }
-            } catch (e: Exception) {
-                // Catch any exceptions from retry logic to prevent crash
-                Log.e("OrderRepository", "Error fetching orders from server ${server.id}", e)
-                try {
-                    serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
-                } catch (e: Exception) { }
+                true
+            } else {
+                false
             }
         }
     }
@@ -197,58 +225,85 @@ class OrderRepository @Inject constructor(
         }
     }
 
+    /**
+     * Pull changes from all active servers in PARALLEL.
+     */
     suspend fun pullServerChanges() {
         val activeServers = serverConfigDao.getActiveConfigs()
         val deviceId = secureStorage.getDeviceId() ?: return
 
-        for (server in activeServers) {
-            val apiKey = secureStorage.getApiKey(server.id) ?: continue
+        if (activeServers.isEmpty()) return
 
-            // Retry with exponential backoff for unstable network
-            val success = RetryHelper.withRetryBoolean {
-                val sinceVersion = orderApprovalDao.getLatestSyncVersion(server.id)
-                val client = apiClientFactory.getClient(server.baseUrl)
-                val response = client.syncOrders(apiKey, deviceId, sinceVersion)
-                if (response.isSuccessful) {
-                    val orders = response.body()?.data?.orders ?: emptyList()
-                    for (remote in orders) {
-                        val existing = orderApprovalDao.getByRemoteId(remote.id, server.id)
-                        val remoteStatus = ApprovalStatus.fromApiValue(remote.approval_status)
+        // Prepare server list for parallel execution
+        val serverList = activeServers.mapNotNull { server ->
+            val apiKey = secureStorage.getApiKey(server.id)
+            if (apiKey != null) server.id to server.name else null
+        }
 
-                        // Handle server-side deletion — remove from local DB
-                        if (remoteStatus == ApprovalStatus.DELETED) {
-                            if (existing != null) {
-                                orderApprovalDao.deleteById(existing.id)
-                            }
-                            continue
-                        }
+        // Execute in parallel
+        val results = ParallelSyncHelper.executeParallel(
+            servers = serverList,
+            maxConcurrency = 5,
+            timeoutMs = 15_000L
+        ) { serverId ->
+            pullChangesFromServer(serverId, deviceId)
+        }
 
-                        // Local pending action wins — don't overwrite
-                        if (existing != null && existing.pendingAction != null) {
-                            continue
-                        }
-
-                        // Convert remote to local entity (includes updated amount, status, details)
-                        val local = remote.toLocalEntity(server.id)
-                        if (existing != null) {
-                            orderApprovalDao.update(local.copy(id = existing.id))
-                        } else {
-                            orderApprovalDao.insert(local)
-                        }
-                    }
-                    true
-                } else {
-                    false
-                }
-            }
-
+        // Update sync status
+        for (result in results.results) {
             try {
-                if (success) {
-                    serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "success")
-                } else {
-                    serverConfigDao.updateSyncStatus(server.id, System.currentTimeMillis(), "failed")
-                }
+                serverConfigDao.updateSyncStatus(
+                    result.serverId,
+                    System.currentTimeMillis(),
+                    if (result.success) "success" else "failed"
+                )
             } catch (e: Exception) { }
+        }
+
+        Log.d("OrderRepository", "Parallel pull completed: ${results.successCount}/${results.results.size} servers in ${results.totalDurationMs}ms")
+    }
+
+    /**
+     * Pull changes from a single server (used internally).
+     */
+    private suspend fun pullChangesFromServer(serverId: Long, deviceId: String): Boolean {
+        val server = serverConfigDao.getById(serverId) ?: return false
+        val apiKey = secureStorage.getApiKey(serverId) ?: return false
+
+        return RetryHelper.withRetryBoolean(maxRetries = 2) {
+            val sinceVersion = orderApprovalDao.getLatestSyncVersion(serverId)
+            val client = apiClientFactory.getClient(server.baseUrl)
+            val response = client.syncOrders(apiKey, deviceId, sinceVersion)
+            if (response.isSuccessful) {
+                val orders = response.body()?.data?.orders ?: emptyList()
+                for (remote in orders) {
+                    val existing = orderApprovalDao.getByRemoteId(remote.id, serverId)
+                    val remoteStatus = ApprovalStatus.fromApiValue(remote.approval_status)
+
+                    // Handle server-side deletion
+                    if (remoteStatus == ApprovalStatus.DELETED) {
+                        if (existing != null) {
+                            orderApprovalDao.deleteById(existing.id)
+                        }
+                        continue
+                    }
+
+                    // Local pending action wins
+                    if (existing != null && existing.pendingAction != null) {
+                        continue
+                    }
+
+                    val local = remote.toLocalEntity(serverId)
+                    if (existing != null) {
+                        orderApprovalDao.update(local.copy(id = existing.id))
+                    } else {
+                        orderApprovalDao.insert(local)
+                    }
+                }
+                true
+            } else {
+                false
+            }
         }
     }
 
@@ -296,7 +351,7 @@ class OrderRepository @Inject constructor(
     }
 
     /**
-     * ส่ง FCM token ไปยังเซิร์ฟเวอร์ทุกตัวเพื่อรับ push notifications
+     * ส่ง FCM token ไปยังเซิร์ฟเวอร์ทุกตัวเพื่อรับ push notifications (PARALLEL)
      */
     suspend fun registerFcmToken(fcmToken: String) {
         val activeServers = try {
@@ -306,23 +361,32 @@ class OrderRepository @Inject constructor(
         }
         val deviceId = secureStorage.getDeviceId() ?: return
 
-        for (server in activeServers) {
-            val apiKey = secureStorage.getApiKey(server.id) ?: continue
-            try {
-                val client = apiClientFactory.getClient(server.baseUrl)
-                client.registerDevice(
-                    apiKey = apiKey,
-                    body = DeviceRegistration(
-                        device_id = deviceId,
-                        device_name = android.os.Build.MODEL,
-                        platform = "android",
-                        app_version = "1.6.0",
-                        fcm_token = fcmToken
-                    )
+        if (activeServers.isEmpty()) return
+
+        val serverList = activeServers.mapNotNull { server ->
+            val apiKey = secureStorage.getApiKey(server.id)
+            if (apiKey != null) server.id to server.name else null
+        }
+
+        // Register to all servers in parallel (fire-and-forget, best effort)
+        ParallelSyncHelper.executeParallel(
+            servers = serverList,
+            maxConcurrency = 5,
+            timeoutMs = 10_000L
+        ) { serverId ->
+            val server = serverConfigDao.getById(serverId) ?: return@executeParallel
+            val apiKey = secureStorage.getApiKey(serverId) ?: return@executeParallel
+            val client = apiClientFactory.getClient(server.baseUrl)
+            client.registerDevice(
+                apiKey = apiKey,
+                body = DeviceRegistration(
+                    device_id = deviceId,
+                    device_name = android.os.Build.MODEL,
+                    platform = "android",
+                    app_version = "1.6.0",
+                    fcm_token = fcmToken
                 )
-            } catch (e: Exception) {
-                // Best effort — will retry on next sync
-            }
+            )
         }
     }
 

@@ -61,6 +61,9 @@ interface OrderApprovalDao {
     @Query("SELECT COUNT(*) FROM order_approvals WHERE approvalStatus = 'PENDING_REVIEW'")
     fun getPendingReviewCount(): Flow<Int>
 
+    @Query("SELECT * FROM order_approvals WHERE approvalStatus = 'PENDING_REVIEW' ORDER BY createdAt DESC")
+    suspend fun getPendingReviewOrders(): List<OrderApproval>
+
     @Query("SELECT COUNT(*) FROM order_approvals WHERE pendingAction IS NOT NULL")
     fun getOfflineQueueCount(): Flow<Int>
 

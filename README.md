@@ -82,15 +82,27 @@ Supports **15 Thai banks**: KBANK, SCB, KTB, BBL, GSB, BAY, TTB, PromptPay, CIMB
 
 ## Features
 
+### Core Features
 - **Real-time SMS interception** from 15 Thai banks with intelligent heuristic detection for unknown senders
 - **Bank app push notification capture** via `NotificationListenerService` -- intercepts notifications from banking apps (K PLUS, SCB EASY, Krungthai NEXT, etc.) using the same processing pipeline as SMS
 - **AES-256-GCM encryption** with HMAC-SHA256 request signing, nonce-based replay protection, and **PBKDF2 key derivation** (100K iterations, separate keys for encryption and HMAC)
 - **QR code device setup** -- Laravel generates a QR code, the Android app scans it to auto-configure server URL, API key, and secret key (HTTPS + minimum key length enforced)
 - **Unique decimal amount matching** -- transforms round amounts (500.00) into unique decimals (500.37) so each transaction can be matched unambiguously, with **pessimistic locking** to prevent race conditions
+
+### Real-time & Reliability (v1.6+)
+- **WebSocket real-time sync** -- persistent WebSocket connections for instant order notifications without polling
+- **Parallel multi-server sync** -- sync with multiple servers simultaneously instead of sequentially (10x faster with 5 servers)
+- **Foreground service** -- keeps sync connections alive even when app is in background, with auto-restart on crash
+- **Orphan transaction recovery** -- automatically saves unmatched payments and matches them later when orders arrive (prevents lost decimal payments due to network issues or expired orders)
+- **Network-aware reconnection** -- automatically reconnects when network becomes available
+
+### Order Management
 - **Bank account verification** -- server verifies SMS sender account against registered bank accounts before auto-matching
 - **Order approval system** with auto, manual, and smart approval modes, plus bulk approve
 - **Dashboard with statistics** -- transaction counts, success rates, bank breakdowns
 - **Multi-server support** -- one Android device can report to multiple Laravel servers
+
+### User Experience
 - **Dark/Light theme toggle** with Material 3 dynamic theming (green gradient)
 - **Thai/English language support** (full i18n)
 - **TTS voice alerts** using Android TextToSpeech with language selection (Thai/English/System), configurable content (bank name, amount, type, time), and preview button
@@ -116,8 +128,9 @@ SmsChecker/
 |   |   |-- security/             # CryptoManager (AES-256-GCM, HMAC-SHA256, PBKDF2)
 |   |   |-- service/
 |   |   |   |-- SmsProcessingService.kt         # SMS/notification processing pipeline
-|   |   |   |-- BankNotificationListenerService.kt  # Push notification interceptor
-|   |   |   |-- OrderSyncWorker.kt               # Background order sync
+|   |   |   |-- BankNotificationListenerService.kt  # Push notification interceptor (15 banks)
+|   |   |   |-- OrderSyncWorker.kt               # Background order sync with orphan recovery
+|   |   |   |-- RealtimeSyncService.kt           # Foreground service for WebSocket sync
 |   |   |-- ui/                   # Jetpack Compose screens
 |   |   |   |-- components/       # Charts, DateRangePicker
 |   |   |   |-- dashboard/        # Dashboard screen + ViewModel
@@ -353,21 +366,21 @@ See [docs/SECURITY.md](docs/SECURITY.md) for the full specification.
 
 | Code       | Bank Name                   | SMS | Push Notification |
 |------------|-----------------------------|:---:|:-----------------:|
-| KBANK      | Kasikorn Bank (K PLUS)      | yes | yes |
-| SCB        | Siam Commercial Bank (SCB EASY) | yes | yes |
-| KTB        | Krungthai Bank (Krungthai NEXT) | yes | yes |
-| BBL        | Bangkok Bank (Bualuang)     | yes | yes |
-| GSB        | Government Savings Bank (MyMo) | yes | yes |
-| BAY        | Bank of Ayudhya (KMA/Krungsri) | yes | yes |
-| TTB        | TMBThanachart Bank (ttb touch) | yes | yes |
-| PROMPTPAY  | PromptPay                   | yes | -- |
-| CIMB       | CIMB Thai                   | yes | -- |
-| KKP        | Kiatnakin Phatra Bank       | yes | -- |
-| LH         | Land and Houses Bank (LH Bank) | yes | -- |
-| TISCO      | TISCO Bank                  | yes | -- |
-| UOB        | United Overseas Bank (Thailand) | yes | -- |
-| ICBC       | ICBC (Thai)                 | yes | -- |
-| BAAC       | Bank for Agriculture and Agricultural Cooperatives (ธ.ก.ส.) | yes | -- |
+| KBANK      | Kasikorn Bank (K PLUS)      | ✅ | ✅ |
+| SCB        | Siam Commercial Bank (SCB EASY) | ✅ | ✅ |
+| KTB        | Krungthai Bank (Krungthai NEXT) | ✅ | ✅ |
+| BBL        | Bangkok Bank (Bualuang)     | ✅ | ✅ |
+| GSB        | Government Savings Bank (MyMo) | ✅ | ✅ |
+| BAY        | Bank of Ayudhya (KMA/Krungsri) | ✅ | ✅ |
+| TTB        | TMBThanachart Bank (ttb touch) | ✅ | ✅ |
+| CIMB       | CIMB Thai                   | ✅ | ✅ |
+| KKP        | Kiatnakin Phatra Bank       | ✅ | ✅ |
+| LH         | Land and Houses Bank (LH Bank) | ✅ | ✅ |
+| TISCO      | TISCO Bank                  | ✅ | ✅ |
+| UOB        | United Overseas Bank (Thailand) | ✅ | ✅ |
+| ICBC       | ICBC (Thai)                 | ✅ | ✅ |
+| BAAC       | Bank for Agriculture (ธ.ก.ส.) | ✅ | ✅ |
+| PROMPTPAY  | PromptPay                   | ✅ | ✅ |
 
 The app also includes **heuristic detection** for unknown SMS senders, parsing amount and transfer keywords from message body even when the sender is not in the known bank list.
 
