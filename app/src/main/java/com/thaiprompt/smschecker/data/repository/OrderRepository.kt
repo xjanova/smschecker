@@ -2,6 +2,7 @@ package com.thaiprompt.smschecker.data.repository
 
 import android.util.Log
 import com.thaiprompt.smschecker.data.api.*
+import com.thaiprompt.smschecker.data.db.MatchHistoryDao
 import com.thaiprompt.smschecker.data.db.OrderApprovalDao
 import com.thaiprompt.smschecker.data.db.ServerConfigDao
 import com.thaiprompt.smschecker.data.model.*
@@ -9,6 +10,7 @@ import com.thaiprompt.smschecker.security.SecureStorage
 import com.thaiprompt.smschecker.util.ParallelSyncHelper
 import com.thaiprompt.smschecker.util.RetryHelper
 import kotlinx.coroutines.flow.Flow
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -16,6 +18,7 @@ import javax.inject.Singleton
 class OrderRepository @Inject constructor(
     private val orderApprovalDao: OrderApprovalDao,
     private val serverConfigDao: ServerConfigDao,
+    private val matchHistoryDao: MatchHistoryDao,
     private val apiClientFactory: ApiClientFactory,
     private val secureStorage: SecureStorage
 ) {
@@ -383,7 +386,7 @@ class OrderRepository @Inject constructor(
                     device_id = deviceId,
                     device_name = android.os.Build.MODEL,
                     platform = "android",
-                    app_version = "1.6.0",
+                    app_version = "1.9.0",
                     fcm_token = fcmToken
                 )
             )
@@ -416,9 +419,18 @@ class OrderRepository @Inject constructor(
      * Called when SMS is received instead of fetching all orders.
      *
      * @param amount The exact SMS amount to match (e.g., "500.37")
-     * @return MatchResult containing the matched order and server ID, or null if not found
+     * @param bank Optional bank name for logging
+     * @param transactionTimestamp Timestamp of the SMS transaction
+     * @return MatchResult containing the matched order, server ID, and query statistics
      */
-    suspend fun matchOrderByAmount(amount: Double): MatchResult? {
+    suspend fun matchOrderByAmount(
+        amount: Double,
+        bank: String = "Unknown",
+        transactionTimestamp: Long = System.currentTimeMillis()
+    ): MatchResult? {
+        val startTime = System.currentTimeMillis()
+        val queriesCounter = AtomicInteger(0)
+
         val activeServers = try {
             serverConfigDao.getActiveConfigs()
         } catch (e: Exception) {
@@ -448,16 +460,42 @@ class OrderRepository @Inject constructor(
             maxConcurrency = 5,
             timeoutMs = 15_000L
         ) { serverId ->
+            queriesCounter.incrementAndGet()
             val result = matchOrderFromServer(serverId, deviceId, amountStr)
             if (result != null) {
                 matchedResult = result
             }
         }
 
+        val matchDuration = System.currentTimeMillis() - startTime
+        val totalQueries = queriesCounter.get()
+
         if (matchedResult != null) {
-            Log.i("OrderRepository", "Order matched! server=${matchedResult!!.serverId}, order=${matchedResult!!.order.remoteApprovalId}")
+            Log.i("OrderRepository", "✅ Order matched! server=${matchedResult!!.serverId}, order=${matchedResult!!.order.remoteApprovalId}, queries=$totalQueries, duration=${matchDuration}ms")
+
+            // Save match history
+            try {
+                val history = MatchHistory(
+                    amount = amount,
+                    amountString = amountStr,
+                    bank = bank,
+                    transactionTimestamp = transactionTimestamp,
+                    serverId = matchedResult!!.serverId,
+                    serverName = matchedResult!!.serverName,
+                    orderNumber = matchedResult!!.order.orderNumber,
+                    remoteOrderId = matchedResult!!.order.remoteApprovalId,
+                    serverQueriesCount = totalQueries,
+                    totalServersQueried = serverList.size,
+                    matchDurationMs = matchDuration,
+                    matchResult = com.thaiprompt.smschecker.data.model.MatchResult.SUCCESS
+                )
+                matchHistoryDao.insert(history)
+                Log.d("OrderRepository", "💾 Saved match history: $totalQueries queries, ${matchDuration}ms")
+            } catch (e: Exception) {
+                Log.e("OrderRepository", "Failed to save match history", e)
+            }
         } else {
-            Log.d("OrderRepository", "No matching order found on any server for amount $amountStr")
+            Log.d("OrderRepository", "⏳ No matching order found on any server for amount $amountStr (queries=$totalQueries, duration=${matchDuration}ms)")
         }
 
         return matchedResult

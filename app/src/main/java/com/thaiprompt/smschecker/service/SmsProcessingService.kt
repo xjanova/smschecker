@@ -155,8 +155,12 @@ class SmsProcessingService : Service() {
                         if (amountDouble != null) {
                             Log.d(TAG, "🔍 MATCH-ONLY MODE: Querying servers for amount: $amountDouble")
 
-                            // Use match-only mode: query servers with amount
-                            val matchResult = orderRepository.matchOrderByAmount(amountDouble)
+                            // Use match-only mode: query servers with amount (include bank and timestamp for history)
+                            val matchResult = orderRepository.matchOrderByAmount(
+                                amount = amountDouble,
+                                bank = transaction.bank,
+                                transactionTimestamp = timestamp
+                            )
 
                             if (matchResult != null) {
                                 val matchedOrder = matchResult.order
@@ -179,15 +183,21 @@ class SmsProcessingService : Service() {
                             } else {
                                 // ไม่พบออเดอร์ที่ตรงกัน → เก็บเป็น Orphan Transaction
                                 // เพื่อให้จับคู่ได้ภายหลังเมื่อออเดอร์มาถึง
-                                Log.d(TAG, "⏳ No matching order for amount $amountDouble, saving as orphan")
-                                try {
-                                    orphanRepository.saveAsOrphan(
-                                        transaction = savedTransaction,
-                                        source = com.thaiprompt.smschecker.data.model.TransactionSource.SMS
-                                    )
-                                    Log.i(TAG, "💾 Saved orphan transaction: ${savedTransaction.bank} ${savedTransaction.amount}")
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Failed to save orphan transaction", e)
+                                // แต่ถ้ายอดเป็น .00 ไม่ต้องเก็บ เพราะระบบต้องมีทศนิยมเสมอ
+                                val hasDecimal = (amountDouble % 1.0) != 0.0
+                                if (hasDecimal) {
+                                    Log.d(TAG, "⏳ No matching order for amount $amountDouble, saving as orphan")
+                                    try {
+                                        orphanRepository.saveAsOrphan(
+                                            transaction = savedTransaction,
+                                            source = com.thaiprompt.smschecker.data.model.TransactionSource.SMS
+                                        )
+                                        Log.i(TAG, "💾 Saved orphan transaction: ${savedTransaction.bank} ${savedTransaction.amount}")
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Failed to save orphan transaction", e)
+                                    }
+                                } else {
+                                    Log.d(TAG, "⚠️ Amount $amountDouble has no decimal (.00), skipping orphan save")
                                 }
                             }
                         }
@@ -283,8 +293,12 @@ class SmsProcessingService : Service() {
                         if (amountDouble != null) {
                             Log.d(TAG, "🔍 MATCH-ONLY MODE: Querying servers for notification amount: $amountDouble")
 
-                            // Use match-only mode: query servers with amount
-                            val matchResult = orderRepository.matchOrderByAmount(amountDouble)
+                            // Use match-only mode: query servers with amount (include bank and timestamp for history)
+                            val matchResult = orderRepository.matchOrderByAmount(
+                                amount = amountDouble,
+                                bank = notifTransaction.bank,
+                                transactionTimestamp = timestamp
+                            )
 
                             if (matchResult != null) {
                                 val matchedOrder = matchResult.order
@@ -306,15 +320,21 @@ class SmsProcessingService : Service() {
                                 }
                             } else {
                                 // ไม่พบออเดอร์ที่ตรงกัน → เก็บเป็น Orphan Transaction
-                                Log.d(TAG, "⏳ No matching order for notification amount $amountDouble, saving as orphan")
-                                try {
-                                    orphanRepository.saveAsOrphan(
-                                        transaction = savedTransaction,
-                                        source = com.thaiprompt.smschecker.data.model.TransactionSource.NOTIFICATION
-                                    )
-                                    Log.i(TAG, "💾 Saved orphan transaction from notification: ${savedTransaction.bank} ${savedTransaction.amount}")
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Failed to save orphan transaction from notification", e)
+                                // แต่ถ้ายอดเป็น .00 ไม่ต้องเก็บ เพราะระบบต้องมีทศนิยมเสมอ
+                                val hasDecimal = (amountDouble % 1.0) != 0.0
+                                if (hasDecimal) {
+                                    Log.d(TAG, "⏳ No matching order for notification amount $amountDouble, saving as orphan")
+                                    try {
+                                        orphanRepository.saveAsOrphan(
+                                            transaction = savedTransaction,
+                                            source = com.thaiprompt.smschecker.data.model.TransactionSource.NOTIFICATION
+                                        )
+                                        Log.i(TAG, "💾 Saved orphan transaction from notification: ${savedTransaction.bank} ${savedTransaction.amount}")
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Failed to save orphan transaction from notification", e)
+                                    }
+                                } else {
+                                    Log.d(TAG, "⚠️ Notification amount $amountDouble has no decimal (.00), skipping orphan save")
                                 }
                             }
                         }

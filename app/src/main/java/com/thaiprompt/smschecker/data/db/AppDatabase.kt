@@ -6,6 +6,7 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.thaiprompt.smschecker.data.model.BankTransaction
+import com.thaiprompt.smschecker.data.model.MatchHistory
 import com.thaiprompt.smschecker.data.model.OrderApproval
 import com.thaiprompt.smschecker.data.model.OrphanTransaction
 import com.thaiprompt.smschecker.data.model.ServerConfig
@@ -19,9 +20,10 @@ import com.thaiprompt.smschecker.data.model.SyncLog
         SyncLog::class,
         OrderApproval::class,
         SmsSenderRule::class,
-        OrphanTransaction::class
+        OrphanTransaction::class,
+        MatchHistory::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -32,6 +34,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun orderApprovalDao(): OrderApprovalDao
     abstract fun smsSenderRuleDao(): SmsSenderRuleDao
     abstract fun orphanTransactionDao(): OrphanTransactionDao
+    abstract fun matchHistoryDao(): MatchHistoryDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -156,6 +159,35 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // Add syncInterval column to server_configs table (default 5 seconds)
                 db.execSQL("ALTER TABLE server_configs ADD COLUMN syncInterval INTEGER NOT NULL DEFAULT 5")
+            }
+        }
+
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Create match_history table for tracking successful matches
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS match_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        amount REAL NOT NULL,
+                        amountString TEXT NOT NULL,
+                        bank TEXT NOT NULL,
+                        transactionTimestamp INTEGER NOT NULL,
+                        serverId INTEGER NOT NULL,
+                        serverName TEXT NOT NULL,
+                        orderNumber TEXT,
+                        remoteOrderId INTEGER NOT NULL,
+                        serverQueriesCount INTEGER NOT NULL,
+                        totalServersQueried INTEGER NOT NULL,
+                        matchDurationMs INTEGER NOT NULL,
+                        matchResult TEXT NOT NULL DEFAULT 'SUCCESS',
+                        approvalResult TEXT NOT NULL DEFAULT 'AUTO_APPROVED',
+                        matchedAt INTEGER NOT NULL,
+                        approvedAt INTEGER
+                    )
+                """)
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_match_history_amount ON match_history(amount)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_match_history_matchedAt ON match_history(matchedAt)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_match_history_serverId ON match_history(serverId)")
             }
         }
     }

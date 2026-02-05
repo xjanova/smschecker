@@ -7,6 +7,7 @@ import com.google.gson.GsonBuilder
 import com.thaiprompt.smschecker.data.api.ApiClientFactory
 import com.thaiprompt.smschecker.data.api.WebSocketManager
 import com.thaiprompt.smschecker.data.db.AppDatabase
+import com.thaiprompt.smschecker.data.db.MatchHistoryDao
 import com.thaiprompt.smschecker.data.db.OrderApprovalDao
 import com.thaiprompt.smschecker.data.db.OrphanTransactionDao
 import com.thaiprompt.smschecker.data.db.ServerConfigDao
@@ -40,7 +41,8 @@ object AppModule {
                 AppDatabase.MIGRATION_2_3,
                 AppDatabase.MIGRATION_3_4,
                 AppDatabase.MIGRATION_4_5,
-                AppDatabase.MIGRATION_5_6
+                AppDatabase.MIGRATION_5_6,
+                AppDatabase.MIGRATION_6_7
             )
             .fallbackToDestructiveMigration()
             .build()
@@ -63,6 +65,9 @@ object AppModule {
 
     @Provides
     fun provideOrphanTransactionDao(db: AppDatabase): OrphanTransactionDao = db.orphanTransactionDao()
+
+    @Provides
+    fun provideMatchHistoryDao(db: AppDatabase): MatchHistoryDao = db.matchHistoryDao()
 
     @Provides
     @Singleton
