@@ -15,8 +15,12 @@ android {
         minSdk = 26
         targetSdk = 34
 
-        versionCode = 22
-        versionName = "1.9.1"
+        // CI version from GitHub Actions run number, fallback to 22 for local builds
+        val ciVersionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 22
+        val ciVersionName = "1.9.1"
+
+        versionCode = ciVersionCode
+        versionName = ciVersionName
 
         // Expose build metadata via BuildConfig
         buildConfigField("String", "BUILD_TIME", "\"${System.currentTimeMillis()}\"")
