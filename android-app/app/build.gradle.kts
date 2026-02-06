@@ -15,12 +15,8 @@ android {
         minSdk = 26
         targetSdk = 34
 
-        // Version: CI env vars override defaults
-        val ciVersionName = System.getenv("VERSION_NAME")?.takeIf { it.isNotBlank() } ?: "1.0.0"
-        val ciVersionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
-
-        versionCode = ciVersionCode
-        versionName = ciVersionName
+        versionCode = 22
+        versionName = "1.9.1"
 
         // Expose build metadata via BuildConfig
         buildConfigField("String", "BUILD_TIME", "\"${System.currentTimeMillis()}\"")
