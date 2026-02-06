@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("kotlin-parcelize")
     id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
@@ -14,12 +15,34 @@ android {
         applicationId = "com.thaiprompt.smschecker"
         minSdk = 26
         targetSdk = 34
-        versionCode = 22
-        versionName = "1.9.1"
+
+        // CI version from GitHub Actions run number, fallback to 22 for local builds
+        val ciVersionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 22
+        val ciVersionName = "1.9.1"
+
+        versionCode = ciVersionCode
+        versionName = ciVersionName
+
+        // Expose build metadata via BuildConfig
+        buildConfigField("String", "BUILD_TIME", "\"${System.currentTimeMillis()}\"")
+        buildConfigField("String", "GIT_SHA", "\"${System.getenv("GITHUB_SHA")?.take(7) ?: "local"}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
+        }
+    }
+
+    signingConfigs {
+        // Release signing from environment variables (CI) or local keystore
+        val keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+        if (!keyAlias.isNullOrBlank()) {
+            create("release") {
+                this.keyAlias = keyAlias
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+                storeFile = file(System.getenv("SIGNING_STORE_FILE") ?: "release.keystore")
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+            }
         }
     }
 
@@ -31,6 +54,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Use release signing if available, otherwise fall back to debug signing
+            signingConfig = signingConfigs.findByName("release")
+                ?: signingConfigs.getByName("debug")
         }
         debug {
             isDebuggable = true
