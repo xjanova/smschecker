@@ -7,6 +7,14 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+// Load keystore properties from keystore.properties (local) or environment variables (CI)
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = java.util.Properties()
+
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.thaiprompt.smschecker"
     compileSdk = 34
@@ -34,15 +42,19 @@ android {
     }
 
     signingConfigs {
-        // Release signing from environment variables (CI) or local keystore
-        val keyAlias = System.getenv("SIGNING_KEY_ALIAS")
-        if (!keyAlias.isNullOrBlank()) {
-            create("release") {
-                this.keyAlias = keyAlias
-                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
-                storeFile = file(System.getenv("SIGNING_STORE_FILE") ?: "release.keystore")
-                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
-            }
+        create("release") {
+            // Priority: keystore.properties > environment variables > default
+            val storeFilePath = keystoreProperties.getProperty("storeFile")
+                ?: System.getenv("SIGNING_STORE_FILE")
+                ?: "smschecker-release.keystore"
+
+            storeFile = rootProject.file(storeFilePath)
+            storePassword = keystoreProperties.getProperty("storePassword")
+                ?: System.getenv("SIGNING_STORE_PASSWORD")
+            keyAlias = keystoreProperties.getProperty("keyAlias")
+                ?: System.getenv("SIGNING_KEY_ALIAS")
+            keyPassword = keystoreProperties.getProperty("keyPassword")
+                ?: System.getenv("SIGNING_KEY_PASSWORD")
         }
     }
 
@@ -54,9 +66,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // Use release signing if available, otherwise fall back to debug signing
-            signingConfig = signingConfigs.findByName("release")
-                ?: signingConfigs.getByName("debug")
+            // Always use release signing config
+            signingConfig = signingConfigs.getByName("release")
         }
         debug {
             isDebuggable = true

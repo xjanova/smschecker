@@ -37,6 +37,8 @@ obj/
 # Keystore files
 *.jks
 *.keystore
+keystore.properties
+keystore-base64.txt
 
 # Google Services (real keys)
 # NOTE: app/google-services.json is a placeholder committed for CI builds

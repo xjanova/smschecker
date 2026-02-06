@@ -138,8 +138,8 @@ jobs:
 
       - name: Decode keystore
         run: |
-          echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
-          echo "Keystore decoded: $(wc -c < app/release.keystore) bytes"
+          echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > smschecker-release.keystore
+          echo "✅ Keystore decoded: $(wc -c < smschecker-release.keystore) bytes"
 
       - name: Build release APK
         run: ./gradlew assembleRelease --stacktrace
@@ -147,7 +147,7 @@ jobs:
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
-          SIGNING_STORE_FILE: release.keystore
+          SIGNING_STORE_FILE: smschecker-release.keystore
           VERSION_CODE: ${{ github.run_number }}
           GITHUB_SHA: ${{ github.sha }}
 
