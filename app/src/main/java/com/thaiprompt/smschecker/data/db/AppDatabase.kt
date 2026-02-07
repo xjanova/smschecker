@@ -23,7 +23,7 @@ import com.thaiprompt.smschecker.data.model.SyncLog
         OrphanTransaction::class,
         MatchHistory::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -188,6 +188,13 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_match_history_amount ON match_history(amount)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_match_history_matchedAt ON match_history(matchedAt)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_match_history_serverId ON match_history(serverId)")
+            }
+        }
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // เพิ่มคอลัมน์ serverName ใน order_approvals เพื่อแสดงว่าบิลมาจากเซิร์ฟไหน
+                db.execSQL("ALTER TABLE order_approvals ADD COLUMN serverName TEXT")
             }
         }
     }

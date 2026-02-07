@@ -564,6 +564,10 @@ fun RemoteOrderApproval.toLocalEntity(serverId: Long): OrderApproval {
     // Server may update amount via order_details_json — prefer it over notification amount
     val serverAmount = (details?.get("amount") as? Number)?.toDouble()
     val notifAmount = notification?.amount?.toDoubleOrNull()
+
+    // แปลง created_at (ISO 8601) จากเซิร์ฟเป็น milliseconds สำหรับแสดงเวลาสร้างบิลจริง
+    val serverCreatedAtMs = created_at?.let { parseIso8601ToMillis(it) }
+
     return OrderApproval(
         serverId = serverId,
         remoteApprovalId = id,
@@ -579,10 +583,42 @@ fun RemoteOrderApproval.toLocalEntity(serverId: Long): OrderApproval {
         customerName = details?.get("customer_name")?.toString(),
         amount = serverAmount ?: notifAmount ?: 0.0,
         bank = notification?.bank,
-        paymentTimestamp = null,
+        paymentTimestamp = serverCreatedAtMs,
+        serverName = server_name,
         approvedBy = approved_by,
         rejectionReason = rejection_reason,
         syncedVersion = synced_version,
         lastSyncedAt = System.currentTimeMillis()
     )
+}
+
+/**
+ * แปลง ISO 8601 timestamp string เป็น milliseconds
+ * รองรับ formats: "2025-02-07T15:30:45+07:00", "2025-02-07T08:30:45.000000Z"
+ */
+private fun parseIso8601ToMillis(isoString: String): Long? {
+    return try {
+        val cleaned = isoString.replace("T", " ").replace("Z", "+00:00")
+        // ลอง parse ด้วย SimpleDateFormat หลาย format
+        val formats = listOf(
+            "yyyy-MM-dd'T'HH:mm:ssXXX",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSX",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX",
+            "yyyy-MM-dd'T'HH:mm:ssZ"
+        )
+        for (format in formats) {
+            try {
+                val sdf = java.text.SimpleDateFormat(format, java.util.Locale.US)
+                return sdf.parse(isoString)?.time
+            } catch (_: Exception) { }
+        }
+        // Fallback: ตัด timezone แล้ว parse เป็น local
+        try {
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+            sdf.parse(isoString.take(19))?.time
+        } catch (_: Exception) { null }
+    } catch (e: Exception) {
+        Log.w("OrderRepository", "Failed to parse ISO 8601 timestamp: $isoString", e)
+        null
+    }
 }

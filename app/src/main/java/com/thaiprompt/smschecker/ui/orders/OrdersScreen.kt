@@ -405,19 +405,29 @@ fun OrderCard(
                     .fillMaxWidth()
                     .padding(12.dp)
             ) {
-                // Top row: website + status
+                // Top row: website + server name + status
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = order.websiteName ?: strings.unknown,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.weight(1f)
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = order.websiteName ?: strings.unknown,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        // แสดงชื่อเซิร์ฟเวอร์ที่บิลมาจาก
+                        if (order.serverName != null) {
+                            Text(
+                                text = order.serverName,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
                     StatusBadge(order.approvalStatus)
                 }
 
@@ -461,7 +471,7 @@ fun OrderCard(
                         )
                     }
                     Text(
-                        text = formatDate(order.createdAt),
+                        text = formatDate(order.paymentTimestamp ?: order.createdAt),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp

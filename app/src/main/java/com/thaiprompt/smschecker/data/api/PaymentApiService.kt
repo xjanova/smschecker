@@ -170,6 +170,7 @@ data class RemoteOrderApproval(
     val rejected_at: String? = null,
     val rejection_reason: String? = null,
     val order_details_json: Map<String, Any?>? = null,
+    val server_name: String? = null,
     val synced_version: Long = 0,
     val created_at: String? = null,
     val updated_at: String? = null,
