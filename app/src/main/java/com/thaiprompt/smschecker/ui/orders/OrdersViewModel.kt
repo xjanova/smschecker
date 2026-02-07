@@ -118,10 +118,17 @@ class OrdersViewModel @Inject constructor(
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
+                // ดึงข้อมูลล่าสุดจากเซิร์ฟเวอร์
                 try {
                     orderRepository.fetchOrders()
                 } catch (e: Exception) {
-                    // Server unreachable or not configured
+                    Log.w("OrdersViewModel", "Server fetch failed", e)
+                }
+                // ทำความสะอาดบิลหมดอายุ (ย้ายไปถังขยะ)
+                try {
+                    orderRepository.cleanupExpiredOrders()
+                } catch (e: Exception) {
+                    Log.w("OrdersViewModel", "Cleanup failed", e)
                 }
             } finally {
                 _isRefreshing.value = false

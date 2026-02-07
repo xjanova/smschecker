@@ -87,4 +87,22 @@ interface OrderApprovalDao {
 
     @Query("DELETE FROM order_approvals WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    /**
+     * ย้ายบิลที่หมดอายุ/ยกเลิกไปถังขยะ (soft delete → DELETED)
+     * บิลที่ EXPIRED หรือ CANCELLED นานกว่า cutoff จะถูกย้าย
+     */
+    @Query("""
+        UPDATE order_approvals
+        SET approvalStatus = 'DELETED', updatedAt = :now
+        WHERE approvalStatus IN ('EXPIRED', 'CANCELLED')
+        AND updatedAt < :cutoff
+    """)
+    suspend fun softDeleteExpiredOrders(cutoff: Long, now: Long = System.currentTimeMillis()): Int
+
+    /**
+     * ลบบิลในถังขยะ (DELETED) ที่เก่ากว่า cutoff ออกจริง
+     */
+    @Query("DELETE FROM order_approvals WHERE approvalStatus = 'DELETED' AND updatedAt < :cutoff")
+    suspend fun permanentlyDeleteOldTrash(cutoff: Long): Int
 }

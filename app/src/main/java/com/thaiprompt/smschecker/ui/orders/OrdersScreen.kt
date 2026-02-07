@@ -2,6 +2,8 @@
 
 package com.thaiprompt.smschecker.ui.orders
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,9 +19,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -74,7 +79,7 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                     state.error ?: "Unknown error",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(onClick = { viewModel.refresh() }) {
@@ -360,6 +365,80 @@ private fun StatItem(label: String, count: Int, color: Color) {
     }
 }
 
+// ============================================================================
+// OrderCard - การ์ดแสดงบิล พร้อมไอคอน สถานะ สี และอนิเมชั่นที่ชัดเจน
+// ============================================================================
+
+/**
+ * ข้อมูลการแสดงผลสถานะของบิล
+ */
+private data class StatusVisuals(
+    val icon: ImageVector,
+    val color: Color,
+    val bgColor: Color,
+    val label: String,
+    val borderColor: Color
+)
+
+/**
+ * กำหนด visuals ตามสถานะบิล
+ */
+@Composable
+private fun getStatusVisuals(status: ApprovalStatus): StatusVisuals {
+    val strings = LocalAppStrings.current
+    return when (status) {
+        ApprovalStatus.AUTO_APPROVED -> StatusVisuals(
+            icon = Icons.Default.CheckCircle,
+            color = Color(0xFF2E7D32),           // เขียวเข้ม
+            bgColor = Color(0xFF2E7D32).copy(alpha = 0.08f),
+            label = strings.statusAutoApproved,
+            borderColor = Color(0xFF2E7D32).copy(alpha = 0.3f)
+        )
+        ApprovalStatus.MANUALLY_APPROVED -> StatusVisuals(
+            icon = Icons.Default.Verified,
+            color = Color(0xFF1565C0),            // น้ำเงิน
+            bgColor = Color(0xFF1565C0).copy(alpha = 0.08f),
+            label = strings.statusApproved,
+            borderColor = Color(0xFF1565C0).copy(alpha = 0.3f)
+        )
+        ApprovalStatus.PENDING_REVIEW -> StatusVisuals(
+            icon = Icons.Default.Schedule,
+            color = Color(0xFFE65100),            // ส้มเข้ม
+            bgColor = Color(0xFFE65100).copy(alpha = 0.06f),
+            label = strings.statusPendingReview,
+            borderColor = Color(0xFFE65100).copy(alpha = 0.3f)
+        )
+        ApprovalStatus.REJECTED -> StatusVisuals(
+            icon = Icons.Default.Cancel,
+            color = Color(0xFFC62828),            // แดงเข้ม
+            bgColor = Color(0xFFC62828).copy(alpha = 0.06f),
+            label = strings.statusRejected,
+            borderColor = Color(0xFFC62828).copy(alpha = 0.3f)
+        )
+        ApprovalStatus.EXPIRED -> StatusVisuals(
+            icon = Icons.Default.TimerOff,
+            color = Color(0xFF757575),            // เทา
+            bgColor = Color(0xFF757575).copy(alpha = 0.06f),
+            label = strings.statusExpired,
+            borderColor = Color(0xFF757575).copy(alpha = 0.2f)
+        )
+        ApprovalStatus.CANCELLED -> StatusVisuals(
+            icon = Icons.Default.RemoveCircle,
+            color = Color(0xFFBF360C),            // ส้มแดง
+            bgColor = Color(0xFFBF360C).copy(alpha = 0.06f),
+            label = strings.statusCancelled,
+            borderColor = Color(0xFFBF360C).copy(alpha = 0.3f)
+        )
+        ApprovalStatus.DELETED -> StatusVisuals(
+            icon = Icons.Default.Delete,
+            color = Color(0xFF9E9E9E),            // เทาอ่อน
+            bgColor = Color(0xFF9E9E9E).copy(alpha = 0.04f),
+            label = strings.statusDeleted,
+            borderColor = Color(0xFF9E9E9E).copy(alpha = 0.15f)
+        )
+    }
+}
+
 @Composable
 fun OrderCard(
     order: OrderApproval,
@@ -368,34 +447,61 @@ fun OrderCard(
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
-    val statusColor = when (order.approvalStatus) {
-        ApprovalStatus.AUTO_APPROVED, ApprovalStatus.MANUALLY_APPROVED -> AppColors.CreditGreen
-        ApprovalStatus.PENDING_REVIEW -> AppColors.WarningOrange
-        ApprovalStatus.REJECTED -> AppColors.DebitRed
-        ApprovalStatus.EXPIRED -> Color.Gray
-        ApprovalStatus.CANCELLED -> Color(0xFFFF6F00)
-        ApprovalStatus.DELETED -> Color.Gray
-    }
+    val visuals = getStatusVisuals(order.approvalStatus)
+
+    // อนิเมชั่น pulse สำหรับ PENDING_REVIEW (กะพริบเพื่อดึงดูดความสนใจ)
+    val isPending = order.approvalStatus == ApprovalStatus.PENDING_REVIEW
+    val pulseAnim = rememberInfiniteTransition(label = "pulse")
+    val pulseAlpha by pulseAnim.animateFloat(
+        initialValue = 1f,
+        targetValue = if (isPending) 0.5f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = EaseInOutCubic),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
+
+    // อนิเมชั่นเด้ง สำหรับ AUTO_APPROVED (เพิ่งจับคู่สำเร็จ)
+    val isAutoApproved = order.approvalStatus == ApprovalStatus.AUTO_APPROVED
+    val bounceScale by pulseAnim.animateFloat(
+        initialValue = 1f,
+        targetValue = if (isAutoApproved) 1.08f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = EaseInOutCubic),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "bounceScale"
+    )
+
+    // สี border แบบ animate
+    val animatedBorderColor by animateColorAsState(
+        targetValue = visuals.borderColor,
+        animationSpec = tween(300),
+        label = "borderColor"
+    )
 
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp)),
+            .border(1.5.dp, animatedBorderColor, RoundedCornerShape(16.dp)),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+            containerColor = visuals.bgColor
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = if (isPending) 2.dp else 0.dp
+        )
     ) {
         Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-            // Status color bar with gradient
+            // แถบสีสถานะด้านซ้าย (gradient)
             Box(
                 modifier = Modifier
-                    .width(4.dp)
+                    .width(5.dp)
                     .fillMaxHeight()
                     .background(
                         Brush.verticalGradient(
-                            colors = listOf(statusColor, statusColor.copy(alpha = 0.4f))
+                            colors = listOf(visuals.color, visuals.color.copy(alpha = 0.3f))
                         )
                     )
             )
@@ -403,56 +509,92 @@ fun OrderCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(12.dp)
+                    .padding(14.dp)
             ) {
-                // Top row: website + server name + status
+                // === แถวบน: ไอคอนสถานะ + ชื่อเว็บ + เซิร์ฟเวอร์ + Badge สถานะ ===
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.Top
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = order.websiteName ?: strings.unknown,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        // แสดงชื่อเซิร์ฟเวอร์ที่บิลมาจาก
-                        if (order.serverName != null) {
-                            Text(
-                                text = order.serverName,
-                                style = MaterialTheme.typography.bodySmall,
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // ไอคอนสถานะ พร้อมอนิเมชั่น
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .scale(if (isAutoApproved) bounceScale else 1f)
+                                .clip(CircleShape)
+                                .background(visuals.color.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                visuals.icon,
+                                contentDescription = visuals.label,
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .alpha(if (isPending) pulseAlpha else 1f),
+                                tint = visuals.color
                             )
                         }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = order.websiteName ?: strings.unknown,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            // แสดงชื่อเซิร์ฟเวอร์
+                            if (order.serverName != null) {
+                                Text(
+                                    text = order.serverName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
                     }
-                    StatusBadge(order.approvalStatus)
+                    // Badge สถานะ
+                    StatusBadge(order.approvalStatus, visuals)
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-                // Order number + product
+                // === แถวกลาง: เลขบิล + สินค้า ===
                 if (order.orderNumber != null) {
-                    Text(
-                        text = "#${order.orderNumber}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = AppColors.GoldAccent.copy(alpha = 0.8f)
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Receipt,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = AppColors.GoldAccent.copy(alpha = 0.8f)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "#${order.orderNumber}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = AppColors.GoldAccent.copy(alpha = 0.9f)
+                        )
+                    }
                 }
                 if (order.productName != null) {
                     Text(
                         text = order.productName + (order.quantity?.let { " x$it" } ?: ""),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(start = 18.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                // Bottom row: bank + amount + date
+                // === แถวล่าง: ธนาคาร + ยอดเงิน + เวลา ===
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -467,18 +609,27 @@ fun OrderCard(
                             text = formatAmount(order.amount),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
-                            color = AppColors.CreditGreen
+                            color = visuals.color
                         )
                     }
-                    Text(
-                        text = formatDate(order.paymentTimestamp ?: order.createdAt),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.AccessTime,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = formatDate(order.paymentTimestamp ?: order.createdAt),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp
+                        )
+                    }
                 }
 
-                // Ambiguous warning
+                // === Ambiguous match warning ===
                 if (order.confidence == MatchConfidence.AMBIGUOUS) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(
@@ -504,15 +655,15 @@ fun OrderCard(
                     }
                 }
 
-                // Offline queue indicator
+                // === Offline queue indicator ===
                 if (order.pendingAction != null) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(AppColors.InfoBlue)
+                        Icon(
+                            Icons.Default.CloudUpload,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = AppColors.InfoBlue
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
@@ -524,9 +675,9 @@ fun OrderCard(
                     }
                 }
 
-                // Action buttons for pending orders
+                // === ปุ่ม Action สำหรับ PENDING_REVIEW ===
                 if (order.approvalStatus == ApprovalStatus.PENDING_REVIEW && order.pendingAction == null) {
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End,
@@ -534,20 +685,24 @@ fun OrderCard(
                     ) {
                         OutlinedButton(
                             onClick = onReject,
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.DebitRed),
-                            border = ButtonDefaults.outlinedButtonBorder,
-                            modifier = Modifier.height(34.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color(0xFFC62828)
+                            ),
+                            border = BorderStroke(1.dp, Color(0xFFC62828).copy(alpha = 0.4f)),
+                            modifier = Modifier.height(36.dp),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)
                         ) {
+                            Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(strings.rejectButton, fontSize = 12.sp)
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
                         Button(
                             onClick = onApprove,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = AppColors.CreditGreen
+                                containerColor = Color(0xFF2E7D32)
                             ),
-                            modifier = Modifier.height(34.dp),
+                            modifier = Modifier.height(36.dp),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)
                         ) {
                             Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
@@ -561,33 +716,38 @@ fun OrderCard(
     }
 }
 
-@Composable
-private fun StatusBadge(status: ApprovalStatus) {
-    val strings = LocalAppStrings.current
-    val (color, text) = when (status) {
-        ApprovalStatus.AUTO_APPROVED -> AppColors.CreditGreen to strings.statusAutoApproved
-        ApprovalStatus.MANUALLY_APPROVED -> AppColors.InfoBlue to strings.statusApproved
-        ApprovalStatus.PENDING_REVIEW -> AppColors.WarningOrange to strings.statusPendingReview
-        ApprovalStatus.REJECTED -> AppColors.DebitRed to strings.statusRejected
-        ApprovalStatus.EXPIRED -> Color.Gray to strings.statusExpired
-        ApprovalStatus.CANCELLED -> Color(0xFFFF6F00) to strings.statusCancelled
-        ApprovalStatus.DELETED -> Color.Gray to strings.statusDeleted
-    }
+// ============================================================================
+// StatusBadge - แสดงสถานะเป็น badge พร้อมไอคอนขนาดเล็ก
+// ============================================================================
 
-    Box(
+@Composable
+private fun StatusBadge(status: ApprovalStatus, visuals: StatusVisuals) {
+    Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(color.copy(alpha = 0.15f))
-            .padding(horizontal = 8.dp, vertical = 3.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(visuals.color.copy(alpha = 0.12f))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        Icon(
+            visuals.icon,
+            contentDescription = null,
+            modifier = Modifier.size(12.dp),
+            tint = visuals.color
+        )
+        Spacer(modifier = Modifier.width(4.dp))
         Text(
-            text,
+            visuals.label,
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
-            color = color
+            color = visuals.color
         )
     }
 }
+
+// ============================================================================
+// Utility functions
+// ============================================================================
 
 private fun formatAmount(amount: Double): String {
     return String.format(Locale.getDefault(), "+\u0E3F%,.2f", amount)

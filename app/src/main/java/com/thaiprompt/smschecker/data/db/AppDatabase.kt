@@ -197,5 +197,6 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE order_approvals ADD COLUMN serverName TEXT")
             }
         }
+
     }
 }

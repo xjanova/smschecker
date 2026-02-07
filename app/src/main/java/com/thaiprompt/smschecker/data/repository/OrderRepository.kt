@@ -45,6 +45,29 @@ class OrderRepository @Inject constructor(
     suspend fun getPendingOrdersList(): List<OrderApproval> = orderApprovalDao.getPendingReviewOrders()
 
     /**
+     * ทำความสะอาดบิลที่หมดอายุ/ยกเลิก
+     * - บิล EXPIRED/CANCELLED เก่ากว่า 1 ชม. → ย้ายไปถังขยะ (DELETED)
+     * - บิล DELETED เก่ากว่า 7 วัน → ลบถาวร
+     */
+    suspend fun cleanupExpiredOrders() {
+        try {
+            val oneHourAgo = System.currentTimeMillis() - (60 * 60 * 1000L)
+            val softDeleted = orderApprovalDao.softDeleteExpiredOrders(cutoff = oneHourAgo)
+            if (softDeleted > 0) {
+                Log.i("OrderRepository", "Moved $softDeleted expired/cancelled orders to trash")
+            }
+
+            val sevenDaysAgo = System.currentTimeMillis() - (7 * 24 * 60 * 60 * 1000L)
+            val permanentlyDeleted = orderApprovalDao.permanentlyDeleteOldTrash(cutoff = sevenDaysAgo)
+            if (permanentlyDeleted > 0) {
+                Log.i("OrderRepository", "Permanently deleted $permanentlyDeleted old trash orders")
+            }
+        } catch (e: Exception) {
+            Log.e("OrderRepository", "Error cleaning up expired orders", e)
+        }
+    }
+
+    /**
      * Fetch orders from all active servers in PARALLEL.
      * Much faster than sequential fetch, especially with multiple servers.
      */
@@ -91,6 +114,7 @@ class OrderRepository @Inject constructor(
 
     /**
      * Fetch orders from a single server (used internally).
+     * ดึงทั้ง pending และ recent completed/failed เพื่ออัพเดทสถานะในแอพ
      */
     private suspend fun fetchOrdersFromServer(serverId: Long, deviceId: String): Boolean {
         val server = serverConfigDao.getById(serverId) ?: return false
@@ -98,12 +122,14 @@ class OrderRepository @Inject constructor(
 
         return RetryHelper.withRetryBoolean(maxRetries = 2) {
             val client = apiClientFactory.getClient(server.baseUrl)
-            val response = client.getOrders(apiKey, deviceId)
+            // ดึง orders ทุกสถานะเพื่อให้แอพอัพเดทสถานะบิลได้ถูกต้อง
+            val response = client.getOrders(apiKey, deviceId, status = "all", perPage = 50)
             if (response.isSuccessful) {
                 val orders = response.body()?.data?.data ?: emptyList()
                 if (orders.isNotEmpty()) {
                     val localOrders = orders.map { it.toLocalEntity(serverId) }
                     try {
+                        // REPLACE จะอัพเดทสถานะบิลที่มีอยู่แล้ว
                         orderApprovalDao.insertAll(localOrders)
                     } catch (e: Exception) {
                         Log.e("OrderRepository", "Failed to insert orders", e)
