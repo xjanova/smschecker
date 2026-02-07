@@ -126,6 +126,7 @@ class OrderRepository @Inject constructor(
             val response = client.getOrders(apiKey, deviceId, status = "all", perPage = 50)
             if (response.isSuccessful) {
                 val orders = response.body()?.data?.data ?: emptyList()
+                Log.d("OrderRepository", "Fetched ${orders.size} orders from ${server.name} (id=$serverId)")
                 if (orders.isNotEmpty()) {
                     try {
                         // Smart upsert: ป้องกัน pendingAction (offline queue) หาย
@@ -150,6 +151,8 @@ class OrderRepository @Inject constructor(
                 }
                 true
             } else {
+                val errorBody = try { response.errorBody()?.string() } catch (_: Exception) { null }
+                Log.e("OrderRepository", "Failed to fetch orders from ${server.name}: HTTP ${response.code()} - $errorBody")
                 false
             }
         }
@@ -327,6 +330,7 @@ class OrderRepository @Inject constructor(
             val response = client.syncOrders(apiKey, deviceId, sinceVersion)
             if (response.isSuccessful) {
                 val orders = response.body()?.data?.orders ?: emptyList()
+                Log.d("OrderRepository", "Synced ${orders.size} orders from ${server.name} (id=$serverId)")
                 for (remote in orders) {
                     val existing = orderApprovalDao.getByRemoteId(remote.id, serverId)
                     val remoteStatus = ApprovalStatus.fromApiValue(remote.approval_status)
@@ -353,6 +357,8 @@ class OrderRepository @Inject constructor(
                 }
                 true
             } else {
+                val errorBody = try { response.errorBody()?.string() } catch (_: Exception) { null }
+                Log.e("OrderRepository", "Failed to sync from ${server.name}: HTTP ${response.code()} - $errorBody")
                 false
             }
         }
