@@ -40,6 +40,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.thaiprompt.smschecker.security.SecureStorage
 import com.thaiprompt.smschecker.service.OrderSyncWorker
+import com.thaiprompt.smschecker.service.RealtimeSyncService
 import com.thaiprompt.smschecker.service.SmsProcessingService
 import com.thaiprompt.smschecker.ui.dashboard.DashboardScreen
 import com.thaiprompt.smschecker.ui.dashboard.DashboardViewModel
@@ -80,6 +81,7 @@ class MainActivity : ComponentActivity() {
 
         checkAndRequestPermissions()
         OrderSyncWorker.enqueuePeriodicSync(applicationContext)
+        RealtimeSyncService.start(applicationContext)
 
         setContent {
             val themeMode = remember { mutableStateOf(ThemeMode.fromKey(secureStorage.getThemeMode())) }
