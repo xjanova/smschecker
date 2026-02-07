@@ -563,14 +563,16 @@ class OrderRepository @Inject constructor(
             if (response.isSuccessful) {
                 val data = response.body()?.data
                 if (data?.matched == true && data.order != null) {
-                    val localOrder = data.order.toLocalEntity(serverId)
-                    // Save to local database
+                    var localOrder = data.order.toLocalEntity(serverId)
+                    // Save to local database and get actual ID
                     try {
                         val existingId = orderApprovalDao.getByRemoteId(data.order.id, serverId)?.id
                         if (existingId != null) {
-                            orderApprovalDao.update(localOrder.copy(id = existingId))
+                            localOrder = localOrder.copy(id = existingId)
+                            orderApprovalDao.update(localOrder)
                         } else {
-                            orderApprovalDao.insert(localOrder)
+                            val insertedId = orderApprovalDao.insert(localOrder)
+                            localOrder = localOrder.copy(id = insertedId)
                         }
                     } catch (e: Exception) {
                         Log.e("OrderRepository", "Failed to save matched order", e)
