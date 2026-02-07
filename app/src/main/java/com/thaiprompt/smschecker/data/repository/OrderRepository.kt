@@ -127,12 +127,25 @@ class OrderRepository @Inject constructor(
             if (response.isSuccessful) {
                 val orders = response.body()?.data?.data ?: emptyList()
                 if (orders.isNotEmpty()) {
-                    val localOrders = orders.map { it.toLocalEntity(serverId) }
                     try {
-                        // REPLACE จะอัพเดทสถานะบิลที่มีอยู่แล้ว
-                        orderApprovalDao.insertAll(localOrders)
+                        // Smart upsert: ป้องกัน pendingAction (offline queue) หาย
+                        for (remote in orders) {
+                            val localOrder = remote.toLocalEntity(serverId)
+                            val existing = orderApprovalDao.getByRemoteId(remote.id, serverId)
+
+                            // ถ้า local มี pendingAction ค้างอยู่ → ข้ามไป (offline action สำคัญกว่า)
+                            if (existing != null && existing.pendingAction != null) {
+                                continue
+                            }
+
+                            if (existing != null) {
+                                orderApprovalDao.update(localOrder.copy(id = existing.id))
+                            } else {
+                                orderApprovalDao.insert(localOrder)
+                            }
+                        }
                     } catch (e: Exception) {
-                        Log.e("OrderRepository", "Failed to insert orders", e)
+                        Log.e("OrderRepository", "Failed to upsert orders", e)
                     }
                 }
                 true
@@ -183,7 +196,16 @@ class OrderRepository @Inject constructor(
         val success = RetryHelper.withRetryBoolean {
             val client = apiClientFactory.getClient(server.baseUrl)
             val response = client.approveOrder(apiKey, deviceId, order.remoteApprovalId)
-            response.isSuccessful
+            if (response.isSuccessful) {
+                true
+            } else if (response.code() == 422) {
+                // Server บอกว่า transaction ไม่ได้ pending แล้ว (อาจ auto-approved ตอน match)
+                // ถือว่าสำเร็จ ไม่ต้อง retry ซ้ำตลอด
+                Log.i("OrderRepository", "Order ${order.remoteApprovalId} already approved on server (422)")
+                true
+            } else {
+                false
+            }
         }
 
         return if (success) {
