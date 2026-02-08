@@ -163,10 +163,13 @@ class OrderRepository @Inject constructor(
         val apiKey = secureStorage.getApiKey(server.id) ?: return
         val deviceId = secureStorage.getDeviceId() ?: return
 
+        // ใช้ orderNumber (bill_reference) ถ้ามี, fallback เป็น remoteApprovalId
+        val identifier = order.orderNumber ?: order.remoteApprovalId.toString()
+
         // Retry with exponential backoff for unstable network
         val success = RetryHelper.withRetryBoolean {
             val client = apiClientFactory.getClient(server.baseUrl)
-            val response = client.approveOrder(apiKey, deviceId, order.remoteApprovalId)
+            val response = client.approveOrder(apiKey, deviceId, identifier)
             response.isSuccessful
         }
 
@@ -195,16 +198,19 @@ class OrderRepository @Inject constructor(
         val apiKey = secureStorage.getApiKey(server.id) ?: return false
         val deviceId = secureStorage.getDeviceId() ?: return false
 
+        // ใช้ orderNumber (bill_reference) ถ้ามี, fallback เป็น remoteApprovalId
+        val identifier = order.orderNumber ?: order.remoteApprovalId.toString()
+
         // Retry with exponential backoff for unstable network
         val success = RetryHelper.withRetryBoolean {
             val client = apiClientFactory.getClient(server.baseUrl)
-            val response = client.approveOrder(apiKey, deviceId, order.remoteApprovalId)
+            val response = client.approveOrder(apiKey, deviceId, identifier)
             if (response.isSuccessful) {
                 true
             } else if (response.code() == 422) {
                 // Server บอกว่า transaction ไม่ได้ pending แล้ว (อาจ auto-approved ตอน match)
                 // ถือว่าสำเร็จ ไม่ต้อง retry ซ้ำตลอด
-                Log.i("OrderRepository", "Order ${order.remoteApprovalId} already approved on server (422)")
+                Log.i("OrderRepository", "Order $identifier already approved on server (422)")
                 true
             } else {
                 false
@@ -226,10 +232,13 @@ class OrderRepository @Inject constructor(
         val apiKey = secureStorage.getApiKey(server.id) ?: return
         val deviceId = secureStorage.getDeviceId() ?: return
 
+        // ใช้ orderNumber (bill_reference) ถ้ามี, fallback เป็น remoteApprovalId
+        val identifier = order.orderNumber ?: order.remoteApprovalId.toString()
+
         // Retry with exponential backoff for unstable network
         val success = RetryHelper.withRetryBoolean {
             val client = apiClientFactory.getClient(server.baseUrl)
-            val response = client.rejectOrder(apiKey, deviceId, order.remoteApprovalId, RejectBody(reason))
+            val response = client.rejectOrder(apiKey, deviceId, identifier, RejectBody(reason))
             response.isSuccessful
         }
 
@@ -248,17 +257,20 @@ class OrderRepository @Inject constructor(
             val server = serverConfigDao.getById(order.serverId) ?: continue
             val apiKey = secureStorage.getApiKey(server.id) ?: continue
 
+            // ใช้ orderNumber (bill_reference) ถ้ามี, fallback เป็น remoteApprovalId
+            val identifier = order.orderNumber ?: order.remoteApprovalId.toString()
+
             // Retry with exponential backoff for unstable network
             val success = RetryHelper.withRetryBoolean {
                 val client = apiClientFactory.getClient(server.baseUrl)
                 when (order.pendingAction) {
                     PendingAction.APPROVE -> {
-                        val resp = client.approveOrder(apiKey, deviceId, order.remoteApprovalId)
+                        val resp = client.approveOrder(apiKey, deviceId, identifier)
                         resp.isSuccessful
                     }
                     PendingAction.REJECT -> {
                         val resp = client.rejectOrder(
-                            apiKey, deviceId, order.remoteApprovalId,
+                            apiKey, deviceId, identifier,
                             RejectBody(order.rejectionReason ?: "")
                         )
                         resp.isSuccessful

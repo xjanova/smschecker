@@ -18,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
@@ -915,6 +916,7 @@ fun SettingsScreen(
         item {
             GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
                 val strings2 = LocalAppStrings.current
+                val supportedBanks = setOf("KBANK", "SCB")
                 val banks = listOf(
                     "KBANK" to strings2.bankKbank,
                     "SCB" to strings2.bankScb,
@@ -933,17 +935,21 @@ fun SettingsScreen(
                     "BAAC" to strings2.bankBaac
                 )
                 banks.forEachIndexed { index, (code, name) ->
+                    val isSupported = code in supportedBanks
+                    val contentAlpha = if (isSupported) 1f else 0.4f
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 6.dp),
+                            .padding(vertical = 6.dp)
+                            .alpha(contentAlpha),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             com.thaiprompt.smschecker.ui.components.BankLogoCircle(
                                 bankCode = code,
-                                size = 28.dp
+                                size = 28.dp,
+                                grayscale = !isSupported
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
@@ -954,9 +960,12 @@ fun SettingsScreen(
                             )
                         }
                         Text(
-                            name,
+                            if (isSupported) name else "เร็วๆนี้",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (isSupported)
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
                     }
                     if (index < banks.lastIndex) {

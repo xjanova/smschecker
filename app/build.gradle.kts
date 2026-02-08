@@ -27,9 +27,9 @@ android {
         minSdk = 26
         targetSdk = 34
 
-        // CI version from GitHub Actions run number, fallback to 22 for local builds
-        val ciVersionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 22
-        val ciVersionName = "1.9.1"
+        // CI version from GitHub Actions run number, fallback to 23 for local builds
+        val ciVersionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 23
+        val ciVersionName = "2.0.0"
 
         versionCode = ciVersionCode
         versionName = ciVersionName

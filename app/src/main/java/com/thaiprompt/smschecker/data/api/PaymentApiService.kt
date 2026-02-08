@@ -44,14 +44,14 @@ interface PaymentApiService {
     suspend fun approveOrder(
         @Header("X-Api-Key") apiKey: String,
         @Header("X-Device-Id") deviceId: String,
-        @Path("id") orderId: Long
+        @Path("id") identifier: String
     ): Response<ApiResponse>
 
     @POST("api/v1/sms-payment/orders/{id}/reject")
     suspend fun rejectOrder(
         @Header("X-Api-Key") apiKey: String,
         @Header("X-Device-Id") deviceId: String,
-        @Path("id") orderId: Long,
+        @Path("id") identifier: String,
         @Body body: RejectBody
     ): Response<ApiResponse>
 
@@ -188,7 +188,7 @@ data class RemoteNotification(
 
 data class RejectBody(val reason: String = "")
 
-data class BulkApproveBody(val ids: List<Long>)
+data class BulkApproveBody(val ids: List<String>)
 
 data class UpdateSettingsBody(val approval_mode: String)
 

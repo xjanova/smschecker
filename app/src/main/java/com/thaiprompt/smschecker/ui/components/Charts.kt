@@ -13,6 +13,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
@@ -177,8 +179,14 @@ fun ChartLegendItem(
 @Composable
 fun BankLogoCircle(
     bankCode: String,
-    size: androidx.compose.ui.unit.Dp = 44.dp
+    size: androidx.compose.ui.unit.Dp = 44.dp,
+    grayscale: Boolean = false
 ) {
+    val colorFilter = if (grayscale) {
+        ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
+    } else {
+        null
+    }
     val drawableRes = when (bankCode.uppercase()) {
         "KBANK" -> com.thaiprompt.smschecker.R.drawable.bank_kbank
         "SCB" -> com.thaiprompt.smschecker.R.drawable.bank_scb
@@ -239,7 +247,8 @@ fun BankLogoCircle(
                 contentDescription = bankCode,
                 modifier = Modifier
                     .size(size)
-                    .clip(CircleShape)
+                    .clip(CircleShape),
+                colorFilter = colorFilter
             )
             Text(
                 text = initials,
