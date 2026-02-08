@@ -452,7 +452,7 @@ class OrderRepository @Inject constructor(
                     device_id = deviceId,
                     device_name = android.os.Build.MODEL,
                     platform = "android",
-                    app_version = "1.9.0",
+                    app_version = com.thaiprompt.smschecker.BuildConfig.VERSION_NAME,
                     fcm_token = fcmToken
                 )
             )
