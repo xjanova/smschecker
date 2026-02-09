@@ -487,69 +487,131 @@ class OrderRepository @Inject constructor(
     }
 
     /**
-     * ส่ง FCM token ไปยังเซิร์ฟเวอร์ทุกตัวเพื่อรับ push notifications (PARALLEL)
+     * Get count of active servers and servers with API keys.
+     * Used for debug report.
+     */
+    suspend fun getActiveServerCount(): Pair<Int, Int> {
+        val activeServers = serverConfigDao.getActiveConfigs()
+        var withKeys = 0
+        for (server in activeServers) {
+            if (secureStorage.getApiKey(server.id) != null) withKeys++
+        }
+        return Pair(activeServers.size, withKeys)
+    }
+
+    /**
+     * ส่ง FCM token ไปยังเซิร์ฟเวอร์ทุกตัวเพื่อรับ push notifications
+     * ใช้ sequential loop แทน ParallelSyncHelper เพื่อ debug ได้ง่ายกว่า
      * @return true ถ้าส่งไปอย่างน้อย 1 เซิร์ฟเวอร์สำเร็จ, false ถ้าไม่ได้ส่งเลย
      */
     suspend fun registerFcmToken(fcmToken: String): Boolean {
+        Log.i("OrderRepository", "registerFcmToken: START, tokenLength=${fcmToken.length}, tokenPrefix=${fcmToken.take(20)}")
+
+        // Step 1: Get active servers
         val activeServers = try {
             serverConfigDao.getActiveConfigs()
         } catch (e: Exception) {
-            android.util.Log.w("OrderRepository", "registerFcmToken: Failed to get active configs: ${e.message}")
+            Log.e("OrderRepository", "registerFcmToken: FAILED getActiveConfigs: ${e.javaClass.simpleName}: ${e.message}", e)
             return false
         }
-        val deviceId = secureStorage.getDeviceId()
+        Log.i("OrderRepository", "registerFcmToken: activeServers=${activeServers.size} [${activeServers.map { "${it.id}:${it.name}" }}]")
+
+        // Step 2: Get device ID
+        val deviceId = try {
+            secureStorage.getDeviceId()
+        } catch (e: Exception) {
+            Log.e("OrderRepository", "registerFcmToken: FAILED getDeviceId: ${e.javaClass.simpleName}: ${e.message}", e)
+            null
+        }
         if (deviceId == null) {
-            android.util.Log.w("OrderRepository", "registerFcmToken: No device ID")
+            Log.w("OrderRepository", "registerFcmToken: No device ID - ABORTING")
             return false
         }
+        Log.i("OrderRepository", "registerFcmToken: deviceId=$deviceId")
 
         if (activeServers.isEmpty()) {
-            android.util.Log.w("OrderRepository", "registerFcmToken: No active servers configured")
+            Log.w("OrderRepository", "registerFcmToken: No active servers - ABORTING")
             return false
         }
 
-        val serverList = activeServers.mapNotNull { server ->
-            val apiKey = secureStorage.getApiKey(server.id)
-            if (apiKey != null) server.id to server.name else null
-        }
-
-        if (serverList.isEmpty()) {
-            android.util.Log.w("OrderRepository", "registerFcmToken: No servers with API keys")
-            return false
-        }
-
-        android.util.Log.i("OrderRepository", "registerFcmToken: Sending to ${serverList.size} server(s)...")
-
+        // Step 3: Send to each server SEQUENTIALLY (easier to debug)
         var sentCount = 0
-        // Register to all servers in parallel (fire-and-forget, best effort)
-        ParallelSyncHelper.executeParallel(
-            servers = serverList,
-            maxConcurrency = 5,
-            timeoutMs = 10_000L
-        ) { serverId ->
-            val server = serverConfigDao.getById(serverId) ?: return@executeParallel
-            val apiKey = secureStorage.getApiKey(serverId) ?: return@executeParallel
-            val client = apiClientFactory.getClient(server.baseUrl)
-            val response = client.registerDevice(
-                apiKey = apiKey,
-                body = DeviceRegistration(
+        for (server in activeServers) {
+            Log.i("OrderRepository", "registerFcmToken: Processing server id=${server.id}, name=${server.name}, url=${server.baseUrl}")
+
+            val apiKey = try {
+                secureStorage.getApiKey(server.id)
+            } catch (e: Exception) {
+                Log.e("OrderRepository", "registerFcmToken: FAILED getApiKey for server ${server.id}: ${e.javaClass.simpleName}: ${e.message}", e)
+                null
+            }
+
+            if (apiKey == null) {
+                Log.w("OrderRepository", "registerFcmToken: No API key for server ${server.id} - skipping")
+                continue
+            }
+            Log.i("OrderRepository", "registerFcmToken: apiKey found, length=${apiKey.length}, prefix=${apiKey.take(8)}")
+
+            try {
+                val client = apiClientFactory.getClient(server.baseUrl)
+                Log.i("OrderRepository", "registerFcmToken: Client created for ${server.baseUrl}")
+
+                val body = DeviceRegistration(
                     device_id = deviceId,
                     device_name = android.os.Build.MODEL,
                     platform = "android",
                     app_version = com.thaiprompt.smschecker.BuildConfig.VERSION_NAME,
                     fcm_token = fcmToken
                 )
-            )
-            if (response.isSuccessful) {
-                sentCount++
-                android.util.Log.i("OrderRepository", "registerFcmToken: Sent to ${server.name} successfully")
-            } else {
-                android.util.Log.w("OrderRepository", "registerFcmToken: Failed for ${server.name}: HTTP ${response.code()}")
+                Log.i("OrderRepository", "registerFcmToken: Body created: device_id=$deviceId, device_name=${android.os.Build.MODEL}, app_version=${com.thaiprompt.smschecker.BuildConfig.VERSION_NAME}")
+
+                Log.i("OrderRepository", "registerFcmToken: >>> CALLING registerDevice API...")
+                val response = client.registerDevice(apiKey = apiKey, body = body)
+                Log.i("OrderRepository", "registerFcmToken: <<< API response: code=${response.code()}, isSuccessful=${response.isSuccessful}")
+
+                if (response.isSuccessful) {
+                    sentCount++
+                    val responseBody = try { response.body()?.toString() } catch (_: Exception) { "N/A" }
+                    Log.i("OrderRepository", "registerFcmToken: ✅ SUCCESS for ${server.name}! Response: $responseBody")
+                } else {
+                    val errorBody = try { response.errorBody()?.string() } catch (_: Exception) { "N/A" }
+                    Log.w("OrderRepository", "registerFcmToken: ❌ FAILED for ${server.name}: HTTP ${response.code()}, error=$errorBody")
+                }
+            } catch (e: Exception) {
+                Log.e("OrderRepository", "registerFcmToken: 💥 EXCEPTION for server ${server.name}: ${e.javaClass.simpleName}: ${e.message}", e)
+                // ส่ง stack trace เต็มเพื่อ debug
+                Log.e("OrderRepository", "registerFcmToken: Stack trace:", e)
             }
         }
 
-        android.util.Log.i("OrderRepository", "registerFcmToken: Done. Sent to $sentCount/${serverList.size} servers")
+        Log.i("OrderRepository", "registerFcmToken: END. Sent to $sentCount/${activeServers.size} servers")
         return sentCount > 0
+    }
+
+    /**
+     * Send debug report to server for remote diagnostics.
+     * Temporary - for debugging FCM token registration issues.
+     */
+    suspend fun sendDebugReport(report: DebugReportBody) {
+        try {
+            val activeServers = serverConfigDao.getActiveConfigs()
+            if (activeServers.isEmpty()) {
+                Log.w("OrderRepository", "sendDebugReport: No active servers")
+                return
+            }
+            for (server in activeServers) {
+                val apiKey = secureStorage.getApiKey(server.id) ?: continue
+                try {
+                    val client = apiClientFactory.getClient(server.baseUrl)
+                    val response = client.debugReport(apiKey = apiKey, body = report)
+                    Log.i("OrderRepository", "sendDebugReport: ${server.name} → HTTP ${response.code()}")
+                } catch (e: Exception) {
+                    Log.e("OrderRepository", "sendDebugReport: ${server.name} failed: ${e.message}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("OrderRepository", "sendDebugReport: FAILED: ${e.message}")
+        }
     }
 
     suspend fun updateApprovalMode(mode: ApprovalMode) {

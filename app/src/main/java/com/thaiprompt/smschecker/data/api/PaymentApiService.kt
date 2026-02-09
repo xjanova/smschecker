@@ -100,6 +100,16 @@ interface PaymentApiService {
         @Header("X-Device-Id") deviceId: String,
         @Query("days") days: Int = 7
     ): Response<DashboardStatsResponse>
+
+    /**
+     * Debug report: Send diagnostic data to server for debugging.
+     * Temporary endpoint for FCM token registration debugging.
+     */
+    @POST("api/v1/sms-payment/debug-report")
+    suspend fun debugReport(
+        @Header("X-Api-Key") apiKey: String,
+        @Body body: DebugReportBody
+    ): Response<ApiResponse>
 }
 
 data class EncryptedPayload(
@@ -245,4 +255,22 @@ data class MatchOrderData(
     val matched: Boolean = false,
     val order: RemoteOrderApproval? = null,
     val message: String? = null
+)
+
+/**
+ * Debug report body for sending diagnostic data to server.
+ * Temporary - remove after FCM debugging is complete.
+ */
+data class DebugReportBody(
+    val device_id: String?,
+    val app_version: String?,
+    val fcm_token_length: Int,
+    val fcm_token_prefix: String?,
+    val fcm_needs_sync: Boolean,
+    val active_servers_count: Int,
+    val servers_with_api_keys: Int,
+    val register_fcm_result: String?,
+    val build_number: Int,
+    val device_model: String?,
+    val timestamp: Long
 )

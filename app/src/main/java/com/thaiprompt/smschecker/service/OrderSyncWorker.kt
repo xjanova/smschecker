@@ -4,8 +4,11 @@ import android.content.Context
 import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.*
+import com.thaiprompt.smschecker.BuildConfig
+import com.thaiprompt.smschecker.data.api.DebugReportBody
 import com.thaiprompt.smschecker.data.repository.OrderRepository
 import com.thaiprompt.smschecker.data.repository.OrphanTransactionRepository
+import com.thaiprompt.smschecker.security.SecureStorage
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.util.concurrent.TimeUnit
@@ -15,8 +18,12 @@ class OrderSyncWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted workerParams: WorkerParameters,
     private val orderRepository: OrderRepository,
-    private val orphanRepository: OrphanTransactionRepository
+    private val orphanRepository: OrphanTransactionRepository,
+    private val secureStorage: SecureStorage
 ) : CoroutineWorker(appContext, workerParams) {
+
+    // Track FCM sync result for debug report
+    private var lastFcmSyncResult: String = "not_attempted"
 
     override suspend fun doWork(): Result {
         val startTime = System.currentTimeMillis()
@@ -24,6 +31,9 @@ class OrderSyncWorker @AssistedInject constructor(
         return try {
             // 0. Sync FCM token if needed
             syncFcmTokenIfNeeded()
+
+            // 0.5 Send debug report to server (uses fetchOrders-like path which we know works)
+            sendDebugReport()
 
             // 1. Push offline queued actions first (PARALLEL)
             orderRepository.syncOfflineQueue()
@@ -47,6 +57,48 @@ class OrderSyncWorker @AssistedInject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Sync failed", e)
             if (runAttemptCount < 3) Result.retry() else Result.failure()
+        }
+    }
+
+    /**
+     * Send diagnostic data to server via a path we know works.
+     * This helps debug why registerFcmToken() fails.
+     */
+    private suspend fun sendDebugReport() {
+        try {
+            val prefs = applicationContext.getSharedPreferences("fcm_prefs", Context.MODE_PRIVATE)
+            val fcmToken = prefs.getString(FcmService.FCM_TOKEN_KEY, null)
+            val needsSync = prefs.getBoolean("fcm_token_needs_sync", false)
+            val deviceId = secureStorage.getDeviceId()
+
+            // Count active servers and servers with API keys
+            var activeServers = 0
+            var serversWithKeys = 0
+            try {
+                val servers = orderRepository.getActiveServerCount()
+                activeServers = servers.first
+                serversWithKeys = servers.second
+            } catch (e: Exception) {
+                Log.e(TAG, "sendDebugReport: Failed to get server count: ${e.message}")
+            }
+
+            val report = DebugReportBody(
+                device_id = deviceId,
+                app_version = BuildConfig.VERSION_NAME,
+                fcm_token_length = fcmToken?.length ?: 0,
+                fcm_token_prefix = fcmToken?.take(30),
+                fcm_needs_sync = needsSync,
+                active_servers_count = activeServers,
+                servers_with_api_keys = serversWithKeys,
+                register_fcm_result = lastFcmSyncResult,
+                build_number = BuildConfig.VERSION_CODE,
+                device_model = android.os.Build.MODEL,
+                timestamp = System.currentTimeMillis()
+            )
+
+            orderRepository.sendDebugReport(report)
+        } catch (e: Exception) {
+            Log.e(TAG, "sendDebugReport: Failed: ${e.message}")
         }
     }
 
@@ -95,26 +147,64 @@ class OrderSyncWorker @AssistedInject constructor(
      * ส่ง FCM token ไปเซิร์ฟเวอร์ถ้ายังไม่ได้ส่ง
      */
     private suspend fun syncFcmTokenIfNeeded() {
+        Log.i(TAG, "syncFcmTokenIfNeeded: === START ===")
         val prefs = applicationContext.getSharedPreferences("fcm_prefs", Context.MODE_PRIVATE)
         val needsSync = prefs.getBoolean("fcm_token_needs_sync", false)
         val fcmToken = prefs.getString(FcmService.FCM_TOKEN_KEY, null)
 
-        Log.d(TAG, "syncFcmTokenIfNeeded: needsSync=$needsSync, hasToken=${fcmToken != null}, tokenLength=${fcmToken?.length ?: 0}")
+        Log.i(TAG, "syncFcmTokenIfNeeded: needsSync=$needsSync, hasToken=${fcmToken != null}, tokenLength=${fcmToken?.length ?: 0}")
 
-        if (needsSync && fcmToken != null) {
+        if (!needsSync) {
+            Log.i(TAG, "syncFcmTokenIfNeeded: needsSync=false, skipping (flag not set)")
+            lastFcmSyncResult = "skipped:needsSync=false"
+            return
+        }
+
+        if (fcmToken == null) {
+            Log.w(TAG, "syncFcmTokenIfNeeded: fcmToken is NULL! Firebase may not have initialized yet.")
+            lastFcmSyncResult = "token_null_trying_direct"
+            // ลองดึง token ใหม่จาก Firebase โดยตรง
             try {
-                Log.i(TAG, "syncFcmTokenIfNeeded: Sending FCM token to servers...")
-                val sent = orderRepository.registerFcmToken(fcmToken)
-                if (sent) {
-                    prefs.edit().putBoolean("fcm_token_needs_sync", false).apply()
-                    Log.i(TAG, "syncFcmTokenIfNeeded: FCM token sent successfully!")
+                val tasks = com.google.android.gms.tasks.Tasks.await(
+                    com.google.firebase.messaging.FirebaseMessaging.getInstance().token,
+                    10, java.util.concurrent.TimeUnit.SECONDS
+                )
+                if (tasks != null) {
+                    Log.i(TAG, "syncFcmTokenIfNeeded: Got FCM token directly! length=${tasks.length}")
+                    prefs.edit().putString(FcmService.FCM_TOKEN_KEY, tasks).apply()
+                    // ใช้ token นี้ต่อ
+                    sendFcmToken(prefs, tasks)
                 } else {
-                    Log.w(TAG, "syncFcmTokenIfNeeded: No servers available yet, will retry next sync")
+                    Log.w(TAG, "syncFcmTokenIfNeeded: Direct token fetch returned null")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "syncFcmTokenIfNeeded: FAILED to send FCM token: ${e.javaClass.simpleName}: ${e.message}", e)
-                // Will retry next sync
+                Log.e(TAG, "syncFcmTokenIfNeeded: Direct token fetch failed: ${e.javaClass.simpleName}: ${e.message}", e)
             }
+            return
+        }
+
+        sendFcmToken(prefs, fcmToken)
+    }
+
+    /**
+     * ส่ง FCM token ไปเซิร์ฟเวอร์จริง
+     */
+    private suspend fun sendFcmToken(prefs: android.content.SharedPreferences, fcmToken: String) {
+        try {
+            Log.i(TAG, "sendFcmToken: Calling orderRepository.registerFcmToken()...")
+            val sent = orderRepository.registerFcmToken(fcmToken)
+            Log.i(TAG, "sendFcmToken: registerFcmToken returned: $sent")
+            if (sent) {
+                prefs.edit().putBoolean("fcm_token_needs_sync", false).apply()
+                Log.i(TAG, "sendFcmToken: ✅ FCM token sent successfully! Flag cleared.")
+                lastFcmSyncResult = "success"
+            } else {
+                Log.w(TAG, "sendFcmToken: ❌ registerFcmToken returned false, will retry next sync")
+                lastFcmSyncResult = "returned_false"
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "sendFcmToken: 💥 EXCEPTION: ${e.javaClass.simpleName}: ${e.message}", e)
+            lastFcmSyncResult = "exception:${e.javaClass.simpleName}:${e.message}"
         }
     }
 
