@@ -23,7 +23,7 @@ import com.thaiprompt.smschecker.data.model.SyncLog
         OrphanTransaction::class,
         MatchHistory::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -195,6 +195,14 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // เพิ่มคอลัมน์ serverName ใน order_approvals เพื่อแสดงว่าบิลมาจากเซิร์ฟไหน
                 db.execSQL("ALTER TABLE order_approvals ADD COLUMN serverName TEXT")
+            }
+        }
+
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // อัพเดท syncInterval จาก polling ถี่ (5-60 วินาที) เป็น 5 นาที
+                // เพราะ FCM push เป็นกลไกหลักแล้ว ไม่ต้อง poll ถี่
+                db.execSQL("UPDATE server_configs SET syncInterval = 300 WHERE syncInterval < 60")
             }
         }
 

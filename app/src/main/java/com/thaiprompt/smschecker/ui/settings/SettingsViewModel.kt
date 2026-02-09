@@ -44,7 +44,7 @@ data class SettingsState(
     // Sync status
     val isSyncing: Boolean = false,
     val lastSyncTime: Long? = null,
-    val syncIntervalSeconds: Int = 5,
+    val syncIntervalSeconds: Int = 300,
     val pendingOrdersCount: Int = 0
 )
 
@@ -164,7 +164,7 @@ class SettingsViewModel @Inject constructor(
         _state.update { it.copy(showAddDialog = false) }
     }
 
-    fun addServer(name: String, url: String, apiKey: String, secretKey: String, isDefault: Boolean, deviceId: String? = null, syncInterval: Int = 5) {
+    fun addServer(name: String, url: String, apiKey: String, secretKey: String, isDefault: Boolean, deviceId: String? = null, syncInterval: Int = 300) {
         viewModelScope.launch {
             try {
                 _state.update { it.copy(addServerError = null) }

@@ -61,7 +61,7 @@ fun SettingsScreen(
     qrApiKey: String? = null,
     qrSecretKey: String? = null,
     qrDeviceId: String? = null,
-    qrSyncInterval: Int = 5,  // Sync interval from QR code (default 5 seconds)
+    qrSyncInterval: Int = 300,  // Sync interval from QR code (default 5 min, FCM push is primary)
     onQrResultConsumed: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {

@@ -203,7 +203,7 @@ class TransactionRepository @Inject constructor(
         apiKey: String,
         secretKey: String,
         isDefault: Boolean = false,
-        syncInterval: Int = 5  // Default 5 seconds
+        syncInterval: Int = 300  // Default 5 minutes (FCM push is primary)
     ): Long {
         // ป้องกัน URL ซ้ำ — normalize URL ก่อนเช็ค
         val normalizedUrl = baseUrl.trimEnd('/')
@@ -222,7 +222,7 @@ class TransactionRepository @Inject constructor(
             apiKey = "", // Stored separately in SecureStorage
             secretKey = "", // Stored separately in SecureStorage
             isDefault = isDefault,
-            syncInterval = syncInterval.coerceIn(3, 60)  // Enforce 3-60 second range
+            syncInterval = syncInterval.coerceIn(30, 600)  // Enforce 30s-10min range
         )
 
         val id = serverConfigDao.insert(config)

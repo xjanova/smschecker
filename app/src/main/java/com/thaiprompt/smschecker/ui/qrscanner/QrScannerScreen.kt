@@ -61,7 +61,7 @@ data class QrConfigResult(
     val secretKey: String,
     val deviceId: String?,
     val deviceName: String,
-    val syncInterval: Int = 5  // Sync interval in seconds (default 5s)
+    val syncInterval: Int = 300  // Sync interval in seconds (default 5min, FCM push is primary)
 )
 
 // Scanner options: QR_CODE format + enableAllPotentialBarcodes for dense/large QR codes
@@ -546,7 +546,7 @@ private fun parseQrConfig(raw: String): QrConfigResult? {
         }
 
         val deviceId = obj.optString("deviceId", "").ifBlank { null }
-        val syncInterval = obj.optInt("sync_interval", 5).coerceIn(3, 60) // 3-60 seconds, default 5
+        val syncInterval = obj.optInt("sync_interval", 300).coerceIn(30, 600) // 30-600 seconds, default 5min (FCM push is primary)
 
         QrConfigResult(
             type = type,
