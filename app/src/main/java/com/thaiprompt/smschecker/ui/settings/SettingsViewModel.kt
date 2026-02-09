@@ -12,10 +12,13 @@ import com.thaiprompt.smschecker.data.model.ServerConfig
 import com.thaiprompt.smschecker.data.repository.OrderRepository
 import com.thaiprompt.smschecker.data.repository.TransactionRepository
 import com.thaiprompt.smschecker.security.SecureStorage
+import com.thaiprompt.smschecker.service.FcmService
+import com.thaiprompt.smschecker.service.OrderSyncWorker
 import com.thaiprompt.smschecker.service.TtsManager
 import com.thaiprompt.smschecker.ui.theme.LanguageMode
 import com.thaiprompt.smschecker.ui.theme.ThemeMode
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -50,6 +53,7 @@ data class SettingsState(
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val repository: TransactionRepository,
     private val orderRepository: OrderRepository,
     private val secureStorage: SecureStorage,
@@ -183,6 +187,14 @@ class SettingsViewModel @Inject constructor(
                     syncInterval = syncInterval
                 )
                 _state.update { it.copy(showAddDialog = false, addServerError = null) }
+
+                // Re-trigger FCM token sync เมื่อเพิ่ม server ใหม่
+                val prefs = context.getSharedPreferences("fcm_prefs", Context.MODE_PRIVATE)
+                val fcmToken = prefs.getString(FcmService.FCM_TOKEN_KEY, null)
+                if (fcmToken != null) {
+                    prefs.edit().putBoolean("fcm_token_needs_sync", true).apply()
+                    OrderSyncWorker.enqueueOneTimeSync(context)
+                }
 
                 try {
                     orderRepository.fetchOrders()

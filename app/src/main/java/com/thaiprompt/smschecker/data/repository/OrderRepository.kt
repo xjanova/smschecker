@@ -488,22 +488,39 @@ class OrderRepository @Inject constructor(
 
     /**
      * ส่ง FCM token ไปยังเซิร์ฟเวอร์ทุกตัวเพื่อรับ push notifications (PARALLEL)
+     * @return true ถ้าส่งไปอย่างน้อย 1 เซิร์ฟเวอร์สำเร็จ, false ถ้าไม่ได้ส่งเลย
      */
-    suspend fun registerFcmToken(fcmToken: String) {
+    suspend fun registerFcmToken(fcmToken: String): Boolean {
         val activeServers = try {
             serverConfigDao.getActiveConfigs()
         } catch (e: Exception) {
-            return
+            android.util.Log.w("OrderRepository", "registerFcmToken: Failed to get active configs: ${e.message}")
+            return false
         }
-        val deviceId = secureStorage.getDeviceId() ?: return
+        val deviceId = secureStorage.getDeviceId()
+        if (deviceId == null) {
+            android.util.Log.w("OrderRepository", "registerFcmToken: No device ID")
+            return false
+        }
 
-        if (activeServers.isEmpty()) return
+        if (activeServers.isEmpty()) {
+            android.util.Log.w("OrderRepository", "registerFcmToken: No active servers configured")
+            return false
+        }
 
         val serverList = activeServers.mapNotNull { server ->
             val apiKey = secureStorage.getApiKey(server.id)
             if (apiKey != null) server.id to server.name else null
         }
 
+        if (serverList.isEmpty()) {
+            android.util.Log.w("OrderRepository", "registerFcmToken: No servers with API keys")
+            return false
+        }
+
+        android.util.Log.i("OrderRepository", "registerFcmToken: Sending to ${serverList.size} server(s)...")
+
+        var sentCount = 0
         // Register to all servers in parallel (fire-and-forget, best effort)
         ParallelSyncHelper.executeParallel(
             servers = serverList,
@@ -513,7 +530,7 @@ class OrderRepository @Inject constructor(
             val server = serverConfigDao.getById(serverId) ?: return@executeParallel
             val apiKey = secureStorage.getApiKey(serverId) ?: return@executeParallel
             val client = apiClientFactory.getClient(server.baseUrl)
-            client.registerDevice(
+            val response = client.registerDevice(
                 apiKey = apiKey,
                 body = DeviceRegistration(
                     device_id = deviceId,
@@ -523,7 +540,16 @@ class OrderRepository @Inject constructor(
                     fcm_token = fcmToken
                 )
             )
+            if (response.isSuccessful) {
+                sentCount++
+                android.util.Log.i("OrderRepository", "registerFcmToken: Sent to ${server.name} successfully")
+            } else {
+                android.util.Log.w("OrderRepository", "registerFcmToken: Failed for ${server.name}: HTTP ${response.code()}")
+            }
         }
+
+        android.util.Log.i("OrderRepository", "registerFcmToken: Done. Sent to $sentCount/${serverList.size} servers")
+        return sentCount > 0
     }
 
     suspend fun updateApprovalMode(mode: ApprovalMode) {
