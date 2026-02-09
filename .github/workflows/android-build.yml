@@ -158,3 +158,24 @@ jobs:
           path: app/build/outputs/apk/release/*.apk
           retention-days: 90
 
+      - name: Rename APK for release
+        run: |
+          mkdir -p release-output
+          cp app/build/outputs/apk/release/*.apk "release-output/SmsChecker-v2.0.${{ github.run_number }}.apk"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2.0.${{ github.run_number }}
+          name: SmsChecker v2.0.${{ github.run_number }}
+          body: |
+            **Build #${{ github.run_number }}**
+            Commit: ${{ github.sha }}
+
+            ${{ github.event.head_commit.message }}
+          files: release-output/SmsChecker-v2.0.${{ github.run_number }}.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

@@ -29,7 +29,7 @@ android {
 
         // CI version from GitHub Actions run number, fallback to 23 for local builds
         val ciVersionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 23
-        val ciVersionName = "2.0.0"
+        val ciVersionName = "2.0.${ciVersionCode}"
 
         versionCode = ciVersionCode
         versionName = ciVersionName
