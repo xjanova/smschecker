@@ -39,28 +39,36 @@ class SmsCheckerApp : Application() {
      * ดึง FCM token เริ่มต้นและบันทึกไว้ เพื่อส่งไปเซิร์ฟเวอร์ตอน sync
      */
     private fun initializeFirebaseMessaging() {
+        Log.i(TAG, "initializeFirebaseMessaging: Starting...")
         try {
             FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
-                Log.d(TAG, "FCM token obtained")
+                Log.i(TAG, "FCM token obtained successfully, length=${token.length}, prefix=${token.take(20)}...")
                 val prefs = getSharedPreferences("fcm_prefs", Context.MODE_PRIVATE)
                 val existingToken = prefs.getString(FcmService.FCM_TOKEN_KEY, null)
 
                 if (existingToken != token) {
+                    Log.i(TAG, "FCM token is NEW (different from stored), saving and marking for sync")
                     prefs.edit()
                         .putString(FcmService.FCM_TOKEN_KEY, token)
                         .putBoolean("fcm_token_needs_sync", true)
                         .apply()
+                } else {
+                    Log.d(TAG, "FCM token unchanged from stored token")
                 }
 
+                val needsSync = prefs.getBoolean("fcm_token_needs_sync", false)
+                Log.i(TAG, "FCM token needs_sync=$needsSync")
+
                 // Trigger sync if token needs to be sent to server
-                if (prefs.getBoolean("fcm_token_needs_sync", false)) {
+                if (needsSync) {
+                    Log.i(TAG, "Triggering OrderSyncWorker one-time sync for FCM token")
                     OrderSyncWorker.enqueueOneTimeSync(applicationContext)
                 }
             }.addOnFailureListener { e ->
-                Log.w(TAG, "Failed to get FCM token: ${e.message}")
+                Log.e(TAG, "FAILED to get FCM token: ${e.javaClass.simpleName}: ${e.message}", e)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Firebase not available: ${e.message}")
+            Log.e(TAG, "Firebase not available: ${e.javaClass.simpleName}: ${e.message}", e)
         }
     }
 

@@ -99,11 +99,16 @@ class OrderSyncWorker @AssistedInject constructor(
         val needsSync = prefs.getBoolean("fcm_token_needs_sync", false)
         val fcmToken = prefs.getString(FcmService.FCM_TOKEN_KEY, null)
 
+        Log.d(TAG, "syncFcmTokenIfNeeded: needsSync=$needsSync, hasToken=${fcmToken != null}, tokenLength=${fcmToken?.length ?: 0}")
+
         if (needsSync && fcmToken != null) {
             try {
+                Log.i(TAG, "syncFcmTokenIfNeeded: Sending FCM token to servers...")
                 orderRepository.registerFcmToken(fcmToken)
                 prefs.edit().putBoolean("fcm_token_needs_sync", false).apply()
+                Log.i(TAG, "syncFcmTokenIfNeeded: FCM token sent successfully!")
             } catch (e: Exception) {
+                Log.e(TAG, "syncFcmTokenIfNeeded: FAILED to send FCM token: ${e.javaClass.simpleName}: ${e.message}", e)
                 // Will retry next sync
             }
         }
