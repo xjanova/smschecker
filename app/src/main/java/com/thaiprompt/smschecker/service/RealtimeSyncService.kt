@@ -260,16 +260,17 @@ class RealtimeSyncService : Service() {
     }
 
     // =====================================================================
-    // Periodic Sync (Primary sync mechanism - polling-based)
+    // Periodic Sync (Backup mechanism - FCM push is primary)
     // =====================================================================
 
     private fun startPeriodicSync() {
         periodicSyncJob?.cancel()
         periodicSyncJob = serviceScope.launch {
             // Load sync interval from server config (minimum across all active servers)
-            val configInterval = serverConfigDao.getMinSyncInterval() ?: 5
-            syncIntervalMs = (configInterval * 1000L).coerceIn(3_000L, 60_000L)
-            Log.i(TAG, "Starting periodic sync with interval: ${syncIntervalMs/1000}s")
+            // Default 5 minutes — FCM push notifications are the primary sync mechanism
+            val configInterval = serverConfigDao.getMinSyncInterval() ?: 300
+            syncIntervalMs = (configInterval * 1000L).coerceIn(30_000L, 600_000L)  // 30s min, 10min max
+            Log.i(TAG, "Starting periodic sync with interval: ${syncIntervalMs/1000}s (FCM is primary)")
 
             while (isActive) {
                 delay(syncIntervalMs)

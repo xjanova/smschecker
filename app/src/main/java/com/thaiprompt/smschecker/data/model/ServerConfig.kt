@@ -13,7 +13,7 @@ data class ServerConfig(
     val secretKey: String,      // Encrypted secret for HMAC
     val isActive: Boolean = true,
     val isDefault: Boolean = false,
-    val syncInterval: Int = 60,  // Sync interval in seconds (default 60s - we use match-only mode now)
+    val syncInterval: Int = 300,  // Sync interval in seconds (default 5min - FCM push is primary mechanism)
     val lastSyncAt: Long? = null,
     val lastSyncStatus: String? = null, // success, failed, timeout
     val createdAt: Long = System.currentTimeMillis(),
