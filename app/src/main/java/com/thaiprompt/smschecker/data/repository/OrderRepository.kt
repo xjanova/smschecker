@@ -130,16 +130,30 @@ class OrderRepository @Inject constructor(
                 if (orders.isNotEmpty()) {
                     try {
                         // Smart upsert: ป้องกัน pendingAction (offline queue) หาย
+                        // และป้องกัน server เขียนทับ approved status ที่แอพ approve ไปแล้ว
                         for (remote in orders) {
                             val localOrder = remote.toLocalEntity(serverId)
                             val existing = orderApprovalDao.getByRemoteId(remote.id, serverId)
 
-                            // ถ้า local มี pendingAction ค้างอยู่ → ข้ามไป (offline action สำคัญกว่า)
-                            if (existing != null && existing.pendingAction != null) {
-                                continue
-                            }
-
                             if (existing != null) {
+                                // ถ้า local มี pendingAction ค้างอยู่ → ข้ามไป (offline action สำคัญกว่า)
+                                if (existing.pendingAction != null) {
+                                    continue
+                                }
+
+                                // ป้องกัน green-to-red revert:
+                                // ถ้า local เป็น approved แล้ว แต่ server ยังเป็น pending_review → ข้ามไป
+                                // เพราะ server อาจยัง process approve ไม่เสร็จ (race condition)
+                                val remoteStatus = ApprovalStatus.fromApiValue(remote.approval_status)
+                                val localIsApproved = existing.approvalStatus == ApprovalStatus.AUTO_APPROVED ||
+                                        existing.approvalStatus == ApprovalStatus.MANUALLY_APPROVED
+                                val remoteIsPending = remoteStatus == ApprovalStatus.PENDING_REVIEW
+
+                                if (localIsApproved && remoteIsPending) {
+                                    Log.d("OrderRepository", "Skipping revert for order ${remote.id}: local=${existing.approvalStatus}, remote=$remoteStatus")
+                                    continue
+                                }
+
                                 orderApprovalDao.update(localOrder.copy(id = existing.id))
                             } else {
                                 orderApprovalDao.insert(localOrder)
@@ -153,6 +167,10 @@ class OrderRepository @Inject constructor(
             } else {
                 val errorBody = try { response.errorBody()?.string() } catch (_: Exception) { null }
                 Log.e("OrderRepository", "Failed to fetch orders from ${server.name}: HTTP ${response.code()} - $errorBody")
+                // Save descriptive error status (e.g. "failed:403") for UI to display
+                try {
+                    serverConfigDao.updateSyncStatus(serverId, System.currentTimeMillis(), "failed:${response.code()}")
+                } catch (_: Exception) { }
                 false
             }
         }
@@ -170,7 +188,15 @@ class OrderRepository @Inject constructor(
         val success = RetryHelper.withRetryBoolean {
             val client = apiClientFactory.getClient(server.baseUrl)
             val response = client.approveOrder(apiKey, deviceId, identifier)
-            response.isSuccessful
+            if (response.isSuccessful) {
+                true
+            } else if (response.code() == 422) {
+                // Server บอกว่า order approved แล้ว → ถือว่าสำเร็จ
+                Log.i("OrderRepository", "Order $identifier already approved on server (422)")
+                true
+            } else {
+                false
+            }
         }
 
         if (success) {
@@ -239,7 +265,15 @@ class OrderRepository @Inject constructor(
         val success = RetryHelper.withRetryBoolean {
             val client = apiClientFactory.getClient(server.baseUrl)
             val response = client.rejectOrder(apiKey, deviceId, identifier, RejectBody(reason))
-            response.isSuccessful
+            if (response.isSuccessful) {
+                true
+            } else if (response.code() == 422) {
+                // Server บอกว่า order rejected แล้ว → ถือว่าสำเร็จ
+                Log.i("OrderRepository", "Order $identifier already rejected on server (422)")
+                true
+            } else {
+                false
+            }
         }
 
         if (success) {
@@ -266,14 +300,30 @@ class OrderRepository @Inject constructor(
                 when (order.pendingAction) {
                     PendingAction.APPROVE -> {
                         val resp = client.approveOrder(apiKey, deviceId, identifier)
-                        resp.isSuccessful
+                        if (resp.isSuccessful) {
+                            true
+                        } else if (resp.code() == 422) {
+                            // Already approved on server → treat as success
+                            Log.i("OrderRepository", "Offline queue: Order $identifier already approved (422)")
+                            true
+                        } else {
+                            false
+                        }
                     }
                     PendingAction.REJECT -> {
                         val resp = client.rejectOrder(
                             apiKey, deviceId, identifier,
                             RejectBody(order.rejectionReason ?: "")
                         )
-                        resp.isSuccessful
+                        if (resp.isSuccessful) {
+                            true
+                        } else if (resp.code() == 422) {
+                            // Already rejected on server → treat as success
+                            Log.i("OrderRepository", "Offline queue: Order $identifier already rejected (422)")
+                            true
+                        } else {
+                            false
+                        }
                     }
                     null -> true
                 }
@@ -355,9 +405,22 @@ class OrderRepository @Inject constructor(
                         continue
                     }
 
-                    // Local pending action wins
-                    if (existing != null && existing.pendingAction != null) {
-                        continue
+                    if (existing != null) {
+                        // Local pending action wins
+                        if (existing.pendingAction != null) {
+                            continue
+                        }
+
+                        // ป้องกัน green-to-red revert:
+                        // ถ้า local เป็น approved แล้ว แต่ server ยังเป็น pending_review → ข้ามไป
+                        val localIsApproved = existing.approvalStatus == ApprovalStatus.AUTO_APPROVED ||
+                                existing.approvalStatus == ApprovalStatus.MANUALLY_APPROVED
+                        val remoteIsPending = remoteStatus == ApprovalStatus.PENDING_REVIEW
+
+                        if (localIsApproved && remoteIsPending) {
+                            Log.d("OrderRepository", "Skipping sync revert for order ${remote.id}: local=${existing.approvalStatus}, remote=$remoteStatus")
+                            continue
+                        }
                     }
 
                     val local = remote.toLocalEntity(serverId)
@@ -371,6 +434,10 @@ class OrderRepository @Inject constructor(
             } else {
                 val errorBody = try { response.errorBody()?.string() } catch (_: Exception) { null }
                 Log.e("OrderRepository", "Failed to sync from ${server.name}: HTTP ${response.code()} - $errorBody")
+                // Save descriptive error status (e.g. "failed:403") for UI to display
+                try {
+                    serverConfigDao.updateSyncStatus(serverId, System.currentTimeMillis(), "failed:${response.code()}")
+                } catch (_: Exception) { }
                 false
             }
         }
@@ -609,6 +676,10 @@ class OrderRepository @Inject constructor(
                 }
             } else {
                 Log.w("OrderRepository", "Match request failed for ${server.name}: ${response.code()}")
+                // Save descriptive error status for UI
+                try {
+                    serverConfigDao.updateSyncStatus(serverId, System.currentTimeMillis(), "failed:${response.code()}")
+                } catch (_: Exception) { }
                 null
             }
         } catch (e: Exception) {

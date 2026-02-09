@@ -28,6 +28,33 @@ Route::prefix('v1/sms-payment')->group(function () {
 
         // Register/update device info
         Route::post('/register-device', [SmsPaymentController::class, 'registerDevice']);
+
+        // --- Order Approval Endpoints (required by SmsChecker app) ---
+
+        // Get paginated list of orders
+        Route::get('/orders', [SmsPaymentController::class, 'getOrders']);
+
+        // Approve a single order (by id or bill_reference)
+        Route::post('/orders/{id}/approve', [SmsPaymentController::class, 'approveOrder']);
+
+        // Reject a single order
+        Route::post('/orders/{id}/reject', [SmsPaymentController::class, 'rejectOrder']);
+
+        // Bulk approve multiple orders
+        Route::post('/orders/bulk-approve', [SmsPaymentController::class, 'bulkApproveOrders']);
+
+        // Delta sync - get orders changed since a version
+        Route::get('/orders/sync', [SmsPaymentController::class, 'syncOrders']);
+
+        // Match order by SMS amount (match-only mode)
+        Route::get('/orders/match', [SmsPaymentController::class, 'matchOrder']);
+
+        // Device settings
+        Route::get('/device-settings', [SmsPaymentController::class, 'getDeviceSettings']);
+        Route::put('/device-settings', [SmsPaymentController::class, 'updateDeviceSettings']);
+
+        // Dashboard statistics
+        Route::get('/dashboard-stats', [SmsPaymentController::class, 'getDashboardStats']);
     });
 
     // Protected by Laravel auth (web/admin)

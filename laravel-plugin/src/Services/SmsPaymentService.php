@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\RemoteOrderApproval;
 use App\Models\SmsCheckerDevice;
 use App\Models\SmsPaymentNotification;
 use App\Models\UniquePaymentAmount;
@@ -74,8 +75,34 @@ class SmsPaymentService
                 $matched = $notification->attemptMatch();
             }
 
+            // Create a RemoteOrderApproval so the SmsChecker app can see this bill
+            // and track its approval status
+            $approvalStatus = $matched ? 'auto_approved' : 'pending_review';
+            $orderDetails = [
+                'order_number' => $notification->matched_transaction_id
+                    ? 'TXN-' . $notification->matched_transaction_id
+                    : 'SMS-' . $notification->id,
+                'product_name' => 'SMS Payment - ' . $notification->bank,
+                'amount' => (float) $notification->amount,
+                'customer_name' => $notification->sender_or_receiver,
+            ];
+
+            $approval = RemoteOrderApproval::create([
+                'notification_id' => $notification->id,
+                'matched_transaction_id' => $notification->matched_transaction_id,
+                'device_id' => $device->device_id,
+                'approval_status' => $approvalStatus,
+                'confidence' => 'high',
+                'approved_by' => $matched ? 'auto' : null,
+                'approved_at' => $matched ? now() : null,
+                'order_details_json' => $orderDetails,
+                'server_name' => config('app.name', 'Server'),
+                'synced_version' => intval(round(microtime(true) * 1000)),
+            ]);
+
             self::log('info', 'SMS Payment notification processed', [
                 'notification_id' => $notification->id,
+                'approval_id' => $approval->id,
                 'bank' => $notification->bank,
                 'type' => $notification->type,
                 'amount' => $notification->amount,
@@ -87,6 +114,7 @@ class SmsPaymentService
                 'message' => $matched ? 'Payment matched and confirmed' : 'Notification recorded',
                 'data' => [
                     'notification_id' => $notification->id,
+                    'approval_id' => $approval->id,
                     'status' => $notification->status,
                     'matched' => $matched,
                     'matched_transaction_id' => $notification->matched_transaction_id,

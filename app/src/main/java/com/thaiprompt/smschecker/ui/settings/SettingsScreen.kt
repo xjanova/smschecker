@@ -1128,33 +1128,40 @@ fun ServerCard(
                         )
                     }
                     if (server.lastSyncStatus != null) {
+                        val isFailed = server.lastSyncStatus.startsWith("failed")
+                        val statusColor = when {
+                            server.lastSyncStatus == "success" -> AppColors.CreditGreen
+                            isFailed -> AppColors.DebitRed
+                            else -> AppColors.WarningOrange
+                        }
+                        val statusText = when {
+                            server.lastSyncStatus == "success" -> strings.successStatus
+                            server.lastSyncStatus == "failed" -> strings.failedStatus
+                            server.lastSyncStatus.startsWith("failed:") -> {
+                                val code = server.lastSyncStatus.removePrefix("failed:")
+                                when (code) {
+                                    "401" -> "ผิดพลาด: API Key ไม่ถูกต้อง"
+                                    "403" -> "ผิดพลาด: ไม่มีสิทธิ์เข้าถึง (ต้องสมัคร subscription หรือตั้งเป็น admin device)"
+                                    "404" -> "ผิดพลาด: ไม่พบ endpoint (ตรวจสอบ URL)"
+                                    "500" -> "ผิดพลาด: เซิร์ฟเวอร์ขัดข้อง"
+                                    else -> "${strings.failedStatus} (HTTP $code)"
+                                }
+                            }
+                            else -> server.lastSyncStatus
+                        }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
                                     .size(6.dp)
                                     .clip(CircleShape)
-                                    .background(
-                                        when (server.lastSyncStatus) {
-                                            "success" -> AppColors.CreditGreen
-                                            "failed" -> AppColors.DebitRed
-                                            else -> AppColors.WarningOrange
-                                        }
-                                    )
+                                    .background(statusColor)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                when (server.lastSyncStatus) {
-                                    "success" -> strings.successStatus
-                                    "failed" -> strings.failedStatus
-                                    else -> server.lastSyncStatus
-                                },
+                                statusText,
                                 style = MaterialTheme.typography.bodySmall,
                                 fontSize = 11.sp,
-                                color = when (server.lastSyncStatus) {
-                                    "success" -> AppColors.CreditGreen
-                                    "failed" -> AppColors.DebitRed
-                                    else -> AppColors.WarningOrange
-                                }
+                                color = statusColor
                             )
                         }
                     }
