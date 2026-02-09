@@ -978,11 +978,11 @@ fun SettingsScreen(
             }
         }
 
-        // Version info
+        // Version info - dynamic from BuildConfig
         item {
             Spacer(modifier = Modifier.height(24.dp))
             Text(
-                strings.versionInfo,
+                "SMS Payment Checker v${com.thaiprompt.smschecker.BuildConfig.VERSION_NAME}\n\u00A9 2025 Xman Studio",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                 modifier = Modifier
