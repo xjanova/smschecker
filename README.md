@@ -388,6 +388,37 @@ The app also includes **heuristic detection** for unknown SMS senders, parsing a
 
 See [docs/BANKS.md](docs/BANKS.md) for SMS format details per bank.
 
+## Firebase Cloud Messaging (FCM)
+
+Starting from v1.3.0, the system supports **push notifications** via Firebase Cloud Messaging. When a new order/bill is created on the server, it sends an FCM push to all connected Android devices, triggering an immediate sync instead of waiting for the next polling interval.
+
+### FCM Setup
+
+1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
+2. Enable **Cloud Messaging API (V1)** in Project Settings > Cloud Messaging
+3. Generate a **Service Account JSON** key in Project Settings > Service accounts
+4. In your Laravel admin panel, go to **SMS Payment Settings** > **FCM Configuration**:
+   - Enter your **Firebase Project ID**
+   - Upload the **Service Account JSON** file
+   - Toggle **FCM Enabled** on
+   - Click **Save**, then use **Test FCM** to verify
+
+FCM settings are stored in the database (via Setting model), so no `.env` file editing is needed. The `FcmNotificationService` reads from the database first and falls back to `config/services.firebase.*` if not configured via admin UI.
+
+### How It Works
+
+```
+Server (New Order) --> FCM Push --> Android App --> Immediate Sync
+                                        |
+                                        v
+                                  Show Notification
+                                  (bank name, amount)
+```
+
+- **Polling interval** reduced from 60s to 300s (5 minutes) as a fallback
+- **Push types**: `new_order` (visible notification), `payment_matched` (visible), `sync` (silent)
+- **Token management**: App auto-registers FCM token on startup; server cleans up invalid tokens
+
 ## Configuration Reference
 
 Key settings in `config/smschecker.php` (Laravel) or **SMS Payment > Settings** (WordPress):

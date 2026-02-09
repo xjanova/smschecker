@@ -171,6 +171,47 @@ Same endpoints as the Laravel API. The Android app is compatible with both backe
 
 ---
 
+## Part 1C: Firebase Cloud Messaging Setup (Optional, Recommended)
+
+Enable push notifications so the Android app receives instant alerts when new orders/bills arrive, instead of relying solely on polling.
+
+### Step 1: Create Firebase Project
+
+1. Go to [console.firebase.google.com](https://console.firebase.google.com)
+2. Create a new project (or use an existing one)
+3. Accept the terms and conditions
+
+### Step 2: Enable Cloud Messaging
+
+1. In your Firebase project, go to **Project Settings** (gear icon)
+2. Click the **Cloud Messaging** tab
+3. Ensure **Cloud Messaging API (V1)** is **Enabled**
+4. Note the **Sender ID** (you'll need it for the Android app)
+
+### Step 3: Generate Service Account Key
+
+1. In Project Settings, click the **Service accounts** tab
+2. Click **Generate new private key**
+3. Download the JSON file (keep it secure!)
+
+### Step 4: Configure via Admin Panel
+
+1. Login to your Laravel admin panel
+2. Go to **SMS Payment Settings** (or **SMS Checker Settings**)
+3. Find the **Firebase Cloud Messaging (FCM)** section
+4. Enter your **Firebase Project ID** (from Project Settings > General)
+5. Upload the **Service Account JSON** file you downloaded
+6. Check **Enable FCM Push Notification**
+7. Click **Save**
+
+### Step 5: Test
+
+Click the **Test FCM** button to send a silent push to all active devices. Check your Android device to verify it receives the push.
+
+> **Note**: FCM configuration is stored in the database. No `.env` file editing is needed. The system reads from the admin UI settings first, and falls back to `.env` values if not configured via admin.
+
+---
+
 ## Part 2: Android App Setup
 
 ### 1. Build

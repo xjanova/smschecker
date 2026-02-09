@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-02-09
+
+### Added
+
+#### Laravel Plugin (Both xmanstudio & Thaiprompt-Affiliate)
+- **FCM Push Notifications**: Server sends Firebase Cloud Messaging push to Android app when new orders/bills arrive, replacing constant polling
+- **FCM Admin Settings Page**: Web-based UI in admin panel to configure Firebase — upload Service Account JSON, set Project ID, toggle FCM on/off, test push button
+- **Database-backed FCM Config**: FCM settings stored in `settings` table via Setting model, no need to edit `.env` files on server
+- **FcmNotificationService**: Reads credentials from database first, falls back to config/env — supports both admin UI and traditional `.env` setup
+- **NewOrderCreated / NewTransactionCreated Events**: Laravel events fired when new orders are created, triggering FCM push via listeners
+- **SendNewOrderFcmNotification / SendNewTransactionFcmNotification Listeners**: Queue-compatible listeners that send FCM push on new order events
+
+#### Android App
+- **FCM Token Registration**: App registers its FCM token with each connected server on startup and token refresh
+- **Push-triggered Sync**: When server sends FCM push, app immediately syncs instead of waiting for next polling interval
+- **Reduced Polling**: Sync interval changed from 60s to 300s (5 minutes) since FCM handles real-time notifications
+- **Green-to-red revert prevention**: Matched (green) bills no longer revert to red/pending on subsequent syncs
+- **422 error handling**: Graceful handling of duplicate submission responses from server
+
+### Fixed
+
+#### Android App
+- Bills from Thaiprompt-Affiliate now appear correctly (store filtering fix for admin/seller devices)
+- xmanstudio `matched` → `auto_approved` status mapping fix
+
 ## [1.2.0] - 2025-02-01
 
 ### Added
