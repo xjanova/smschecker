@@ -56,14 +56,12 @@ class SmsCheckerApp : Application() {
                     Log.d(TAG, "FCM token unchanged from stored token")
                 }
 
+                // Always try to sync on app startup — flag อาจถูก clear ผิดพลาดจาก bug ก่อนหน้า
+                // registerFcmToken() จะเช็คเองว่าส่งได้หรือไม่ และ clear flag เฉพาะเมื่อสำเร็จ
                 val needsSync = prefs.getBoolean("fcm_token_needs_sync", false)
-                Log.i(TAG, "FCM token needs_sync=$needsSync")
-
-                // Trigger sync if token needs to be sent to server
-                if (needsSync) {
-                    Log.i(TAG, "Triggering OrderSyncWorker one-time sync for FCM token")
-                    OrderSyncWorker.enqueueOneTimeSync(applicationContext)
-                }
+                Log.i(TAG, "FCM token needs_sync=$needsSync, forcing sync on startup regardless")
+                prefs.edit().putBoolean("fcm_token_needs_sync", true).apply()
+                OrderSyncWorker.enqueueOneTimeSync(applicationContext)
             }.addOnFailureListener { e ->
                 Log.e(TAG, "FAILED to get FCM token: ${e.javaClass.simpleName}: ${e.message}", e)
             }
