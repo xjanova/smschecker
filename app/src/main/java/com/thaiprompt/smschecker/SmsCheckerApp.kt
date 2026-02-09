@@ -9,6 +9,7 @@ import android.os.Build
 import android.util.Log
 import com.google.firebase.messaging.FirebaseMessaging
 import com.thaiprompt.smschecker.service.FcmService
+import com.thaiprompt.smschecker.service.OrderSyncWorker
 import dagger.hilt.android.HiltAndroidApp
 
 @HiltAndroidApp
@@ -49,6 +50,11 @@ class SmsCheckerApp : Application() {
                         .putString(FcmService.FCM_TOKEN_KEY, token)
                         .putBoolean("fcm_token_needs_sync", true)
                         .apply()
+                }
+
+                // Trigger sync if token needs to be sent to server
+                if (prefs.getBoolean("fcm_token_needs_sync", false)) {
+                    OrderSyncWorker.enqueueOneTimeSync(applicationContext)
                 }
             }.addOnFailureListener { e ->
                 Log.w(TAG, "Failed to get FCM token: ${e.message}")
