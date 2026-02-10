@@ -15,6 +15,21 @@ interface PaymentApiService {
         @Body body: EncryptedPayload
     ): Response<ApiResponse>
 
+    /**
+     * Send encrypted action (approve/reject) to server.
+     * Uses the same security model as notifyTransaction (AES-256-GCM + HMAC-SHA256).
+     * Server decrypts and executes approve/reject, returns updated order data.
+     */
+    @POST("api/v1/sms-payment/notify-action")
+    suspend fun notifyAction(
+        @Header("X-Api-Key") apiKey: String,
+        @Header("X-Signature") signature: String,
+        @Header("X-Nonce") nonce: String,
+        @Header("X-Timestamp") timestamp: String,
+        @Header("X-Device-Id") deviceId: String,
+        @Body body: EncryptedPayload
+    ): Response<ActionResponse>
+
     @GET("api/v1/sms-payment/status")
     suspend fun checkStatus(
         @Header("X-Api-Key") apiKey: String,
@@ -242,6 +257,33 @@ data class RemoteDailyStats(
     val approved: Int = 0,
     val rejected: Int = 0,
     val amount: Double = 0.0
+)
+
+// --- Encrypted Action (approve/reject) Response ---
+
+data class ActionResponse(
+    val success: Boolean,
+    val message: String,
+    val data: ActionResponseData? = null
+)
+
+data class ActionResponseData(
+    val order: RemoteOrderApproval? = null
+)
+
+/**
+ * The unencrypted action payload (encrypted before sending).
+ * Used for approve/reject actions via notify-action endpoint.
+ */
+data class ActionPayload(
+    val action: String,             // "approve" or "reject"
+    val order_identifier: String,   // order_number or numeric ID
+    val amount: Double,             // verified amount
+    val bank: String?,              // bank name (if known)
+    val sms_reference: String?,     // SMS reference number (if available)
+    val device_id: String,
+    val reason: String?,            // rejection reason (for reject)
+    val nonce: String
 )
 
 // --- Match Order Response (for match-only mode) ---

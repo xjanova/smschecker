@@ -1,11 +1,13 @@
 package com.thaiprompt.smschecker.data.repository
 
 import android.util.Log
+import com.google.gson.Gson
 import com.thaiprompt.smschecker.data.api.*
 import com.thaiprompt.smschecker.data.db.MatchHistoryDao
 import com.thaiprompt.smschecker.data.db.OrderApprovalDao
 import com.thaiprompt.smschecker.data.db.ServerConfigDao
 import com.thaiprompt.smschecker.data.model.*
+import com.thaiprompt.smschecker.security.CryptoManager
 import com.thaiprompt.smschecker.security.SecureStorage
 import com.thaiprompt.smschecker.util.ParallelSyncHelper
 import com.thaiprompt.smschecker.util.RetryHelper
@@ -20,7 +22,9 @@ class OrderRepository @Inject constructor(
     private val serverConfigDao: ServerConfigDao,
     private val matchHistoryDao: MatchHistoryDao,
     private val apiClientFactory: ApiClientFactory,
-    private val secureStorage: SecureStorage
+    private val cryptoManager: CryptoManager,
+    private val secureStorage: SecureStorage,
+    private val gson: Gson
 ) {
 
     fun getAllOrders(): Flow<List<OrderApproval>> = orderApprovalDao.getAllOrders()
@@ -179,6 +183,7 @@ class OrderRepository @Inject constructor(
     suspend fun approveOrder(order: OrderApproval) {
         val server = serverConfigDao.getById(order.serverId) ?: return
         val apiKey = secureStorage.getApiKey(server.id) ?: return
+        val secretKey = secureStorage.getSecretKey(server.id) ?: return
         val deviceId = secureStorage.getDeviceId() ?: return
 
         // ใช้ orderNumber (bill_reference) ถ้ามี, fallback เป็น remoteApprovalId
@@ -186,17 +191,17 @@ class OrderRepository @Inject constructor(
 
         // Retry with exponential backoff for unstable network
         val success = RetryHelper.withRetryBoolean {
-            val client = apiClientFactory.getClient(server.baseUrl)
-            val response = client.approveOrder(apiKey, deviceId, identifier)
-            if (response.isSuccessful) {
-                true
-            } else if (response.code() == 422) {
-                // Server บอกว่า order approved แล้ว → ถือว่าสำเร็จ
-                Log.i("OrderRepository", "Order $identifier already approved on server (422)")
-                true
-            } else {
-                false
-            }
+            sendEncryptedAction(
+                server = server,
+                apiKey = apiKey,
+                secretKey = secretKey,
+                deviceId = deviceId,
+                action = "approve",
+                orderIdentifier = identifier,
+                amount = order.amount,
+                bank = order.bank,
+                reason = null
+            )
         }
 
         if (success) {
@@ -222,6 +227,7 @@ class OrderRepository @Inject constructor(
 
         val server = serverConfigDao.getById(order.serverId) ?: return false
         val apiKey = secureStorage.getApiKey(server.id) ?: return false
+        val secretKey = secureStorage.getSecretKey(server.id) ?: return false
         val deviceId = secureStorage.getDeviceId() ?: return false
 
         // ใช้ orderNumber (bill_reference) ถ้ามี, fallback เป็น remoteApprovalId
@@ -229,18 +235,17 @@ class OrderRepository @Inject constructor(
 
         // Retry with exponential backoff for unstable network
         val success = RetryHelper.withRetryBoolean {
-            val client = apiClientFactory.getClient(server.baseUrl)
-            val response = client.approveOrder(apiKey, deviceId, identifier)
-            if (response.isSuccessful) {
-                true
-            } else if (response.code() == 422) {
-                // Server บอกว่า transaction ไม่ได้ pending แล้ว (อาจ auto-approved ตอน match)
-                // ถือว่าสำเร็จ ไม่ต้อง retry ซ้ำตลอด
-                Log.i("OrderRepository", "Order $identifier already approved on server (422)")
-                true
-            } else {
-                false
-            }
+            sendEncryptedAction(
+                server = server,
+                apiKey = apiKey,
+                secretKey = secretKey,
+                deviceId = deviceId,
+                action = "approve",
+                orderIdentifier = identifier,
+                amount = order.amount,
+                bank = order.bank,
+                reason = null
+            )
         }
 
         return if (success) {
@@ -256,6 +261,7 @@ class OrderRepository @Inject constructor(
     suspend fun rejectOrder(order: OrderApproval, reason: String = "") {
         val server = serverConfigDao.getById(order.serverId) ?: return
         val apiKey = secureStorage.getApiKey(server.id) ?: return
+        val secretKey = secureStorage.getSecretKey(server.id) ?: return
         val deviceId = secureStorage.getDeviceId() ?: return
 
         // ใช้ orderNumber (bill_reference) ถ้ามี, fallback เป็น remoteApprovalId
@@ -263,17 +269,17 @@ class OrderRepository @Inject constructor(
 
         // Retry with exponential backoff for unstable network
         val success = RetryHelper.withRetryBoolean {
-            val client = apiClientFactory.getClient(server.baseUrl)
-            val response = client.rejectOrder(apiKey, deviceId, identifier, RejectBody(reason))
-            if (response.isSuccessful) {
-                true
-            } else if (response.code() == 422) {
-                // Server บอกว่า order rejected แล้ว → ถือว่าสำเร็จ
-                Log.i("OrderRepository", "Order $identifier already rejected on server (422)")
-                true
-            } else {
-                false
-            }
+            sendEncryptedAction(
+                server = server,
+                apiKey = apiKey,
+                secretKey = secretKey,
+                deviceId = deviceId,
+                action = "reject",
+                orderIdentifier = identifier,
+                amount = order.amount,
+                bank = order.bank,
+                reason = reason
+            )
         }
 
         if (success) {
@@ -290,40 +296,39 @@ class OrderRepository @Inject constructor(
         for (order in pending) {
             val server = serverConfigDao.getById(order.serverId) ?: continue
             val apiKey = secureStorage.getApiKey(server.id) ?: continue
+            val secretKey = secureStorage.getSecretKey(server.id) ?: continue
 
             // ใช้ orderNumber (bill_reference) ถ้ามี, fallback เป็น remoteApprovalId
             val identifier = order.orderNumber ?: order.remoteApprovalId.toString()
 
             // Retry with exponential backoff for unstable network
             val success = RetryHelper.withRetryBoolean {
-                val client = apiClientFactory.getClient(server.baseUrl)
                 when (order.pendingAction) {
                     PendingAction.APPROVE -> {
-                        val resp = client.approveOrder(apiKey, deviceId, identifier)
-                        if (resp.isSuccessful) {
-                            true
-                        } else if (resp.code() == 422) {
-                            // Already approved on server → treat as success
-                            Log.i("OrderRepository", "Offline queue: Order $identifier already approved (422)")
-                            true
-                        } else {
-                            false
-                        }
+                        sendEncryptedAction(
+                            server = server,
+                            apiKey = apiKey,
+                            secretKey = secretKey,
+                            deviceId = deviceId,
+                            action = "approve",
+                            orderIdentifier = identifier,
+                            amount = order.amount,
+                            bank = order.bank,
+                            reason = null
+                        )
                     }
                     PendingAction.REJECT -> {
-                        val resp = client.rejectOrder(
-                            apiKey, deviceId, identifier,
-                            RejectBody(order.rejectionReason ?: "")
+                        sendEncryptedAction(
+                            server = server,
+                            apiKey = apiKey,
+                            secretKey = secretKey,
+                            deviceId = deviceId,
+                            action = "reject",
+                            orderIdentifier = identifier,
+                            amount = order.amount,
+                            bank = order.bank,
+                            reason = order.rejectionReason
                         )
-                        if (resp.isSuccessful) {
-                            true
-                        } else if (resp.code() == 422) {
-                            // Already rejected on server → treat as success
-                            Log.i("OrderRepository", "Offline queue: Order $identifier already rejected (422)")
-                            true
-                        } else {
-                            false
-                        }
                     }
                     null -> true
                 }
@@ -338,6 +343,90 @@ class OrderRepository @Inject constructor(
                 orderApprovalDao.updateStatus(order.id, newStatus, null)
             }
             // Keep pending if failed, will retry next sync
+        }
+    }
+
+    /**
+     * Send encrypted action (approve/reject) to server via notify-action endpoint.
+     * Uses AES-256-GCM encryption + HMAC-SHA256 signing (same as notify endpoint).
+     *
+     * @return true if server accepted the action, false otherwise
+     */
+    private suspend fun sendEncryptedAction(
+        server: ServerConfig,
+        apiKey: String,
+        secretKey: String,
+        deviceId: String,
+        action: String,
+        orderIdentifier: String,
+        amount: Double,
+        bank: String?,
+        reason: String?
+    ): Boolean {
+        val nonce = cryptoManager.generateNonce()
+        val timestamp = System.currentTimeMillis().toString()
+
+        // Build action payload
+        val payload = ActionPayload(
+            action = action,
+            order_identifier = orderIdentifier,
+            amount = amount,
+            bank = bank,
+            sms_reference = null,
+            device_id = deviceId,
+            reason = reason,
+            nonce = nonce
+        )
+
+        val payloadJson = gson.toJson(payload)
+
+        // Encrypt payload (AES-256-GCM)
+        val encryptedData = cryptoManager.encrypt(payloadJson, secretKey)
+
+        // Generate HMAC signature: HMAC(encrypted_data + nonce + timestamp)
+        val signatureData = "$encryptedData$nonce$timestamp"
+        val signature = cryptoManager.generateHmac(signatureData, secretKey)
+
+        // Send to server
+        val client = apiClientFactory.getClient(server.baseUrl)
+        val response = client.notifyAction(
+            apiKey = apiKey,
+            signature = signature,
+            nonce = nonce,
+            timestamp = timestamp,
+            deviceId = deviceId,
+            body = EncryptedPayload(data = encryptedData)
+        )
+
+        return if (response.isSuccessful && response.body()?.success == true) {
+            Log.i("OrderRepository", "✅ Encrypted $action sent for $orderIdentifier on ${server.name}")
+
+            // Update local order with server response data if available
+            val serverOrder = response.body()?.data?.order
+            if (serverOrder != null) {
+                try {
+                    val localOrder = serverOrder.toLocalEntity(server.id)
+                    val existing = orderApprovalDao.getByRemoteId(serverOrder.id, server.id)
+                    if (existing != null) {
+                        orderApprovalDao.update(localOrder.copy(id = existing.id))
+                    }
+                } catch (e: Exception) {
+                    Log.w("OrderRepository", "Failed to update local order from response", e)
+                }
+            }
+            true
+        } else if (response.code() == 422) {
+            // Server says order already in target status → treat as success
+            Log.i("OrderRepository", "Order $orderIdentifier already ${action}d on server (422)")
+            true
+        } else if (response.code() == 409) {
+            // Duplicate nonce → already processed → treat as success
+            Log.i("OrderRepository", "Duplicate nonce for $orderIdentifier (409) - already processed")
+            true
+        } else {
+            val errorBody = try { response.errorBody()?.string() } catch (_: Exception) { null }
+            Log.e("OrderRepository", "❌ Encrypted $action failed for $orderIdentifier: HTTP ${response.code()} - $errorBody")
+            false
         }
     }
 

@@ -67,6 +67,11 @@ class FcmService : FirebaseMessagingService() {
         when (data["type"]) {
             "new_order" -> handleNewOrder(data)
             "order_update" -> handleOrderUpdate(data)
+            "order_approved" -> handleOrderStatusChange(data, "อนุมัติแล้ว", "✅")
+            "order_rejected" -> handleOrderStatusChange(data, "ถูกปฏิเสธ", "❌")
+            "order_cancelled" -> handleOrderStatusChange(data, "ถูกยกเลิก", "🚫")
+            "order_deleted" -> handleOrderDeleted(data)
+            "payment_matched" -> handlePaymentMatched(data)
             "sync" -> handleSyncRequest()
             else -> {
                 Log.w(TAG, "Unknown FCM message type: ${data["type"]}")
@@ -109,6 +114,55 @@ class FcmService : FirebaseMessagingService() {
         )
 
         // Trigger sync
+        OrderSyncWorker.enqueueOneTimeSync(applicationContext)
+    }
+
+    /**
+     * สถานะ order เปลี่ยนจาก admin (approved/rejected/cancelled)
+     * อัพเดท local DB ทันที ไม่ต้องรอ periodic sync
+     */
+    private fun handleOrderStatusChange(data: Map<String, String>, statusLabel: String, emoji: String) {
+        val orderNumber = data["order_number"] ?: "N/A"
+        Log.i(TAG, "FCM: Order status change - $orderNumber $statusLabel")
+
+        showNotification(
+            title = "$emoji คำสั่งซื้อ $statusLabel",
+            body = "คำสั่งซื้อ #$orderNumber $statusLabel",
+            notificationId = orderNumber.hashCode()
+        )
+
+        // Trigger immediate sync to update local DB
+        OrderSyncWorker.enqueueOneTimeSync(applicationContext)
+    }
+
+    /**
+     * Order ถูกลบจาก admin → sync ทันทีเพื่อลบจาก local DB
+     */
+    private fun handleOrderDeleted(data: Map<String, String>) {
+        val orderNumber = data["order_number"] ?: "N/A"
+        Log.i(TAG, "FCM: Order deleted - $orderNumber")
+
+        // Silent: no notification for deletion, just trigger sync
+        OrderSyncWorker.enqueueOneTimeSync(applicationContext)
+    }
+
+    /**
+     * การชำระเงินถูกจับคู่กับคำสั่งซื้อ → sync ทันที
+     */
+    private fun handlePaymentMatched(data: Map<String, String>) {
+        val orderNumber = data["order_number"] ?: "N/A"
+        val amount = data["amount"] ?: "0.00"
+        val bank = data["bank"] ?: ""
+
+        Log.i(TAG, "FCM: Payment matched - $orderNumber ฿$amount ($bank)")
+
+        showNotification(
+            title = "💰 ยืนยันการชำระเงินแล้ว",
+            body = "คำสั่งซื้อ #$orderNumber ยอด ฿$amount ชำระเงินสำเร็จ",
+            notificationId = orderNumber.hashCode()
+        )
+
+        // Trigger immediate sync
         OrderSyncWorker.enqueueOneTimeSync(applicationContext)
     }
 
