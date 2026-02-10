@@ -3,6 +3,7 @@ package com.thaiprompt.smschecker.data.repository
 import android.util.Log
 import com.google.gson.Gson
 import com.thaiprompt.smschecker.data.api.*
+import com.thaiprompt.smschecker.data.db.OrderApprovalDao
 import com.thaiprompt.smschecker.data.db.ServerConfigDao
 import com.thaiprompt.smschecker.data.db.SyncLogDao
 import com.thaiprompt.smschecker.data.db.TransactionDao
@@ -20,11 +21,15 @@ class TransactionRepository @Inject constructor(
     private val transactionDao: TransactionDao,
     private val serverConfigDao: ServerConfigDao,
     private val syncLogDao: SyncLogDao,
+    private val orderApprovalDao: OrderApprovalDao,
     private val apiClientFactory: ApiClientFactory,
     private val cryptoManager: CryptoManager,
     private val secureStorage: SecureStorage,
     private val gson: Gson
 ) {
+    companion object {
+        private const val TAG = "TransactionRepository"
+    }
 
     fun getAllTransactions(): Flow<List<BankTransaction>> = transactionDao.getAllTransactions()
 
@@ -166,7 +171,41 @@ class TransactionRepository @Inject constructor(
                 body = EncryptedPayload(data = encryptedData)
             )
 
-            response.isSuccessful && response.body()?.success == true
+            if (response.isSuccessful && response.body()?.success == true) {
+                // Process matched order from server response
+                val responseData = response.body()?.data
+                val matched = responseData?.get("matched") as? Boolean ?: false
+                if (matched) {
+                    Log.i(TAG, "syncToServer: Server matched payment! Updating local order.")
+                    try {
+                        // Server returns order data in response when matched
+                        @Suppress("UNCHECKED_CAST")
+                        val orderMap = responseData?.get("order") as? Map<String, Any?>
+                        if (orderMap != null) {
+                            val orderJson = gson.toJson(orderMap)
+                            val remoteOrder = gson.fromJson(orderJson, RemoteOrderApproval::class.java)
+                            if (remoteOrder != null) {
+                                val localOrder = remoteOrder.toLocalEntity(server.id)
+                                val existing = orderApprovalDao.getByRemoteId(remoteOrder.id, server.id)
+                                if (existing != null) {
+                                    orderApprovalDao.update(localOrder.copy(id = existing.id))
+                                    Log.i(TAG, "syncToServer: Updated local order ${remoteOrder.id} to status=${remoteOrder.approval_status}")
+                                } else {
+                                    val insertedId = orderApprovalDao.insert(localOrder)
+                                    Log.i(TAG, "syncToServer: Inserted matched order ${remoteOrder.id} as local id=$insertedId")
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "syncToServer: Failed to process matched order from response", e)
+                    }
+                }
+                true
+            } else {
+                val errorBody = try { response.errorBody()?.string() } catch (_: Exception) { null }
+                Log.w(TAG, "syncToServer: Failed HTTP ${response.code()} - $errorBody")
+                false
+            }
         }
 
         return if (success) {

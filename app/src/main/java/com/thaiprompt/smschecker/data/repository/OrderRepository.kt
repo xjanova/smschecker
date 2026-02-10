@@ -26,6 +26,9 @@ class OrderRepository @Inject constructor(
     private val secureStorage: SecureStorage,
     private val gson: Gson
 ) {
+    companion object {
+        private const val TAG = "OrderRepository"
+    }
 
     fun getAllOrders(): Flow<List<OrderApproval>> = orderApprovalDao.getAllOrders()
 
@@ -181,13 +184,39 @@ class OrderRepository @Inject constructor(
     }
 
     suspend fun approveOrder(order: OrderApproval) {
-        val server = serverConfigDao.getById(order.serverId) ?: return
-        val apiKey = secureStorage.getApiKey(server.id) ?: return
-        val secretKey = secureStorage.getSecretKey(server.id) ?: return
-        val deviceId = secureStorage.getDeviceId() ?: return
+        Log.i(TAG, "approveOrder: START orderId=${order.id}, remoteId=${order.remoteApprovalId}, orderNumber=${order.orderNumber}, serverId=${order.serverId}")
+
+        val server = serverConfigDao.getById(order.serverId)
+        if (server == null) {
+            Log.e(TAG, "approveOrder: Server not found for serverId=${order.serverId} — queuing offline")
+            orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
+            return
+        }
+
+        val apiKey = secureStorage.getApiKey(server.id)
+        if (apiKey == null) {
+            Log.e(TAG, "approveOrder: No API key for server ${server.name} (id=${server.id}) — queuing offline")
+            orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
+            return
+        }
+
+        val secretKey = secureStorage.getSecretKey(server.id)
+        if (secretKey == null) {
+            Log.e(TAG, "approveOrder: No secret key for server ${server.name} (id=${server.id}) — queuing offline")
+            orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
+            return
+        }
+
+        val deviceId = secureStorage.getDeviceId()
+        if (deviceId == null) {
+            Log.e(TAG, "approveOrder: No device ID — queuing offline")
+            orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
+            return
+        }
 
         // ใช้ orderNumber (bill_reference) ถ้ามี, fallback เป็น remoteApprovalId
         val identifier = order.orderNumber ?: order.remoteApprovalId.toString()
+        Log.i(TAG, "approveOrder: identifier=$identifier, amount=${order.amount}, bank=${order.bank}, server=${server.name}")
 
         // Retry with exponential backoff for unstable network
         val success = RetryHelper.withRetryBoolean {
@@ -205,9 +234,10 @@ class OrderRepository @Inject constructor(
         }
 
         if (success) {
+            Log.i(TAG, "approveOrder: ✅ SUCCESS for $identifier")
             orderApprovalDao.updateStatus(order.id, ApprovalStatus.MANUALLY_APPROVED, null)
         } else {
-            // Queue for offline sync
+            Log.w(TAG, "approveOrder: ❌ FAILED for $identifier — queuing offline")
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
         }
     }
@@ -217,21 +247,52 @@ class OrderRepository @Inject constructor(
      * Returns true if successfully approved, false if failed or order not found
      */
     suspend fun approveOrder(orderId: Long): Boolean {
-        val order = orderApprovalDao.getOrderById(orderId) ?: return false
+        Log.i(TAG, "approveOrder(id): START orderId=$orderId")
+
+        val order = orderApprovalDao.getOrderById(orderId)
+        if (order == null) {
+            Log.e(TAG, "approveOrder(id): Order not found in local DB for id=$orderId")
+            return false
+        }
 
         // Skip if already approved
         if (order.approvalStatus == ApprovalStatus.AUTO_APPROVED ||
             order.approvalStatus == ApprovalStatus.MANUALLY_APPROVED) {
+            Log.i(TAG, "approveOrder(id): Already approved (${order.approvalStatus}), skipping")
             return true
         }
 
-        val server = serverConfigDao.getById(order.serverId) ?: return false
-        val apiKey = secureStorage.getApiKey(server.id) ?: return false
-        val secretKey = secureStorage.getSecretKey(server.id) ?: return false
-        val deviceId = secureStorage.getDeviceId() ?: return false
+        val server = serverConfigDao.getById(order.serverId)
+        if (server == null) {
+            Log.e(TAG, "approveOrder(id): Server not found for serverId=${order.serverId}")
+            orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
+            return false
+        }
+
+        val apiKey = secureStorage.getApiKey(server.id)
+        if (apiKey == null) {
+            Log.e(TAG, "approveOrder(id): No API key for server ${server.name}")
+            orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
+            return false
+        }
+
+        val secretKey = secureStorage.getSecretKey(server.id)
+        if (secretKey == null) {
+            Log.e(TAG, "approveOrder(id): No secret key for server ${server.name}")
+            orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
+            return false
+        }
+
+        val deviceId = secureStorage.getDeviceId()
+        if (deviceId == null) {
+            Log.e(TAG, "approveOrder(id): No device ID")
+            orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
+            return false
+        }
 
         // ใช้ orderNumber (bill_reference) ถ้ามี, fallback เป็น remoteApprovalId
         val identifier = order.orderNumber ?: order.remoteApprovalId.toString()
+        Log.i(TAG, "approveOrder(id): identifier=$identifier, amount=${order.amount}, bank=${order.bank}, server=${server.name}")
 
         // Retry with exponential backoff for unstable network
         val success = RetryHelper.withRetryBoolean {
@@ -249,25 +310,47 @@ class OrderRepository @Inject constructor(
         }
 
         return if (success) {
+            Log.i(TAG, "approveOrder(id): ✅ SUCCESS for $identifier")
             orderApprovalDao.updateStatus(order.id, ApprovalStatus.AUTO_APPROVED, null)
             true
         } else {
-            // Queue for offline sync
+            Log.w(TAG, "approveOrder(id): ❌ FAILED for $identifier — queuing offline")
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
             false
         }
     }
 
     suspend fun rejectOrder(order: OrderApproval, reason: String = "") {
-        val server = serverConfigDao.getById(order.serverId) ?: return
-        val apiKey = secureStorage.getApiKey(server.id) ?: return
-        val secretKey = secureStorage.getSecretKey(server.id) ?: return
-        val deviceId = secureStorage.getDeviceId() ?: return
+        Log.i(TAG, "rejectOrder: START orderId=${order.id}, orderNumber=${order.orderNumber}")
 
-        // ใช้ orderNumber (bill_reference) ถ้ามี, fallback เป็น remoteApprovalId
+        val server = serverConfigDao.getById(order.serverId)
+        if (server == null) {
+            Log.e(TAG, "rejectOrder: Server not found — queuing offline")
+            orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.REJECT)
+            return
+        }
+        val apiKey = secureStorage.getApiKey(server.id)
+        if (apiKey == null) {
+            Log.e(TAG, "rejectOrder: No API key — queuing offline")
+            orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.REJECT)
+            return
+        }
+        val secretKey = secureStorage.getSecretKey(server.id)
+        if (secretKey == null) {
+            Log.e(TAG, "rejectOrder: No secret key — queuing offline")
+            orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.REJECT)
+            return
+        }
+        val deviceId = secureStorage.getDeviceId()
+        if (deviceId == null) {
+            Log.e(TAG, "rejectOrder: No device ID — queuing offline")
+            orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.REJECT)
+            return
+        }
+
         val identifier = order.orderNumber ?: order.remoteApprovalId.toString()
+        Log.i(TAG, "rejectOrder: identifier=$identifier, server=${server.name}")
 
-        // Retry with exponential backoff for unstable network
         val success = RetryHelper.withRetryBoolean {
             sendEncryptedAction(
                 server = server,
@@ -283,8 +366,10 @@ class OrderRepository @Inject constructor(
         }
 
         if (success) {
+            Log.i(TAG, "rejectOrder: ✅ SUCCESS for $identifier")
             orderApprovalDao.updateStatus(order.id, ApprovalStatus.REJECTED, null)
         } else {
+            Log.w(TAG, "rejectOrder: ❌ FAILED for $identifier — queuing offline")
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.REJECT)
         }
     }
@@ -363,6 +448,8 @@ class OrderRepository @Inject constructor(
         bank: String?,
         reason: String?
     ): Boolean {
+        Log.d(TAG, "sendEncryptedAction: $action for $orderIdentifier on ${server.name} (${server.baseUrl})")
+
         val nonce = cryptoManager.generateNonce()
         val timestamp = System.currentTimeMillis().toString()
 
@@ -379,27 +466,47 @@ class OrderRepository @Inject constructor(
         )
 
         val payloadJson = gson.toJson(payload)
+        Log.d(TAG, "sendEncryptedAction: payload=$payloadJson")
 
         // Encrypt payload (AES-256-GCM)
-        val encryptedData = cryptoManager.encrypt(payloadJson, secretKey)
+        val encryptedData = try {
+            cryptoManager.encrypt(payloadJson, secretKey)
+        } catch (e: Exception) {
+            Log.e(TAG, "sendEncryptedAction: ENCRYPT FAILED: ${e.message}", e)
+            return false
+        }
 
         // Generate HMAC signature: HMAC(encrypted_data + nonce + timestamp)
         val signatureData = "$encryptedData$nonce$timestamp"
-        val signature = cryptoManager.generateHmac(signatureData, secretKey)
+        val signature = try {
+            cryptoManager.generateHmac(signatureData, secretKey)
+        } catch (e: Exception) {
+            Log.e(TAG, "sendEncryptedAction: HMAC FAILED: ${e.message}", e)
+            return false
+        }
+
+        Log.d(TAG, "sendEncryptedAction: encrypted OK, sending to ${server.baseUrl}/api/v1/sms-payment/notify-action")
 
         // Send to server
         val client = apiClientFactory.getClient(server.baseUrl)
-        val response = client.notifyAction(
-            apiKey = apiKey,
-            signature = signature,
-            nonce = nonce,
-            timestamp = timestamp,
-            deviceId = deviceId,
-            body = EncryptedPayload(data = encryptedData)
-        )
+        val response = try {
+            client.notifyAction(
+                apiKey = apiKey,
+                signature = signature,
+                nonce = nonce,
+                timestamp = timestamp,
+                deviceId = deviceId,
+                body = EncryptedPayload(data = encryptedData)
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "sendEncryptedAction: NETWORK ERROR: ${e.javaClass.simpleName}: ${e.message}", e)
+            return false
+        }
+
+        Log.i(TAG, "sendEncryptedAction: HTTP ${response.code()}, success=${response.body()?.success}")
 
         return if (response.isSuccessful && response.body()?.success == true) {
-            Log.i("OrderRepository", "✅ Encrypted $action sent for $orderIdentifier on ${server.name}")
+            Log.i(TAG, "✅ Encrypted $action sent for $orderIdentifier on ${server.name}")
 
             // Update local order with server response data if available
             val serverOrder = response.body()?.data?.order
@@ -411,21 +518,21 @@ class OrderRepository @Inject constructor(
                         orderApprovalDao.update(localOrder.copy(id = existing.id))
                     }
                 } catch (e: Exception) {
-                    Log.w("OrderRepository", "Failed to update local order from response", e)
+                    Log.w(TAG, "Failed to update local order from response", e)
                 }
             }
             true
         } else if (response.code() == 422) {
             // Server says order already in target status → treat as success
-            Log.i("OrderRepository", "Order $orderIdentifier already ${action}d on server (422)")
+            Log.i(TAG, "Order $orderIdentifier already ${action}d on server (422)")
             true
         } else if (response.code() == 409) {
             // Duplicate nonce → already processed → treat as success
-            Log.i("OrderRepository", "Duplicate nonce for $orderIdentifier (409) - already processed")
+            Log.i(TAG, "Duplicate nonce for $orderIdentifier (409) - already processed")
             true
         } else {
             val errorBody = try { response.errorBody()?.string() } catch (_: Exception) { null }
-            Log.e("OrderRepository", "❌ Encrypted $action failed for $orderIdentifier: HTTP ${response.code()} - $errorBody")
+            Log.e(TAG, "❌ Encrypted $action failed for $orderIdentifier: HTTP ${response.code()} - $errorBody")
             false
         }
     }
