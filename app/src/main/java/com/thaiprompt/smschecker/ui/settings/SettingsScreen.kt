@@ -666,6 +666,21 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onBackground
                         )
                     }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = state.ttsSpeakProduct,
+                            onCheckedChange = { viewModel.setTtsSpeakProduct(it) },
+                            colors = CheckboxDefaults.colors(checkedColor = AppColors.GoldAccent)
+                        )
+                        Text(
+                            strings.ttsSpeakProductLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -916,7 +931,7 @@ fun SettingsScreen(
         item {
             GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
                 val strings2 = LocalAppStrings.current
-                val supportedBanks = setOf("KBANK", "SCB")
+                val supportedBanks = setOf("KBANK", "SCB", "PROMPTPAY")
                 val banks = listOf(
                     "KBANK" to strings2.bankKbank,
                     "SCB" to strings2.bankScb,

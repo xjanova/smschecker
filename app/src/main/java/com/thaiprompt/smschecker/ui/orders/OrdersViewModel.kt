@@ -25,7 +25,14 @@ data class OrdersState(
     val pendingCount: Int = 0,
     val offlineQueueCount: Int = 0,
     val servers: List<ServerConfig> = emptyList(),
-    val error: String? = null
+    val error: String? = null,
+    val actionResult: ActionResult? = null
+)
+
+data class ActionResult(
+    val success: Boolean,
+    val message: String,
+    val orderNumber: String? = null
 )
 
 @HiltViewModel
@@ -160,8 +167,22 @@ class OrdersViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 orderRepository.approveOrder(order)
+                _state.update { it.copy(
+                    actionResult = ActionResult(
+                        success = true,
+                        message = "Approved",
+                        orderNumber = order.orderNumber
+                    )
+                ) }
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error approving order ${order.id}", e)
+                _state.update { it.copy(
+                    actionResult = ActionResult(
+                        success = false,
+                        message = e.message ?: "Approve failed",
+                        orderNumber = order.orderNumber
+                    )
+                ) }
             }
         }
     }
@@ -170,10 +191,28 @@ class OrdersViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 orderRepository.rejectOrder(order)
+                _state.update { it.copy(
+                    actionResult = ActionResult(
+                        success = true,
+                        message = "Rejected",
+                        orderNumber = order.orderNumber
+                    )
+                ) }
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error rejecting order ${order.id}", e)
+                _state.update { it.copy(
+                    actionResult = ActionResult(
+                        success = false,
+                        message = e.message ?: "Reject failed",
+                        orderNumber = order.orderNumber
+                    )
+                ) }
             }
         }
+    }
+
+    fun clearActionResult() {
+        _state.update { it.copy(actionResult = null) }
     }
 
     fun bulkApproveAll() {

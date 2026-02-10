@@ -223,6 +223,7 @@ data class AppStrings(
     val ttsSpeakBankLabel: String,
     val ttsSpeakAmountLabel: String,
     val ttsSpeakOrderLabel: String,
+    val ttsSpeakProductLabel: String,
     val ttsPreviewButton: String,
 
     // === Notification Listening ===
@@ -470,6 +471,7 @@ val ThaiStrings = AppStrings(
     ttsSpeakBankLabel = "ชื่อธนาคาร",
     ttsSpeakAmountLabel = "จำนวนเงิน",
     ttsSpeakOrderLabel = "เลขออเดอร์",
+    ttsSpeakProductLabel = "ชื่อสินค้า",
     ttsPreviewButton = "ทดลองฟัง",
 
     // Notification Listening
@@ -717,6 +719,7 @@ val EnglishStrings = AppStrings(
     ttsSpeakBankLabel = "Bank Name",
     ttsSpeakAmountLabel = "Amount",
     ttsSpeakOrderLabel = "Order Number",
+    ttsSpeakProductLabel = "Product Name",
     ttsPreviewButton = "Preview",
 
     // Notification Listening

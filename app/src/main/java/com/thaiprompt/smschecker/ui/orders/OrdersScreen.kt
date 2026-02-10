@@ -49,6 +49,24 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     var showDatePicker by remember { mutableStateOf(false) }
     val strings = LocalAppStrings.current
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Show Snackbar when approve/reject action completes
+    LaunchedEffect(state.actionResult) {
+        state.actionResult?.let { result ->
+            val label = result.orderNumber?.let { "#$it" } ?: ""
+            val msg = if (result.success) {
+                "${result.message} $label"
+            } else {
+                "Error: ${result.message} $label"
+            }
+            snackbarHostState.showSnackbar(
+                message = msg,
+                duration = SnackbarDuration.Short
+            )
+            viewModel.clearActionResult()
+        }
+    }
 
     // Error handling - show error state if there's an error
     if (state.error != null) {
@@ -92,6 +110,7 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
         return
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -345,6 +364,13 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
             }
         )
     }
+
+    // Snackbar for approve/reject feedback
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier.align(Alignment.BottomCenter)
+    )
+    } // Box
 }
 
 @Composable

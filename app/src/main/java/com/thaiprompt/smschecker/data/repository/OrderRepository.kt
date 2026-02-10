@@ -698,7 +698,7 @@ class OrderRepository @Inject constructor(
     /**
      * ส่ง FCM token ไปยังเซิร์ฟเวอร์ทุกตัวเพื่อรับ push notifications
      * ใช้ sequential loop แทน ParallelSyncHelper เพื่อ debug ได้ง่ายกว่า
-     * @return true ถ้าส่งไปอย่างน้อย 1 เซิร์ฟเวอร์สำเร็จ, false ถ้าไม่ได้ส่งเลย
+     * @return true ถ้าส่งไป **ทุก** เซิร์ฟเวอร์สำเร็จ, false ถ้ายังมีที่ยังส่งไม่สำเร็จ
      */
     suspend fun registerFcmToken(fcmToken: String): Boolean {
         Log.i("OrderRepository", "registerFcmToken: START, tokenLength=${fcmToken.length}, tokenPrefix=${fcmToken.take(20)}")
@@ -781,7 +781,9 @@ class OrderRepository @Inject constructor(
         }
 
         Log.i("OrderRepository", "registerFcmToken: END. Sent to $sentCount/${activeServers.size} servers")
-        return sentCount > 0
+        // Return true only if ALL servers succeeded
+        // This ensures fcm_token_needs_sync flag stays set until every server gets the token
+        return sentCount == activeServers.size
     }
 
     /**

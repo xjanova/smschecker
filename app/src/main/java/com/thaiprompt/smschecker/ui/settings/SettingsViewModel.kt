@@ -41,6 +41,7 @@ data class SettingsState(
     val ttsSpeakAmount: Boolean = true,
     val ttsSpeakType: Boolean = true,
     val ttsSpeakOrder: Boolean = true,
+    val ttsSpeakProduct: Boolean = true,
     val isNotificationListening: Boolean = false,
     val isNotificationAccessGranted: Boolean = false,
     val isSmsPermissionGranted: Boolean = false,
@@ -89,6 +90,7 @@ class SettingsViewModel @Inject constructor(
                     ttsSpeakAmount = secureStorage.isTtsSpeakAmount(),
                     ttsSpeakType = secureStorage.isTtsSpeakType(),
                     ttsSpeakOrder = secureStorage.isTtsSpeakOrder(),
+                    ttsSpeakProduct = secureStorage.isTtsSpeakProduct(),
                     isNotificationListening = secureStorage.isNotificationListeningEnabled()
                 )
             }
@@ -274,6 +276,11 @@ class SettingsViewModel @Inject constructor(
         _state.update { it.copy(ttsSpeakOrder = enabled) }
     }
 
+    fun setTtsSpeakProduct(enabled: Boolean) {
+        secureStorage.setTtsSpeakProduct(enabled)
+        _state.update { it.copy(ttsSpeakProduct = enabled) }
+    }
+
     fun previewTts() {
         val s = _state.value
         val message = ttsManager.buildTransactionMessage(
@@ -285,7 +292,8 @@ class SettingsViewModel @Inject constructor(
             speakBank = s.ttsSpeakBank,
             speakAmount = s.ttsSpeakAmount,
             speakType = s.ttsSpeakType,
-            speakOrder = s.ttsSpeakOrder
+            speakOrder = s.ttsSpeakOrder,
+            speakProduct = s.ttsSpeakProduct
         )
         if (message.isNotBlank()) {
             ttsManager.speakPreview(message)

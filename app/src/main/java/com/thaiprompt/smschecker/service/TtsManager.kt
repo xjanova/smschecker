@@ -137,6 +137,7 @@ class TtsManager @Inject constructor(
         val speakAmount = secureStorage.isTtsSpeakAmount()
         val speakType = secureStorage.isTtsSpeakType()
         val speakOrder = secureStorage.isTtsSpeakOrder()
+        val speakProduct = secureStorage.isTtsSpeakProduct()
 
         val message = buildTransactionMessage(
             bankName = bankName,
@@ -147,7 +148,8 @@ class TtsManager @Inject constructor(
             speakBank = speakBank,
             speakAmount = speakAmount,
             speakType = speakType,
-            speakOrder = speakOrder
+            speakOrder = speakOrder,
+            speakProduct = speakProduct
         )
 
         if (message.isNotBlank()) {
@@ -168,7 +170,8 @@ class TtsManager @Inject constructor(
         speakBank: Boolean = true,
         speakAmount: Boolean = true,
         speakType: Boolean = true,
-        speakOrder: Boolean = true
+        speakOrder: Boolean = true,
+        speakProduct: Boolean = true
     ): String {
         val langKey = getEffectiveLangKey()
 
@@ -187,8 +190,12 @@ class TtsManager @Inject constructor(
                 }
                 if (speakOrder && orderNumber != null) {
                     append(". Matched with order $orderNumber")
-                    if (productName != null) {
+                }
+                if (speakProduct && productName != null) {
+                    if (speakOrder && orderNumber != null) {
                         append(", product: $productName")
+                    } else {
+                        append(". Product: $productName")
                     }
                 }
                 if (isNotEmpty() && !endsWith(".")) append(".")
@@ -208,9 +215,10 @@ class TtsManager @Inject constructor(
                 if (speakOrder && orderNumber != null) {
                     if (isNotEmpty()) append(" ")
                     append("ตรงกับออเดอร์ $orderNumber")
-                    if (productName != null) {
-                        append(" สินค้า $productName")
-                    }
+                }
+                if (speakProduct && productName != null) {
+                    if (isNotEmpty()) append(" ")
+                    append("สินค้า $productName")
                 }
             }
         }
