@@ -281,6 +281,7 @@ class SettingsViewModel @Inject constructor(
             amount = "1,500.00",
             isCredit = true,
             orderNumber = "ORD-12345",
+            productName = "Windows 11 Pro",
             speakBank = s.ttsSpeakBank,
             speakAmount = s.ttsSpeakAmount,
             speakType = s.ttsSpeakType,

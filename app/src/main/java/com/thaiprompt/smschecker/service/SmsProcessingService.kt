@@ -149,6 +149,7 @@ class SmsProcessingService : Service() {
                 // Try to match with orders using MATCH-ONLY MODE
                 // Query servers with SMS amount instead of fetching all orders
                 var matchedOrderNumber: String? = null
+                var matchedProductName: String? = null
                 if (transaction.type == TransactionType.CREDIT) {
                     try {
                         val amountDouble = transaction.amount.toDoubleOrNull()
@@ -166,6 +167,7 @@ class SmsProcessingService : Service() {
                                 val matchedOrder = matchResult.order
                                 sessionMatchedCount++
                                 matchedOrderNumber = matchedOrder.orderNumber
+                                matchedProductName = matchedOrder.productName
                                 Log.d(TAG, "✅ Matched transaction with order: ${matchedOrder.orderNumber} on server ${matchResult.serverName}")
                                 updateNotification("กำลังทำงาน | ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
 
@@ -221,7 +223,8 @@ class SmsProcessingService : Service() {
                         bankName = transaction.bank,
                         amount = transaction.amount,
                         isCredit = transaction.type == TransactionType.CREDIT,
-                        orderNumber = matchedOrderNumber
+                        orderNumber = matchedOrderNumber,
+                        productName = matchedProductName
                     )
                 } catch (e: Exception) {
                     Log.w(TAG, "TTS announcement failed", e)
@@ -287,6 +290,7 @@ class SmsProcessingService : Service() {
                 // Try to match with orders using MATCH-ONLY MODE
                 // Query servers with notification amount instead of fetching all orders
                 var matchedOrderNumber: String? = null
+                var matchedProductName: String? = null
                 if (notifTransaction.type == TransactionType.CREDIT) {
                     try {
                         val amountDouble = notifTransaction.amount.toDoubleOrNull()
@@ -304,6 +308,7 @@ class SmsProcessingService : Service() {
                                 val matchedOrder = matchResult.order
                                 sessionMatchedCount++
                                 matchedOrderNumber = matchedOrder.orderNumber
+                                matchedProductName = matchedOrder.productName
                                 Log.d(TAG, "✅ Matched notification with order: ${matchedOrder.orderNumber} on server ${matchResult.serverName}")
                                 updateNotification("กำลังทำงาน | ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
 
@@ -358,7 +363,8 @@ class SmsProcessingService : Service() {
                         bankName = notifTransaction.bank,
                         amount = notifTransaction.amount,
                         isCredit = notifTransaction.type == TransactionType.CREDIT,
-                        orderNumber = matchedOrderNumber
+                        orderNumber = matchedOrderNumber,
+                        productName = matchedProductName
                     )
                 } catch (e: Exception) {
                     Log.w(TAG, "TTS announcement failed for notification", e)

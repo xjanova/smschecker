@@ -124,7 +124,13 @@ class TtsManager @Inject constructor(
         }
     }
 
-    fun speakTransaction(bankName: String, amount: String, isCredit: Boolean, orderNumber: String? = null) {
+    fun speakTransaction(
+        bankName: String,
+        amount: String,
+        isCredit: Boolean,
+        orderNumber: String? = null,
+        productName: String? = null
+    ) {
         if (!isTtsEnabled()) return
 
         val speakBank = secureStorage.isTtsSpeakBank()
@@ -137,6 +143,7 @@ class TtsManager @Inject constructor(
             amount = amount,
             isCredit = isCredit,
             orderNumber = orderNumber,
+            productName = productName,
             speakBank = speakBank,
             speakAmount = speakAmount,
             speakType = speakType,
@@ -157,6 +164,7 @@ class TtsManager @Inject constructor(
         amount: String,
         isCredit: Boolean,
         orderNumber: String? = null,
+        productName: String? = null,
         speakBank: Boolean = true,
         speakAmount: Boolean = true,
         speakType: Boolean = true,
@@ -179,6 +187,9 @@ class TtsManager @Inject constructor(
                 }
                 if (speakOrder && orderNumber != null) {
                     append(". Matched with order $orderNumber")
+                    if (productName != null) {
+                        append(", product: $productName")
+                    }
                 }
                 if (isNotEmpty() && !endsWith(".")) append(".")
             } else {
@@ -197,6 +208,9 @@ class TtsManager @Inject constructor(
                 if (speakOrder && orderNumber != null) {
                     if (isNotEmpty()) append(" ")
                     append("ตรงกับออเดอร์ $orderNumber")
+                    if (productName != null) {
+                        append(" สินค้า $productName")
+                    }
                 }
             }
         }
