@@ -72,6 +72,7 @@ class FcmService : FirebaseMessagingService() {
             "order_cancelled" -> handleOrderStatusChange(data, "ถูกยกเลิก", "🚫")
             "order_deleted" -> handleOrderDeleted(data)
             "payment_matched" -> handlePaymentMatched(data)
+            "settings_changed" -> handleSettingsChanged(data)
             "sync" -> handleSyncRequest()
             else -> {
                 Log.w(TAG, "Unknown FCM message type: ${data["type"]}")
@@ -169,6 +170,15 @@ class FcmService : FirebaseMessagingService() {
     /**
      * เซิร์ฟเวอร์ขอให้ sync (silent push)
      */
+    /**
+     * Server settings changed (e.g. admin changed approval_mode on web) — trigger sync.
+     */
+    private fun handleSettingsChanged(data: Map<String, String>) {
+        Log.i(TAG, "Settings changed from server: $data")
+        // Trigger full sync to pull updated settings (approval_mode, etc.)
+        OrderSyncWorker.enqueueOneTimeSync(applicationContext)
+    }
+
     private fun handleSyncRequest() {
         OrderSyncWorker.enqueueOneTimeSync(applicationContext)
     }

@@ -143,24 +143,12 @@ class OrderRepository @Inject constructor(
                             val existing = orderApprovalDao.getByRemoteId(remote.id, serverId)
 
                             if (existing != null) {
-                                // ถ้า local มี pendingAction ค้างอยู่ → ข้ามไป (offline action สำคัญกว่า)
+                                // ถ้า local มี pendingAction ค้างอยู่ → ข้ามไป (offline action ยังไม่ได้ส่ง)
                                 if (existing.pendingAction != null) {
                                     continue
                                 }
 
-                                // ป้องกัน green-to-red revert:
-                                // ถ้า local เป็น approved แล้ว แต่ server ยังเป็น pending_review → ข้ามไป
-                                // เพราะ server อาจยัง process approve ไม่เสร็จ (race condition)
-                                val remoteStatus = ApprovalStatus.fromApiValue(remote.approval_status)
-                                val localIsApproved = existing.approvalStatus == ApprovalStatus.AUTO_APPROVED ||
-                                        existing.approvalStatus == ApprovalStatus.MANUALLY_APPROVED
-                                val remoteIsPending = remoteStatus == ApprovalStatus.PENDING_REVIEW
-
-                                if (localIsApproved && remoteIsPending) {
-                                    Log.d("OrderRepository", "Skipping revert for order ${remote.id}: local=${existing.approvalStatus}, remote=$remoteStatus")
-                                    continue
-                                }
-
+                                // Server is the source of truth — always sync server status
                                 orderApprovalDao.update(localOrder.copy(id = existing.id))
                             } else {
                                 orderApprovalDao.insert(localOrder)
@@ -170,6 +158,14 @@ class OrderRepository @Inject constructor(
                         Log.e("OrderRepository", "Failed to upsert orders", e)
                     }
                 }
+
+                // Sync approval_mode from server (bidirectional: web admin → app)
+                try {
+                    syncApprovalModeFromServer(serverId)
+                } catch (e: Exception) {
+                    Log.w("OrderRepository", "Failed to sync approval mode from ${server.name}", e)
+                }
+
                 true
             } else {
                 val errorBody = try { response.errorBody()?.string() } catch (_: Exception) { null }
@@ -602,21 +598,12 @@ class OrderRepository @Inject constructor(
                     }
 
                     if (existing != null) {
-                        // Local pending action wins
+                        // Local pending action wins (offline action ยังไม่ได้ส่ง)
                         if (existing.pendingAction != null) {
                             continue
                         }
 
-                        // ป้องกัน green-to-red revert:
-                        // ถ้า local เป็น approved แล้ว แต่ server ยังเป็น pending_review → ข้ามไป
-                        val localIsApproved = existing.approvalStatus == ApprovalStatus.AUTO_APPROVED ||
-                                existing.approvalStatus == ApprovalStatus.MANUALLY_APPROVED
-                        val remoteIsPending = remoteStatus == ApprovalStatus.PENDING_REVIEW
-
-                        if (localIsApproved && remoteIsPending) {
-                            Log.d("OrderRepository", "Skipping sync revert for order ${remote.id}: local=${existing.approvalStatus}, remote=$remoteStatus")
-                            continue
-                        }
+                        // Server is the source of truth — always accept server status
                     }
 
                     val local = remote.toLocalEntity(serverId)
@@ -812,6 +799,35 @@ class OrderRepository @Inject constructor(
         }
     }
 
+    /**
+     * Update approval mode for a SPECIFIC server.
+     * 1. Save to local DB (per-server)
+     * 2. Push to server via API
+     */
+    suspend fun updateApprovalMode(serverId: Long, mode: ApprovalMode) {
+        val deviceId = secureStorage.getDeviceId() ?: return
+
+        // Update local DB per-server
+        serverConfigDao.updateApprovalMode(serverId, mode.apiValue)
+
+        // Also update legacy global setting for backward compatibility
+        secureStorage.setApprovalMode(mode.apiValue)
+
+        // Push to server
+        val server = serverConfigDao.getById(serverId) ?: return
+        val apiKey = secureStorage.getApiKey(serverId) ?: return
+        try {
+            val client = apiClientFactory.getClient(server.baseUrl)
+            client.updateDeviceSettings(apiKey, deviceId, UpdateSettingsBody(mode.apiValue))
+            Log.i(TAG, "updateApprovalMode: ${mode.apiValue} pushed to ${server.name}")
+        } catch (e: Exception) {
+            Log.w(TAG, "updateApprovalMode: Failed to push to ${server.name}: ${e.message}")
+        }
+    }
+
+    /**
+     * Legacy: Update approval mode for ALL servers (backward compat).
+     */
     suspend fun updateApprovalMode(mode: ApprovalMode) {
         val activeServers = serverConfigDao.getActiveConfigs()
         val deviceId = secureStorage.getDeviceId() ?: return
@@ -819,6 +835,7 @@ class OrderRepository @Inject constructor(
         secureStorage.setApprovalMode(mode.apiValue)
 
         for (server in activeServers) {
+            serverConfigDao.updateApprovalMode(server.id, mode.apiValue)
             val apiKey = secureStorage.getApiKey(server.id) ?: continue
             try {
                 val client = apiClientFactory.getClient(server.baseUrl)
@@ -826,6 +843,31 @@ class OrderRepository @Inject constructor(
             } catch (e: Exception) {
                 // Best effort
             }
+        }
+    }
+
+    /**
+     * Sync approval_mode FROM server for a specific server.
+     * Called during fetch/pull to keep local DB in sync with server.
+     */
+    suspend fun syncApprovalModeFromServer(serverId: Long) {
+        val deviceId = secureStorage.getDeviceId() ?: return
+        val apiKey = secureStorage.getApiKey(serverId) ?: return
+        val server = serverConfigDao.getById(serverId) ?: return
+
+        try {
+            val client = apiClientFactory.getClient(server.baseUrl)
+            val response = client.getDeviceSettings(apiKey, deviceId)
+            if (response.isSuccessful) {
+                val serverMode = response.body()?.data?.approval_mode ?: "auto"
+                val localMode = server.approvalMode
+                if (serverMode != localMode) {
+                    Log.i(TAG, "syncApprovalMode: ${server.name} changed from $localMode → $serverMode")
+                    serverConfigDao.updateApprovalMode(serverId, serverMode)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "syncApprovalMode: Failed for ${server.name}: ${e.message}")
         }
     }
 

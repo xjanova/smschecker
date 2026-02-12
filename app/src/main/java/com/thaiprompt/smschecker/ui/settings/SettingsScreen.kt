@@ -703,8 +703,15 @@ fun SettingsScreen(
 
         item { Spacer(modifier = Modifier.height(12.dp)) }
 
-        // Approval Mode
+        // Approval Mode — Per-Server
         item {
+            val langMode = LocalLanguageMode.current
+            val isThai = when (langMode) {
+                LanguageMode.THAI -> true
+                LanguageMode.ENGLISH -> false
+                LanguageMode.SYSTEM -> java.util.Locale.getDefault().language == "th"
+            }
+
             GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -741,58 +748,98 @@ fun SettingsScreen(
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(12.dp))
-                val langMode = LocalLanguageMode.current
-                val isThai = when (langMode) {
-                    LanguageMode.THAI -> true
-                    LanguageMode.ENGLISH -> false
-                    LanguageMode.SYSTEM -> java.util.Locale.getDefault().language == "th"
-                }
-                ApprovalMode.entries.forEach { mode ->
-                    val isSelected = state.approvalMode == mode
-                    val modeName = if (isThai) mode.displayNameTh else mode.displayNameEn
-                    val modeDesc = if (isThai) mode.descriptionTh else mode.descriptionEn
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 2.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(
-                                if (isSelected) AppColors.GoldAccent.copy(alpha = 0.08f)
-                                else Color.Transparent
+
+                // Per-server approval mode selectors
+                val activeServers = state.servers.filter { it.isActive }
+                if (activeServers.isEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        if (isThai) "ยังไม่มีเซิร์ฟเวอร์" else "No servers configured",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    activeServers.forEach { server ->
+                        val currentMode = ApprovalMode.fromApiValue(server.approvalMode)
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Server name header
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (server.isActive) AppColors.SuccessGreen else Color.Gray)
                             )
-                            .then(
-                                if (isSelected) Modifier.border(
-                                    1.dp,
-                                    AppColors.GoldAccent.copy(alpha = 0.3f),
-                                    RoundedCornerShape(10.dp)
-                                )
-                                else Modifier
-                            )
-                            .padding(vertical = 6.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = isSelected,
-                            onClick = { viewModel.setApprovalMode(mode) },
-                            colors = RadioButtonDefaults.colors(
-                                selectedColor = AppColors.GoldAccent
-                            )
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                modeName,
+                                server.name,
                                 style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) AppColors.GoldAccent
-                                    else MaterialTheme.colorScheme.onBackground
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onBackground
                             )
-                            Text(
-                                modeDesc,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 11.sp
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // Radio buttons for this server
+                        ApprovalMode.entries.forEach { mode ->
+                            val isSelected = currentMode == mode
+                            val modeName = if (isThai) mode.displayNameTh else mode.displayNameEn
+                            val modeDesc = if (isThai) mode.descriptionTh else mode.descriptionEn
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 2.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        if (isSelected) AppColors.GoldAccent.copy(alpha = 0.08f)
+                                        else Color.Transparent
+                                    )
+                                    .then(
+                                        if (isSelected) Modifier.border(
+                                            1.dp,
+                                            AppColors.GoldAccent.copy(alpha = 0.3f),
+                                            RoundedCornerShape(10.dp)
+                                        )
+                                        else Modifier
+                                    )
+                                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = { viewModel.setApprovalMode(server.id, mode) },
+                                    colors = RadioButtonDefaults.colors(
+                                        selectedColor = AppColors.GoldAccent
+                                    )
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        modeName,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) AppColors.GoldAccent
+                                            else MaterialTheme.colorScheme.onBackground
+                                    )
+                                    Text(
+                                        modeDesc,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        // Divider between servers (if multiple)
+                        if (server != activeServers.last()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f)
                             )
                         }
                     }

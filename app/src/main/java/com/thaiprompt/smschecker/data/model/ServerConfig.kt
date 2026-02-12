@@ -16,6 +16,7 @@ data class ServerConfig(
     val syncInterval: Int = 300,  // Sync interval in seconds (default 5min - FCM push is primary mechanism)
     val lastSyncAt: Long? = null,
     val lastSyncStatus: String? = null, // success, failed, timeout
+    val approvalMode: String = "auto", // auto, manual, smart — synced from server per-device
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 ) {

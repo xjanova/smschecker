@@ -226,6 +226,21 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Set approval mode for a specific server (per-server).
+     */
+    fun setApprovalMode(serverId: Long, mode: ApprovalMode) {
+        viewModelScope.launch {
+            try {
+                orderRepository.updateApprovalMode(serverId, mode)
+                // UI will update via Flow from getAllServerConfigs()
+            } catch (e: Exception) { }
+        }
+    }
+
+    /**
+     * Legacy: Set approval mode for ALL servers.
+     */
     fun setApprovalMode(mode: ApprovalMode) {
         try {
             secureStorage.setApprovalMode(mode.apiValue)

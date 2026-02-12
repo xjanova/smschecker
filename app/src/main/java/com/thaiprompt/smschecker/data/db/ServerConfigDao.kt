@@ -39,4 +39,7 @@ interface ServerConfigDao {
 
     @Query("SELECT MIN(syncInterval) FROM server_configs WHERE isActive = 1")
     suspend fun getMinSyncInterval(): Int?
+
+    @Query("UPDATE server_configs SET approvalMode = :mode, updatedAt = :now WHERE id = :serverId")
+    suspend fun updateApprovalMode(serverId: Long, mode: String, now: Long = System.currentTimeMillis())
 }
