@@ -118,15 +118,12 @@ class SettingsViewModel @Inject constructor(
             } catch (e: Exception) { }
         }
 
-        // Start periodic sync status check (every 5 seconds)
+        // Sync once on init — FCM push + WorkManager periodic (15 min) handle ongoing sync
         viewModelScope.launch {
-            while (true) {
-                try {
-                    triggerSync()
-                } catch (e: kotlinx.coroutines.CancellationException) { throw e
-                } catch (e: Exception) { }
-                kotlinx.coroutines.delay(5000L) // 5 seconds
-            }
+            try {
+                triggerSync()
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e
+            } catch (e: Exception) { }
         }
 
         // Listen for pending orders count
