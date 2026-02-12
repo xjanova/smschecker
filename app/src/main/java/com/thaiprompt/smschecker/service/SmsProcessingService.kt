@@ -405,7 +405,6 @@ class SmsProcessingService : Service() {
                 } else {
                     Log.d(TAG, "⏳ TTS skipped for notification: order matched but server not yet approved")
                 }
-                }
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing notification", e)
