@@ -150,6 +150,7 @@ class SmsProcessingService : Service() {
                 // Query servers with SMS amount instead of fetching all orders
                 var matchedOrderNumber: String? = null
                 var matchedProductName: String? = null
+                var isServerApproved = false  // ← TTS จะอ่านเฉพาะเมื่อ server approve จริงเท่านั้น
                 if (transaction.type == TransactionType.CREDIT) {
                     try {
                         val amountDouble = transaction.amount.toDoubleOrNull()
@@ -180,6 +181,7 @@ class SmsProcessingService : Service() {
                                         val approvalSuccess = orderRepository.approveOrder(matchedOrder.id)
                                         if (approvalSuccess) {
                                             Log.d(TAG, "✅ Successfully approved order: ${matchedOrder.orderNumber}")
+                                            isServerApproved = true
                                         } else {
                                             Log.w(TAG, "⚠️ Failed to approve order: ${matchedOrder.orderNumber}")
                                         }
@@ -188,6 +190,7 @@ class SmsProcessingService : Service() {
                                     }
                                 } else {
                                     Log.d(TAG, "✅ Order already approved by server: ${matchedOrder.orderNumber}")
+                                    isServerApproved = true
                                 }
                             } else {
                                 // ไม่พบออเดอร์ที่ตรงกัน → เก็บเป็น Orphan Transaction
@@ -225,16 +228,24 @@ class SmsProcessingService : Service() {
                 }
 
                 // TTS announcement
-                try {
-                    ttsManager.speakTransaction(
-                        bankName = transaction.bank,
-                        amount = transaction.amount,
-                        isCredit = transaction.type == TransactionType.CREDIT,
-                        orderNumber = matchedOrderNumber,
-                        productName = matchedProductName
-                    )
-                } catch (e: Exception) {
-                    Log.w(TAG, "TTS announcement failed", e)
+                // ถ้า match กับ order/topup → อ่านออกเสียงเฉพาะเมื่อ server approve จริง (เขียว)
+                // ถ้าไม่ match กับ order → อ่านปกติ (เป็น SMS credit ทั่วไป)
+                val hasOrderMatch = matchedOrderNumber != null
+                val shouldSpeak = if (hasOrderMatch) isServerApproved else true
+                if (shouldSpeak) {
+                    try {
+                        ttsManager.speakTransaction(
+                            bankName = transaction.bank,
+                            amount = transaction.amount,
+                            isCredit = transaction.type == TransactionType.CREDIT,
+                            orderNumber = if (isServerApproved) matchedOrderNumber else null,
+                            productName = if (isServerApproved) matchedProductName else null
+                        )
+                    } catch (e: Exception) {
+                        Log.w(TAG, "TTS announcement failed", e)
+                    }
+                } else {
+                    Log.d(TAG, "⏳ TTS skipped: order matched but server not yet approved (waiting for green status)")
                 }
 
             } catch (e: Exception) {
@@ -298,6 +309,7 @@ class SmsProcessingService : Service() {
                 // Query servers with notification amount instead of fetching all orders
                 var matchedOrderNumber: String? = null
                 var matchedProductName: String? = null
+                var isServerApproved2 = false  // ← TTS จะอ่านเฉพาะเมื่อ server approve จริงเท่านั้น
                 if (notifTransaction.type == TransactionType.CREDIT) {
                     try {
                         val amountDouble = notifTransaction.amount.toDoubleOrNull()
@@ -328,6 +340,7 @@ class SmsProcessingService : Service() {
                                         val approvalSuccess = orderRepository.approveOrder(matchedOrder.id)
                                         if (approvalSuccess) {
                                             Log.d(TAG, "✅ Successfully approved order from notification: ${matchedOrder.orderNumber}")
+                                            isServerApproved2 = true
                                         } else {
                                             Log.w(TAG, "⚠️ Failed to approve order from notification: ${matchedOrder.orderNumber}")
                                         }
@@ -336,6 +349,7 @@ class SmsProcessingService : Service() {
                                     }
                                 } else {
                                     Log.d(TAG, "✅ Order already approved by server from notification: ${matchedOrder.orderNumber}")
+                                    isServerApproved2 = true
                                 }
                             } else {
                                 // ไม่พบออเดอร์ที่ตรงกัน → เก็บเป็น Orphan Transaction
@@ -372,16 +386,25 @@ class SmsProcessingService : Service() {
                 }
 
                 // TTS announcement
-                try {
-                    ttsManager.speakTransaction(
-                        bankName = notifTransaction.bank,
-                        amount = notifTransaction.amount,
-                        isCredit = notifTransaction.type == TransactionType.CREDIT,
-                        orderNumber = matchedOrderNumber,
-                        productName = matchedProductName
-                    )
-                } catch (e: Exception) {
-                    Log.w(TAG, "TTS announcement failed for notification", e)
+                // ถ้า match กับ order/topup → อ่านออกเสียงเฉพาะเมื่อ server approve จริง (เขียว)
+                // ถ้าไม่ match กับ order → อ่านปกติ (เป็น notification credit ทั่วไป)
+                val hasOrderMatch2 = matchedOrderNumber != null
+                val shouldSpeak2 = if (hasOrderMatch2) isServerApproved2 else true
+                if (shouldSpeak2) {
+                    try {
+                        ttsManager.speakTransaction(
+                            bankName = notifTransaction.bank,
+                            amount = notifTransaction.amount,
+                            isCredit = notifTransaction.type == TransactionType.CREDIT,
+                            orderNumber = if (isServerApproved2) matchedOrderNumber else null,
+                            productName = if (isServerApproved2) matchedProductName else null
+                        )
+                    } catch (e: Exception) {
+                        Log.w(TAG, "TTS announcement failed for notification", e)
+                    }
+                } else {
+                    Log.d(TAG, "⏳ TTS skipped for notification: order matched but server not yet approved")
+                }
                 }
 
             } catch (e: Exception) {
