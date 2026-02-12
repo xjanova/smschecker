@@ -170,9 +170,17 @@ class OrderRepository @Inject constructor(
             } else {
                 val errorBody = try { response.errorBody()?.string() } catch (_: Exception) { null }
                 Log.e("OrderRepository", "Failed to fetch orders from ${server.name}: HTTP ${response.code()} - $errorBody")
-                // Save descriptive error status (e.g. "failed:403") for UI to display
+                // Save descriptive error status for UI to display
+                // Parse error body for specific messages (e.g. "Device is inactive")
+                val syncStatus = when {
+                    response.code() == 403 && errorBody?.contains("inactive", ignoreCase = true) == true ->
+                        "failed:device_inactive"
+                    response.code() == 403 && errorBody?.contains("mismatch", ignoreCase = true) == true ->
+                        "failed:device_mismatch"
+                    else -> "failed:${response.code()}"
+                }
                 try {
-                    serverConfigDao.updateSyncStatus(serverId, System.currentTimeMillis(), "failed:${response.code()}")
+                    serverConfigDao.updateSyncStatus(serverId, System.currentTimeMillis(), syncStatus)
                 } catch (_: Exception) { }
                 false
             }
@@ -617,9 +625,16 @@ class OrderRepository @Inject constructor(
             } else {
                 val errorBody = try { response.errorBody()?.string() } catch (_: Exception) { null }
                 Log.e("OrderRepository", "Failed to sync from ${server.name}: HTTP ${response.code()} - $errorBody")
-                // Save descriptive error status (e.g. "failed:403") for UI to display
+                // Save descriptive error status for UI to display
+                val syncStatus = when {
+                    response.code() == 403 && errorBody?.contains("inactive", ignoreCase = true) == true ->
+                        "failed:device_inactive"
+                    response.code() == 403 && errorBody?.contains("mismatch", ignoreCase = true) == true ->
+                        "failed:device_mismatch"
+                    else -> "failed:${response.code()}"
+                }
                 try {
-                    serverConfigDao.updateSyncStatus(serverId, System.currentTimeMillis(), "failed:${response.code()}")
+                    serverConfigDao.updateSyncStatus(serverId, System.currentTimeMillis(), syncStatus)
                 } catch (_: Exception) { }
                 false
             }

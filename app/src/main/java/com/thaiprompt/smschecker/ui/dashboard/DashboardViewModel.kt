@@ -20,7 +20,8 @@ data class ServerHealth(
     val serverName: String,
     val isReachable: Boolean,
     val lastSyncAt: Long? = null,
-    val neverSynced: Boolean = false
+    val neverSynced: Boolean = false,
+    val isDeviceInactive: Boolean = false
 )
 
 data class DashboardState(
@@ -246,7 +247,8 @@ class DashboardViewModel @Inject constructor(
                                 serverName = server.name,
                                 isReachable = server.lastSyncStatus == "success",
                                 lastSyncAt = server.lastSyncAt,
-                                neverSynced = server.lastSyncStatus == null
+                                neverSynced = server.lastSyncStatus == null,
+                                isDeviceInactive = server.lastSyncStatus == "failed:device_inactive"
                             )
                         }
                         _state.update { it.copy(serverHealthList = healthList) }

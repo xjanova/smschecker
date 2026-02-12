@@ -397,11 +397,13 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     state.serverHealthList.forEach { health ->
                         val statusColor = when {
+                            health.isDeviceInactive -> AppColors.WarningOrange
                             health.neverSynced -> AppColors.GoldAccent
                             health.isReachable -> AppColors.CreditGreen
                             else -> AppColors.DebitRed
                         }
                         val statusText = when {
+                            health.isDeviceInactive -> "ปิดการใช้งาน"
                             health.neverSynced -> strings.serverWaiting
                             health.isReachable -> {
                                 val elapsed = health.lastSyncAt?.let {

@@ -1202,8 +1202,10 @@ fun ServerCard(
                             server.lastSyncStatus.startsWith("failed:") -> {
                                 val code = server.lastSyncStatus.removePrefix("failed:")
                                 when (code) {
+                                    "device_inactive" -> "⛔ เซิร์ฟเวอร์ปิดการใช้งานอุปกรณ์นี้"
+                                    "device_mismatch" -> "⛔ Device ID ไม่ตรงกับที่ลงทะเบียน"
                                     "401" -> "ผิดพลาด: API Key ไม่ถูกต้อง"
-                                    "403" -> "ผิดพลาด: ไม่มีสิทธิ์เข้าถึง (ต้องสมัคร subscription หรือตั้งเป็น admin device)"
+                                    "403" -> "ผิดพลาด: ไม่มีสิทธิ์เข้าถึง"
                                     "404" -> "ผิดพลาด: ไม่พบ endpoint (ตรวจสอบ URL)"
                                     "500" -> "ผิดพลาด: เซิร์ฟเวอร์ขัดข้อง"
                                     else -> "${strings.failedStatus} (HTTP $code)"
