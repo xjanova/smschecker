@@ -134,20 +134,24 @@ class BankSmsParser {
 
         // =====================================================================
         // DEBIT (เงินออก) PATTERNS - ordered from most specific to generic
+        // NOTE: Must NOT overlap with credit patterns. "โอน" alone is ambiguous.
+        //       Only "โอนออก", "โอนเงินออก" are debit. "โอนเงิน" alone is NOT debit.
         // =====================================================================
         private val DEBIT_PATTERNS: List<Regex> by lazy { listOf(
-            // === BBL format: "ถอน/โอน/จ่ายเงินจากบ/ชX1234 ผ่านMB 5,000.00บ ใช้ได้15,000.00บ" ===
-            Regex("""(?:ถอน|โอน|จ่ายเงิน)(?:จาก|ออก)?\s*(?:บ/ช|บช\.?)\s*[Xx]?\d*\s*(?:ผ่าน\w+\s+)?$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
+            // === BBL format: "ถอน/จ่ายเงินจากบ/ชX1234" or "โอนจาก/โอนออกบ/ช" ===
+            // "โอน" requires "จาก" or "ออก" suffix to be debit
+            Regex("""(?:ถอน|จ่ายเงิน|โอน(?:จาก|ออก))\s*(?:บ/ช|บช\.?)\s*[Xx]?\d*\s*(?:ผ่าน\w+\s+)?$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
 
             // "เงิน5,000.00บ.ออกจากบช."
             Regex("""เงิน\s*$AMT\s*(?:บ\.?|บาท)?\s*ออก""", RegexOption.IGNORE_CASE),
 
             // === Generic Thai debit keywords ===
-            // "โอนออก 5,000 บาท" / "จ่ายเงิน ฿5,000" / "ถอนเงิน THB 5,000"
-            Regex("""(?:โอนออก|โอนเงิน|จ่ายเงิน|จ่าย|ชำระ(?:เงิน)?|ถอน(?:เงิน)?|หักเงิน|หักบ[/.]?ช|ตัดเงิน|ซื้อ|Transfer\s*Out|Payment|หัก)[\s:]*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
+            // Removed "โอนเงิน" (ambiguous — could be incoming transfer)
+            // Removed bare "จ่าย" and "หัก" (too broad — can match credit context)
+            Regex("""(?:โอนออก|โอนเงินออก|จ่ายเงิน|ชำระ(?:เงิน)?|ถอน(?:เงิน)?|หักเงิน|หักบ[/.]?ช|ตัดเงิน|ซื้อ|Transfer\s*Out|Payment|หักบัญชี)[\s:]*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
 
-            // "5,000.00บ.จ่ายจาก" / "5,000 หัก"
-            Regex("""$CUR_PRE$AMT\s*$CUR_SUF\s*(?:ออก|จ่าย|หัก|ถอน|ชำระ|ตัด)""", RegexOption.IGNORE_CASE),
+            // "5,000.00บ.จ่ายจาก" / "5,000 หักบัญชี"
+            Regex("""$CUR_PRE$AMT\s*$CUR_SUF\s*(?:ออก|จ่ายจาก|หักบ[/.]?ช|ถอน|ชำระ|ตัด)""", RegexOption.IGNORE_CASE),
 
             // === English patterns ===
             // "Withdrawal THB 5,000.00" / "Payment 5,000.00" / "Purchase Bt 1,500"
@@ -156,17 +160,18 @@ class BankSmsParser {
             // "THB 5,000.00 paid" / "5,000.00 withdrawn"
             Regex("""$CUR_PRE$AMT\s*$CUR_SUF\s*(?:paid|withdrawn|debited|transfer(?:red)?\s*out|spent)""", RegexOption.IGNORE_CASE),
 
-            // BBL English: "Withdrawal/transfer/payment from your account X1234 of Bt 5,000.00"
-            Regex("""(?:Withdrawal|Transfer|Payment)\s*(?:from|of)\s*(?:your\s*)?(?:account|a/?c)\s*\w*\s*(?:of\s*)?$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
+            // BBL English: "Withdrawal/Payment from your account X1234 of Bt 5,000.00"
+            Regex("""(?:Withdrawal|Payment)\s*(?:from|of)\s*(?:your\s*)?(?:account|a/?c)\s*\w*\s*(?:of\s*)?$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
 
-            // KTB English: "Transfer 17,175.00 THB ... was successful"
-            Regex("""Transfer\s+$AMT\s*(?:THB|Bt)?\s*(?:to|from)""", RegexOption.IGNORE_CASE),
+            // KTB English: "Transfer 17,175.00 THB to ... was successful" (explicit "to" = outgoing)
+            Regex("""Transfer\s+$AMT\s*(?:THB|Bt)?\s*to\b""", RegexOption.IGNORE_CASE),
 
-            // Notification format: "โอนเงิน" / "จ่ายเงิน" / "Money Out"
-            Regex("""(?:โอนเงิน|จ่ายเงิน|Money\s*Out|เงินออก)\s*\n?\s*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
+            // Notification format: "จ่ายเงิน" / "Money Out" / "เงินออก"
+            // Removed "โอนเงิน" — ambiguous, could be incoming
+            Regex("""(?:จ่ายเงิน|Money\s*Out|เงินออก)\s*\n?\s*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
 
-            // "PromptPay: โอนออก 500.00 บาท"
-            Regex("""PromptPay\s*:?\s*(?:โอน(?:ออก)?|จ่าย|ชำระ)\s*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
+            // "PromptPay: โอนออก 500.00 บาท" — require "ออก" explicitly
+            Regex("""PromptPay\s*:?\s*(?:โอนออก|จ่าย|ชำระ)\s*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
 
             // EDC / card payment: "ใช้จ่ายบัตร 1,500.00"
             Regex("""(?:ใช้จ่าย(?:บัตร)?|card\s*spend(?:ing)?)\s*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
@@ -234,9 +239,9 @@ class BankSmsParser {
         )
 
         private val DEBIT_KEYWORDS = listOf(
-            "โอนออก", "โอนเงิน", "จ่ายเงิน", "จ่าย", "ชำระเงิน", "ชำระ",
-            "ถอนเงิน", "ถอน", "หักเงิน", "หักบ/ช", "หัก", "ตัดเงิน",
-            "ถอน/โอน/จ่ายเงิน", "เงินออก", "ซื้อ", "ใช้จ่าย",
+            "โอนออก", "โอนเงินออก", "จ่ายเงิน", "ชำระเงิน", "ชำระค่า",
+            "ถอนเงิน", "ถอน", "หักเงิน", "หักบ/ช", "หักบัญชี", "ตัดเงิน",
+            "เงินออก", "ซื้อ", "ใช้จ่าย", "จ่ายจาก",
             "Withdrawal", "Transfer Out", "Payment", "Paid",
             "DR", "Debit", "Purchase", "Money Out", "Outgoing", "Spend"
         )
@@ -371,17 +376,30 @@ class BankSmsParser {
         // Determine transaction type
         val (type, amount) = when {
             creditAmount != null && debitAmount != null -> {
-                // Both matched — disambiguate by keyword position
-                val creditIdx = findFirstKeywordIndex(message, CREDIT_KEYWORDS)
-                val debitIdx = findFirstKeywordIndex(message, DEBIT_KEYWORDS)
+                // Both matched — disambiguate using strong signals first, then keyword position
+                val lowerMsg = message.lowercase()
+                val hasStrongCredit = listOf("เงินเข้า", "เข้าบัญชี", "เข้าบ/ช", "รับโอน", "รับเงิน", "received", "credit", "incoming", "money in")
+                    .any { lowerMsg.contains(it.lowercase()) }
+                val hasStrongDebit = listOf("เงินออก", "ออกจาก", "จ่ายจาก", "หักบัญชี", "หักบ/ช", "withdrawal", "debit", "outgoing", "money out")
+                    .any { lowerMsg.contains(it.lowercase()) }
+
                 when {
-                    creditIdx != -1 && (debitIdx == -1 || creditIdx < debitIdx) ->
-                        TransactionType.CREDIT to creditAmount
-                    debitIdx != -1 ->
-                        TransactionType.DEBIT to debitAmount
-                    else ->
-                        // Fallback: if we can't decide, use credit (money in is more important to detect)
-                        TransactionType.CREDIT to creditAmount
+                    hasStrongCredit && !hasStrongDebit -> TransactionType.CREDIT to creditAmount
+                    hasStrongDebit && !hasStrongCredit -> TransactionType.DEBIT to debitAmount
+                    else -> {
+                        // Fallback: keyword position
+                        val creditIdx = findFirstKeywordIndex(message, CREDIT_KEYWORDS)
+                        val debitIdx = findFirstKeywordIndex(message, DEBIT_KEYWORDS)
+                        when {
+                            creditIdx != -1 && (debitIdx == -1 || creditIdx < debitIdx) ->
+                                TransactionType.CREDIT to creditAmount
+                            debitIdx != -1 ->
+                                TransactionType.DEBIT to debitAmount
+                            else ->
+                                // Fallback: if we can't decide, use credit (money in is more important to detect)
+                                TransactionType.CREDIT to creditAmount
+                        }
+                    }
                 }
             }
             creditAmount != null -> TransactionType.CREDIT to creditAmount
