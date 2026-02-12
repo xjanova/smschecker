@@ -138,20 +138,25 @@ class BankSmsParser {
         //       Only "โอนออก", "โอนเงินออก" are debit. "โอนเงิน" alone is NOT debit.
         // =====================================================================
         private val DEBIT_PATTERNS: List<Regex> by lazy { listOf(
-            // === BBL format: "ถอน/จ่ายเงินจากบ/ชX1234" or "โอนจาก/โอนออกบ/ช" ===
-            // "โอน" requires "จาก" or "ออก" suffix to be debit
-            Regex("""(?:ถอน|จ่ายเงิน|โอน(?:จาก|ออก))\s*(?:บ/ช|บช\.?)\s*[Xx]?\d*\s*(?:ผ่าน\w+\s+)?$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
+            // === BBL format: "ถอน/โอน/จ่ายเงินจากบ/ชX1234 ผ่านMB 5,000.00บ" ===
+            // Handles slash-separated keywords + optional "จาก" before account
+            Regex("""(?:ถอน|จ่ายเงิน|โอน(?:จาก|ออก))(?:/(?:ถอน|โอน|จ่ายเงิน))*\s*(?:จาก\s*)?(?:บ/ช|บช\.?)\s*[Xx]?\d*\s*(?:ผ่าน\w+\s+)?$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
 
             // "เงิน5,000.00บ.ออกจากบช."
             Regex("""เงิน\s*$AMT\s*(?:บ\.?|บาท)?\s*ออก""", RegexOption.IGNORE_CASE),
 
             // === Generic Thai debit keywords ===
-            // Removed "โอนเงิน" (ambiguous — could be incoming transfer)
-            // Removed bare "จ่าย" and "หัก" (too broad — can match credit context)
-            Regex("""(?:โอนออก|โอนเงินออก|จ่ายเงิน|ชำระ(?:เงิน)?|ถอน(?:เงิน)?|หักเงิน|หักบ[/.]?ช|ตัดเงิน|ซื้อ|Transfer\s*Out|Payment|หักบัญชี)[\s:]*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
+            Regex("""(?:โอนออก|โอนเงินออก|จ่ายเงิน|ชำระ(?:เงิน|ค่า)|ถอน(?:เงิน)?|หักเงิน|หักบ[/.]?ช|ตัดเงิน|ซื้อ|Transfer\s*Out|Payment|หักบัญชี)[\s:]*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
+
+            // Bare "หัก" / "จ่าย" — only when directly followed by space+amount (not part of compound word)
+            Regex("""(?:หัก|จ่าย)\s+$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
 
             // "5,000.00บ.จ่ายจาก" / "5,000 หักบัญชี"
             Regex("""$CUR_PRE$AMT\s*$CUR_SUF\s*(?:ออก|จ่ายจาก|หักบ[/.]?ช|ถอน|ชำระ|ตัด)""", RegexOption.IGNORE_CASE),
+
+            // Amount followed by "จากบัญชี/จากบ/ช" = outgoing transfer
+            // "500.00 บาท จากบัญชี xxx1234" / "2,500.00 THB จากบ/ช"
+            Regex("""$CUR_PRE$AMT\s*$CUR_SUF\s*(?:จาก\s*(?:บัญชี|บ/ช|บช\.?))""", RegexOption.IGNORE_CASE),
 
             // === English patterns ===
             // "Withdrawal THB 5,000.00" / "Payment 5,000.00" / "Purchase Bt 1,500"
@@ -167,7 +172,6 @@ class BankSmsParser {
             Regex("""Transfer\s+$AMT\s*(?:THB|Bt)?\s*to\b""", RegexOption.IGNORE_CASE),
 
             // Notification format: "จ่ายเงิน" / "Money Out" / "เงินออก"
-            // Removed "โอนเงิน" — ambiguous, could be incoming
             Regex("""(?:จ่ายเงิน|Money\s*Out|เงินออก)\s*\n?\s*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
 
             // "PromptPay: โอนออก 500.00 บาท" — require "ออก" explicitly
@@ -175,6 +179,9 @@ class BankSmsParser {
 
             // EDC / card payment: "ใช้จ่ายบัตร 1,500.00"
             Regex("""(?:ใช้จ่าย(?:บัตร)?|card\s*spend(?:ing)?)\s*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
+
+            // KBANK-specific: "โอนเงิน...สำเร็จ" without เข้า/ออก = typically debit
+            Regex("""โอนเงิน\s*$CUR_PRE$AMT\s*$CUR_SUF\s*(?:สำเร็จ|เรียบร้อย|successfully)""", RegexOption.IGNORE_CASE),
         )}
 
         // =====================================================================
@@ -241,7 +248,8 @@ class BankSmsParser {
         private val DEBIT_KEYWORDS = listOf(
             "โอนออก", "โอนเงินออก", "จ่ายเงิน", "ชำระเงิน", "ชำระค่า",
             "ถอนเงิน", "ถอน", "หักเงิน", "หักบ/ช", "หักบัญชี", "ตัดเงิน",
-            "เงินออก", "ซื้อ", "ใช้จ่าย", "จ่ายจาก",
+            "เงินออก", "ซื้อ", "ใช้จ่าย", "จ่ายจาก", "จ่าย", "หัก",
+            "จากบัญชี", "จากบ/ช",
             "Withdrawal", "Transfer Out", "Payment", "Paid",
             "DR", "Debit", "Purchase", "Money Out", "Outgoing", "Spend"
         )
@@ -380,7 +388,7 @@ class BankSmsParser {
                 val lowerMsg = message.lowercase()
                 val hasStrongCredit = listOf("เงินเข้า", "เข้าบัญชี", "เข้าบ/ช", "รับโอน", "รับเงิน", "received", "credit", "incoming", "money in")
                     .any { lowerMsg.contains(it.lowercase()) }
-                val hasStrongDebit = listOf("เงินออก", "ออกจาก", "จ่ายจาก", "หักบัญชี", "หักบ/ช", "withdrawal", "debit", "outgoing", "money out")
+                val hasStrongDebit = listOf("เงินออก", "ออกจาก", "จ่ายจาก", "จากบัญชี", "จากบ/ช", "หักบัญชี", "หักบ/ช", "withdrawal", "debit", "outgoing", "money out")
                     .any { lowerMsg.contains(it.lowercase()) }
 
                 when {
