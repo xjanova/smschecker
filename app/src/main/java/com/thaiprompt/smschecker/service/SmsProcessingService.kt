@@ -171,16 +171,23 @@ class SmsProcessingService : Service() {
                                 Log.d(TAG, "✅ Matched transaction with order: ${matchedOrder.orderNumber} on server ${matchResult.serverName}")
                                 updateNotification("กำลังทำงาน | ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
 
-                                // Auto-approve matched order
-                                try {
-                                    val approvalSuccess = orderRepository.approveOrder(matchedOrder.id)
-                                    if (approvalSuccess) {
-                                        Log.d(TAG, "✅ Successfully auto-approved order: ${matchedOrder.orderNumber}")
-                                    } else {
-                                        Log.w(TAG, "⚠️ Failed to auto-approve order: ${matchedOrder.orderNumber}")
+                                // Server's /match endpoint already auto-approves when auto_confirm=true
+                                // Only send approve if order is still pending (server didn't auto-approve)
+                                val isAlreadyApproved = matchedOrder.approvalStatus == com.thaiprompt.smschecker.data.model.ApprovalStatus.AUTO_APPROVED ||
+                                    matchedOrder.approvalStatus == com.thaiprompt.smschecker.data.model.ApprovalStatus.MANUALLY_APPROVED
+                                if (!isAlreadyApproved) {
+                                    try {
+                                        val approvalSuccess = orderRepository.approveOrder(matchedOrder.id)
+                                        if (approvalSuccess) {
+                                            Log.d(TAG, "✅ Successfully approved order: ${matchedOrder.orderNumber}")
+                                        } else {
+                                            Log.w(TAG, "⚠️ Failed to approve order: ${matchedOrder.orderNumber}")
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Error approving order: ${matchedOrder.orderNumber}", e)
                                     }
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Error auto-approving order: ${matchedOrder.orderNumber}", e)
+                                } else {
+                                    Log.d(TAG, "✅ Order already approved by server: ${matchedOrder.orderNumber}")
                                 }
                             } else {
                                 // ไม่พบออเดอร์ที่ตรงกัน → เก็บเป็น Orphan Transaction
@@ -312,16 +319,23 @@ class SmsProcessingService : Service() {
                                 Log.d(TAG, "✅ Matched notification with order: ${matchedOrder.orderNumber} on server ${matchResult.serverName}")
                                 updateNotification("กำลังทำงาน | ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
 
-                                // Auto-approve matched order
-                                try {
-                                    val approvalSuccess = orderRepository.approveOrder(matchedOrder.id)
-                                    if (approvalSuccess) {
-                                        Log.d(TAG, "✅ Successfully auto-approved order from notification: ${matchedOrder.orderNumber}")
-                                    } else {
-                                        Log.w(TAG, "⚠️ Failed to auto-approve order from notification: ${matchedOrder.orderNumber}")
+                                // Server's /match endpoint already auto-approves when auto_confirm=true
+                                // Only send approve if order is still pending
+                                val isAlreadyApproved2 = matchedOrder.approvalStatus == com.thaiprompt.smschecker.data.model.ApprovalStatus.AUTO_APPROVED ||
+                                    matchedOrder.approvalStatus == com.thaiprompt.smschecker.data.model.ApprovalStatus.MANUALLY_APPROVED
+                                if (!isAlreadyApproved2) {
+                                    try {
+                                        val approvalSuccess = orderRepository.approveOrder(matchedOrder.id)
+                                        if (approvalSuccess) {
+                                            Log.d(TAG, "✅ Successfully approved order from notification: ${matchedOrder.orderNumber}")
+                                        } else {
+                                            Log.w(TAG, "⚠️ Failed to approve order from notification: ${matchedOrder.orderNumber}")
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Error approving order from notification: ${matchedOrder.orderNumber}", e)
                                     }
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Error auto-approving order from notification: ${matchedOrder.orderNumber}", e)
+                                } else {
+                                    Log.d(TAG, "✅ Order already approved by server from notification: ${matchedOrder.orderNumber}")
                                 }
                             } else {
                                 // ไม่พบออเดอร์ที่ตรงกัน → เก็บเป็น Orphan Transaction
