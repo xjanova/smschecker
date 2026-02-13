@@ -8,6 +8,7 @@ import com.thaiprompt.smschecker.data.api.ApiClientFactory
 import com.thaiprompt.smschecker.data.api.WebSocketManager
 import com.thaiprompt.smschecker.data.db.AppDatabase
 import com.thaiprompt.smschecker.data.db.MatchHistoryDao
+import com.thaiprompt.smschecker.data.db.MisclassificationReportDao
 import com.thaiprompt.smschecker.data.db.OrderApprovalDao
 import com.thaiprompt.smschecker.data.db.OrphanTransactionDao
 import com.thaiprompt.smschecker.data.db.ServerConfigDao
@@ -45,7 +46,8 @@ object AppModule {
                 AppDatabase.MIGRATION_6_7,
                 AppDatabase.MIGRATION_7_8,
                 AppDatabase.MIGRATION_8_9,
-                AppDatabase.MIGRATION_9_10
+                AppDatabase.MIGRATION_9_10,
+                AppDatabase.MIGRATION_10_11
             )
             .fallbackToDestructiveMigration()
             .build()
@@ -71,6 +73,9 @@ object AppModule {
 
     @Provides
     fun provideMatchHistoryDao(db: AppDatabase): MatchHistoryDao = db.matchHistoryDao()
+
+    @Provides
+    fun provideMisclassificationReportDao(db: AppDatabase): MisclassificationReportDao = db.misclassificationReportDao()
 
     @Provides
     @Singleton

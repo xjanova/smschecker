@@ -65,3 +65,14 @@ laravel-api/storage/logs/
 
 # Gradle wrapper jar (will be downloaded)
 !gradle/wrapper/gradle-wrapper.jar
+
+# Firebase credentials (NEVER commit these!)
+*firebase*adminsdk*.json
+google-services.json
+
+# Temporary folders
+_temp_*/
+
+# Claude local settings
+.claude/settings.local.json
+

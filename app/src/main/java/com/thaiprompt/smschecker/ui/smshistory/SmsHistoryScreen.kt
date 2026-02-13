@@ -1,8 +1,10 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 
 package com.thaiprompt.smschecker.ui.smshistory
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -21,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.thaiprompt.smschecker.ui.components.GlassCard
 import com.thaiprompt.smschecker.ui.components.GradientHeader
+import com.thaiprompt.smschecker.ui.components.MisclassificationReportDialog
 import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
 import com.thaiprompt.smschecker.ui.theme.AppColors
 import com.thaiprompt.smschecker.ui.theme.AppStrings
@@ -35,6 +38,19 @@ fun SmsHistoryScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val strings = LocalAppStrings.current
+
+    // Show Report Dialog
+    if (state.showReportDialog && state.selectedTransaction != null) {
+        MisclassificationReportDialog(
+            onDismiss = { viewModel.hideReportDialog() },
+            onConfirm = { issueType ->
+                viewModel.submitReport(issueType)
+            },
+            bankName = state.selectedTransaction!!.bank,
+            currentType = state.selectedTransaction!!.type.name,
+            currentAmount = state.selectedTransaction!!.amount
+        )
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -148,7 +164,8 @@ fun SmsHistoryScreen(
                 TransactionItem(
                     transaction = tx,
                     strings = strings,
-                    onEdit = { viewModel.startEditing(tx) }
+                    onEdit = { viewModel.startEditing(tx) },
+                    onLongPress = { viewModel.showReportDialog(tx) }
                 )
                 if (index < state.transactions.size - 1) {
                     Spacer(modifier = Modifier.height(8.dp))
@@ -234,13 +251,23 @@ private fun StatItem(
 private fun TransactionItem(
     transaction: com.thaiprompt.smschecker.data.model.BankTransaction,
     strings: AppStrings,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    onLongPress: (() -> Unit)? = null
 ) {
     GlassCard(
         modifier = Modifier.padding(horizontal = 16.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (onLongPress != null) {
+                        Modifier.combinedClickable(
+                            onClick = {},
+                            onLongClick = onLongPress
+                        )
+                    } else Modifier
+                ),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {

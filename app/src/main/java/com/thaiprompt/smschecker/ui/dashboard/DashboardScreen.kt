@@ -2,9 +2,11 @@
 
 package com.thaiprompt.smschecker.ui.dashboard
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -35,6 +37,7 @@ import com.thaiprompt.smschecker.ui.components.BankLogoCircle
 import com.thaiprompt.smschecker.ui.components.ChartLegendItem
 import com.thaiprompt.smschecker.ui.components.GlassCard
 import com.thaiprompt.smschecker.ui.components.GradientHeader
+import com.thaiprompt.smschecker.ui.components.MisclassificationReportDialog
 import com.thaiprompt.smschecker.ui.components.OrderBarChart
 import com.thaiprompt.smschecker.ui.components.SectionTitle
 import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
@@ -47,6 +50,19 @@ import java.util.*
 fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
     val strings = LocalAppStrings.current
+
+    // Show Report Dialog
+    if (state.showReportDialog && state.selectedTransaction != null) {
+        MisclassificationReportDialog(
+            onDismiss = { viewModel.hideReportDialog() },
+            onConfirm = { issueType ->
+                viewModel.submitReport(issueType)
+            },
+            bankName = state.selectedTransaction!!.bank,
+            currentType = state.selectedTransaction!!.type.name,
+            currentAmount = state.selectedTransaction!!.amount
+        )
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -536,7 +552,8 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
         ) { transaction ->
             TransactionItem(
                 transaction = transaction,
-                modifier = Modifier.padding(horizontal = 16.dp)
+                modifier = Modifier.padding(horizontal = 16.dp),
+                onLongPress = { viewModel.showReportDialog(transaction) }
             )
         }
 
@@ -764,10 +781,12 @@ fun SummaryCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TransactionItem(
     transaction: BankTransaction,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onLongPress: (() -> Unit)? = null
 ) {
     val strings = LocalAppStrings.current
     val isCredit = transaction.type == TransactionType.CREDIT
@@ -785,6 +804,14 @@ fun TransactionItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .then(
+                    if (onLongPress != null) {
+                        Modifier.combinedClickable(
+                            onClick = {},
+                            onLongClick = onLongPress
+                        )
+                    } else Modifier
+                )
                 .padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically

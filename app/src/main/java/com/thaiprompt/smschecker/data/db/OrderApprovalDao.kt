@@ -18,16 +18,16 @@ interface OrderApprovalDao {
     @Update
     suspend fun update(order: OrderApproval)
 
-    @Query("SELECT * FROM order_approvals WHERE approvalStatus != 'DELETED' ORDER BY createdAt DESC")
+    @Query("SELECT * FROM order_approvals WHERE approvalStatus != 'DELETED' ORDER BY COALESCE(paymentTimestamp, createdAt) DESC")
     fun getAllOrders(): Flow<List<OrderApproval>>
 
-    @Query("SELECT * FROM order_approvals WHERE approvalStatus = :status ORDER BY createdAt DESC")
+    @Query("SELECT * FROM order_approvals WHERE approvalStatus = :status ORDER BY COALESCE(paymentTimestamp, createdAt) DESC")
     fun getOrdersByStatus(status: ApprovalStatus): Flow<List<OrderApproval>>
 
-    @Query("SELECT * FROM order_approvals WHERE serverId = :serverId ORDER BY createdAt DESC")
+    @Query("SELECT * FROM order_approvals WHERE serverId = :serverId ORDER BY COALESCE(paymentTimestamp, createdAt) DESC")
     fun getOrdersByServer(serverId: Long): Flow<List<OrderApproval>>
 
-    @Query("SELECT * FROM order_approvals WHERE createdAt BETWEEN :startTime AND :endTime ORDER BY createdAt DESC")
+    @Query("SELECT * FROM order_approvals WHERE COALESCE(paymentTimestamp, createdAt) BETWEEN :startTime AND :endTime ORDER BY COALESCE(paymentTimestamp, createdAt) DESC")
     fun getOrdersByDateRange(startTime: Long, endTime: Long): Flow<List<OrderApproval>>
 
     @Query("""
@@ -35,9 +35,9 @@ interface OrderApprovalDao {
         WHERE approvalStatus != 'DELETED'
         AND (:status IS NULL OR approvalStatus = :status)
         AND (:serverId IS NULL OR serverId = :serverId)
-        AND (:startTime IS NULL OR createdAt >= :startTime)
-        AND (:endTime IS NULL OR createdAt <= :endTime)
-        ORDER BY createdAt DESC
+        AND (:startTime IS NULL OR COALESCE(paymentTimestamp, createdAt) >= :startTime)
+        AND (:endTime IS NULL OR COALESCE(paymentTimestamp, createdAt) <= :endTime)
+        ORDER BY COALESCE(paymentTimestamp, createdAt) DESC
     """)
     fun getFilteredOrders(
         status: ApprovalStatus?,
@@ -61,7 +61,7 @@ interface OrderApprovalDao {
     @Query("SELECT COUNT(*) FROM order_approvals WHERE approvalStatus = 'PENDING_REVIEW'")
     fun getPendingReviewCount(): Flow<Int>
 
-    @Query("SELECT * FROM order_approvals WHERE approvalStatus = 'PENDING_REVIEW' ORDER BY createdAt DESC")
+    @Query("SELECT * FROM order_approvals WHERE approvalStatus = 'PENDING_REVIEW' ORDER BY COALESCE(paymentTimestamp, createdAt) DESC")
     suspend fun getPendingReviewOrders(): List<OrderApproval>
 
     @Query("SELECT COUNT(*) FROM order_approvals WHERE pendingAction IS NOT NULL")

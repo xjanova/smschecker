@@ -7,6 +7,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.MatchHistory
+import com.thaiprompt.smschecker.data.model.MisclassificationReport
 import com.thaiprompt.smschecker.data.model.OrderApproval
 import com.thaiprompt.smschecker.data.model.OrphanTransaction
 import com.thaiprompt.smschecker.data.model.ServerConfig
@@ -21,9 +22,10 @@ import com.thaiprompt.smschecker.data.model.SyncLog
         OrderApproval::class,
         SmsSenderRule::class,
         OrphanTransaction::class,
-        MatchHistory::class
+        MatchHistory::class,
+        MisclassificationReport::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -35,6 +37,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun smsSenderRuleDao(): SmsSenderRuleDao
     abstract fun orphanTransactionDao(): OrphanTransactionDao
     abstract fun matchHistoryDao(): MatchHistoryDao
+    abstract fun misclassificationReportDao(): MisclassificationReportDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -210,6 +213,37 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // เพิ่ม approvalMode per-server (auto/manual/smart) — synced from server
                 db.execSQL("ALTER TABLE server_configs ADD COLUMN approvalMode TEXT NOT NULL DEFAULT 'auto'")
+            }
+        }
+
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // สร้างตาราง misclassification_reports สำหรับรายงานข้อมูลที่แยกประเภทผิด
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS misclassification_reports (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        transactionId INTEGER NOT NULL,
+                        bank TEXT NOT NULL,
+                        rawMessage TEXT NOT NULL,
+                        senderAddress TEXT NOT NULL,
+                        timestamp INTEGER NOT NULL,
+                        detectedType TEXT NOT NULL,
+                        detectedAmount TEXT NOT NULL,
+                        issueType TEXT NOT NULL,
+                        correctType TEXT,
+                        correctAmount TEXT,
+                        isAnalyzed INTEGER NOT NULL DEFAULT 0,
+                        analyzerNotes TEXT,
+                        isFixed INTEGER NOT NULL DEFAULT 0,
+                        reportedAt INTEGER NOT NULL,
+                        deviceId TEXT,
+                        appVersion TEXT
+                    )
+                """)
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_misclassification_reports_transactionId ON misclassification_reports(transactionId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_misclassification_reports_issueType ON misclassification_reports(issueType)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_misclassification_reports_isAnalyzed ON misclassification_reports(isAnalyzed)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_misclassification_reports_reportedAt ON misclassification_reports(reportedAt)")
             }
         }
 

@@ -6,7 +6,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.thaiprompt.smschecker.data.db.TransactionDao
 import com.thaiprompt.smschecker.data.model.BankTransaction
+import com.thaiprompt.smschecker.data.model.MisclassificationIssueType
+import com.thaiprompt.smschecker.data.model.MisclassificationReport
 import com.thaiprompt.smschecker.data.model.TransactionType
+import com.thaiprompt.smschecker.data.repository.MisclassificationReportRepository
 import com.thaiprompt.smschecker.data.repository.TransactionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -30,7 +33,9 @@ data class SmsHistoryUiState(
     val totalSynced: Int = 0,
     val isLoading: Boolean = true,
     val editingTransaction: BankTransaction? = null,
-    val isSaving: Boolean = false
+    val isSaving: Boolean = false,
+    val showReportDialog: Boolean = false,
+    val selectedTransaction: BankTransaction? = null
 )
 
 /**
@@ -40,6 +45,7 @@ data class SmsHistoryUiState(
 class SmsHistoryViewModel @Inject constructor(
     private val transactionDao: TransactionDao,
     private val repository: TransactionRepository,
+    private val reportRepository: MisclassificationReportRepository,
     @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
@@ -167,6 +173,65 @@ class SmsHistoryViewModel @Inject constructor(
             HistoryFilter.ALL -> transactions
             HistoryFilter.CREDIT -> transactions.filter { it.type == TransactionType.CREDIT }
             HistoryFilter.DEBIT -> transactions.filter { it.type == TransactionType.DEBIT }
+        }
+    }
+
+    // ═══════════════════════════════════════
+    // MISCLASSIFICATION REPORTING
+    // ═══════════════════════════════════════
+
+    fun showReportDialog(transaction: BankTransaction) {
+        _state.update {
+            it.copy(
+                showReportDialog = true,
+                selectedTransaction = transaction
+            )
+        }
+    }
+
+    fun hideReportDialog() {
+        _state.update {
+            it.copy(
+                showReportDialog = false,
+                selectedTransaction = null
+            )
+        }
+    }
+
+    fun submitReport(issueType: MisclassificationIssueType) {
+        viewModelScope.launch {
+            try {
+                val transaction = _state.value.selectedTransaction ?: return@launch
+
+                val report = MisclassificationReport(
+                    transactionId = transaction.id,
+                    bank = transaction.bank,
+                    rawMessage = transaction.rawMessage,
+                    senderAddress = transaction.senderAddress,
+                    timestamp = transaction.timestamp,
+                    detectedType = transaction.type,
+                    detectedAmount = transaction.amount,
+                    issueType = issueType,
+                    correctType = if (issueType == MisclassificationIssueType.WRONG_TRANSACTION_TYPE) {
+                        // สลับประเภท
+                        if (transaction.type == TransactionType.CREDIT) TransactionType.DEBIT else TransactionType.CREDIT
+                    } else null,
+                    deviceId = android.provider.Settings.Secure.getString(
+                        appContext.contentResolver,
+                        android.provider.Settings.Secure.ANDROID_ID
+                    ),
+                    appVersion = "1.0.0" // TODO: Get from BuildConfig
+                )
+
+                reportRepository.insertReport(report)
+                Log.d(TAG, "Report submitted: $issueType for transaction ${transaction.id}")
+
+                hideReportDialog()
+
+                // TODO: อาจจะส่งไปยัง server สำหรับวิเคราะห์ต่อ
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to submit report", e)
+            }
         }
     }
 }
