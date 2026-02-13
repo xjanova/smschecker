@@ -30,7 +30,10 @@ class OrderRepository @Inject constructor(
         private const val TAG = "OrderRepository"
     }
 
-    fun getAllOrders(): Flow<List<OrderApproval>> = orderApprovalDao.getAllOrders()
+    fun getAllOrders(): Flow<List<OrderApproval>> {
+        val deviceId = secureStorage.getDeviceId()
+        return orderApprovalDao.getAllOrders(deviceId)
+    }
 
     fun getOrdersByStatus(status: ApprovalStatus): Flow<List<OrderApproval>> =
         orderApprovalDao.getOrdersByStatus(status)
@@ -40,16 +43,25 @@ class OrderRepository @Inject constructor(
         serverId: Long?,
         startTime: Long?,
         endTime: Long?
-    ): Flow<List<OrderApproval>> = orderApprovalDao.getFilteredOrders(status, serverId, startTime, endTime)
+    ): Flow<List<OrderApproval>> {
+        val deviceId = secureStorage.getDeviceId()
+        return orderApprovalDao.getFilteredOrders(status, serverId, startTime, endTime, deviceId)
+    }
 
-    fun getPendingReviewCount(): Flow<Int> = orderApprovalDao.getPendingReviewCount()
+    fun getPendingReviewCount(): Flow<Int> {
+        val deviceId = secureStorage.getDeviceId()
+        return orderApprovalDao.getPendingReviewCount(deviceId)
+    }
 
     fun getOfflineQueueCount(): Flow<Int> = orderApprovalDao.getOfflineQueueCount()
 
     /**
      * Get list of pending review orders (for orphan matching).
      */
-    suspend fun getPendingOrdersList(): List<OrderApproval> = orderApprovalDao.getPendingReviewOrders()
+    suspend fun getPendingOrdersList(): List<OrderApproval> {
+        val deviceId = secureStorage.getDeviceId()
+        return orderApprovalDao.getPendingReviewOrders(deviceId)
+    }
 
     /**
      * ทำความสะอาดบิลที่หมดอายุ/ยกเลิก
@@ -1067,6 +1079,7 @@ fun RemoteOrderApproval.toLocalEntity(serverId: Long): OrderApproval {
         bank = notification?.bank,
         paymentTimestamp = serverCreatedAtMs,
         serverName = server_name,
+        deviceId = device_id,
         approvedBy = approved_by,
         rejectionReason = rejection_reason,
         syncedVersion = synced_version,

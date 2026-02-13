@@ -41,6 +41,7 @@ data class OrderApproval(
     val bank: String? = null,
     val paymentTimestamp: Long? = null,
     val serverName: String? = null,
+    val deviceId: String? = null,
     val approvedBy: String? = null,
     val approvedAt: Long? = null,
     val rejectedAt: Long? = null,

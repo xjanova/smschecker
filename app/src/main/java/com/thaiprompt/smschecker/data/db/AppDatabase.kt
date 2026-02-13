@@ -25,7 +25,7 @@ import com.thaiprompt.smschecker.data.model.SyncLog
         MatchHistory::class,
         MisclassificationReport::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -244,6 +244,14 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_misclassification_reports_issueType ON misclassification_reports(issueType)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_misclassification_reports_isAnalyzed ON misclassification_reports(isAnalyzed)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_misclassification_reports_reportedAt ON misclassification_reports(reportedAt)")
+            }
+        }
+
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // เพิ่ม deviceId ใน order_approvals เพื่อกรองบิลตาม device
+                // บิลของ admin จะไม่ปรากฏบนเครื่องร้านค้า, บิลดูดวงจะแสดงเฉพาะ device ที่ถูกต้อง
+                db.execSQL("ALTER TABLE order_approvals ADD COLUMN deviceId TEXT")
             }
         }
 

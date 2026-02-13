@@ -18,7 +18,7 @@ class Converters {
         return try {
             TransactionType.valueOf(value)
         } catch (e: Exception) {
-            TransactionType.CREDIT
+            TransactionType.DEBIT
         }
     }
 

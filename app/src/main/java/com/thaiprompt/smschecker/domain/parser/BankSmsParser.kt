@@ -404,8 +404,9 @@ class BankSmsParser {
                             debitIdx != -1 ->
                                 TransactionType.DEBIT to debitAmount
                             else ->
-                                // Fallback: if we can't decide, use credit (money in is more important to detect)
-                                TransactionType.CREDIT to creditAmount
+                                // Fallback: if we can't decide, use debit (safer — prevents
+                                // misclassifying money-out as money-in which could auto-approve wrong bills)
+                                TransactionType.DEBIT to debitAmount
                         }
                     }
                 }
