@@ -50,8 +50,7 @@ class OrderRepository @Inject constructor(
      * Get list of pending review orders (for orphan matching).
      */
     suspend fun getPendingOrdersList(): List<OrderApproval> {
-        val deviceId = secureStorage.getDeviceId()
-        return orderApprovalDao.getPendingReviewOrders(deviceId)
+        return orderApprovalDao.getPendingReviewOrders()
     }
 
     /**
