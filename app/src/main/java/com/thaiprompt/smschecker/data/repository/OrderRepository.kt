@@ -30,10 +30,7 @@ class OrderRepository @Inject constructor(
         private const val TAG = "OrderRepository"
     }
 
-    fun getAllOrders(): Flow<List<OrderApproval>> {
-        val deviceId = secureStorage.getDeviceId()
-        return orderApprovalDao.getAllOrders(deviceId)
-    }
+    fun getAllOrders(): Flow<List<OrderApproval>> = orderApprovalDao.getAllOrders()
 
     fun getOrdersByStatus(status: ApprovalStatus): Flow<List<OrderApproval>> =
         orderApprovalDao.getOrdersByStatus(status)
@@ -43,15 +40,9 @@ class OrderRepository @Inject constructor(
         serverId: Long?,
         startTime: Long?,
         endTime: Long?
-    ): Flow<List<OrderApproval>> {
-        val deviceId = secureStorage.getDeviceId()
-        return orderApprovalDao.getFilteredOrders(status, serverId, startTime, endTime, deviceId)
-    }
+    ): Flow<List<OrderApproval>> = orderApprovalDao.getFilteredOrders(status, serverId, startTime, endTime)
 
-    fun getPendingReviewCount(): Flow<Int> {
-        val deviceId = secureStorage.getDeviceId()
-        return orderApprovalDao.getPendingReviewCount(deviceId)
-    }
+    fun getPendingReviewCount(): Flow<Int> = orderApprovalDao.getPendingReviewCount()
 
     fun getOfflineQueueCount(): Flow<Int> = orderApprovalDao.getOfflineQueueCount()
 

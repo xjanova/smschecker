@@ -18,8 +18,8 @@ interface OrderApprovalDao {
     @Update
     suspend fun update(order: OrderApproval)
 
-    @Query("SELECT * FROM order_approvals WHERE approvalStatus != 'DELETED' AND (:deviceId IS NULL OR deviceId IS NULL OR deviceId = :deviceId) ORDER BY COALESCE(paymentTimestamp, createdAt) DESC")
-    fun getAllOrders(deviceId: String? = null): Flow<List<OrderApproval>>
+    @Query("SELECT * FROM order_approvals WHERE approvalStatus != 'DELETED' ORDER BY COALESCE(paymentTimestamp, createdAt) DESC")
+    fun getAllOrders(): Flow<List<OrderApproval>>
 
     @Query("SELECT * FROM order_approvals WHERE approvalStatus = :status ORDER BY COALESCE(paymentTimestamp, createdAt) DESC")
     fun getOrdersByStatus(status: ApprovalStatus): Flow<List<OrderApproval>>
@@ -37,15 +37,13 @@ interface OrderApprovalDao {
         AND (:serverId IS NULL OR serverId = :serverId)
         AND (:startTime IS NULL OR COALESCE(paymentTimestamp, createdAt) >= :startTime)
         AND (:endTime IS NULL OR COALESCE(paymentTimestamp, createdAt) <= :endTime)
-        AND (:deviceId IS NULL OR deviceId IS NULL OR deviceId = :deviceId)
         ORDER BY COALESCE(paymentTimestamp, createdAt) DESC
     """)
     fun getFilteredOrders(
         status: ApprovalStatus?,
         serverId: Long?,
         startTime: Long?,
-        endTime: Long?,
-        deviceId: String? = null
+        endTime: Long?
     ): Flow<List<OrderApproval>>
 
     @Query("SELECT * FROM order_approvals WHERE id = :id")
@@ -60,11 +58,11 @@ interface OrderApprovalDao {
     @Query("SELECT * FROM order_approvals WHERE pendingAction IS NOT NULL")
     suspend fun getPendingActions(): List<OrderApproval>
 
-    @Query("SELECT COUNT(*) FROM order_approvals WHERE approvalStatus = 'PENDING_REVIEW' AND (:deviceId IS NULL OR deviceId IS NULL OR deviceId = :deviceId)")
-    fun getPendingReviewCount(deviceId: String? = null): Flow<Int>
+    @Query("SELECT COUNT(*) FROM order_approvals WHERE approvalStatus = 'PENDING_REVIEW'")
+    fun getPendingReviewCount(): Flow<Int>
 
-    @Query("SELECT * FROM order_approvals WHERE approvalStatus = 'PENDING_REVIEW' AND (:deviceId IS NULL OR deviceId IS NULL OR deviceId = :deviceId) ORDER BY COALESCE(paymentTimestamp, createdAt) DESC")
-    suspend fun getPendingReviewOrders(deviceId: String? = null): List<OrderApproval>
+    @Query("SELECT * FROM order_approvals WHERE approvalStatus = 'PENDING_REVIEW' ORDER BY COALESCE(paymentTimestamp, createdAt) DESC")
+    suspend fun getPendingReviewOrders(): List<OrderApproval>
 
     @Query("SELECT COUNT(*) FROM order_approvals WHERE pendingAction IS NOT NULL")
     fun getOfflineQueueCount(): Flow<Int>
