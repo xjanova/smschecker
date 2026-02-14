@@ -146,13 +146,13 @@ class BankSmsParser {
             Regex("""เงิน\s*$AMT\s*(?:บ\.?|บาท)?\s*ออก""", RegexOption.IGNORE_CASE),
 
             // === Generic Thai debit keywords ===
-            Regex("""(?:โอนออก|โอนเงินออก|จ่ายเงิน|ชำระ(?:เงิน|ค่า)|ถอน(?:เงิน)?|หักเงิน|หักบ[/.]?ช|ตัดเงิน|ซื้อ|Transfer\s*Out|Payment|หักบัญชี)[\s:]*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
+            Regex("""(?:โอนออก|โอนเงินออก|จ่ายเงิน|ชำระ(?:เงิน|ค่า|คืน)?|ถอน(?:เงิน)?|หักเงิน|หักบ[/.]?ช|ตัดเงิน|ซื้อ|Transfer\s*Out|Payment|หักบัญชี|จ่ายคืน|ผ่อน(?:ชำระ|คืน))[\s:]*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
 
-            // Bare "หัก" / "จ่าย" — only when directly followed by space+amount (not part of compound word)
-            Regex("""(?:หัก|จ่าย)\s+$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
+            // Bare "หัก" / "จ่าย" / "คืน" — only when directly followed by space+amount (not part of compound word)
+            Regex("""(?:หัก|จ่าย|คืน)\s+$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
 
-            // "5,000.00บ.จ่ายจาก" / "5,000 หักบัญชี"
-            Regex("""$CUR_PRE$AMT\s*$CUR_SUF\s*(?:ออก|จ่ายจาก|หักบ[/.]?ช|ถอน|ชำระ|ตัด)""", RegexOption.IGNORE_CASE),
+            // "5,000.00บ.จ่ายจาก" / "5,000 หักบัญชี" / "5,000 บาท คืน"
+            Regex("""$CUR_PRE$AMT\s*$CUR_SUF\s*(?:ออก|จ่ายจาก|หักบ[/.]?ช|ถอน|ชำระ|ตัด|คืน|จ่ายคืน)""", RegexOption.IGNORE_CASE),
 
             // Amount followed by "จากบัญชี/จากบ/ช" = outgoing transfer
             // "500.00 บาท จากบัญชี xxx1234" / "2,500.00 THB จากบ/ช"
@@ -250,7 +250,8 @@ class BankSmsParser {
             "ถอนเงิน", "ถอน", "หักเงิน", "หักบ/ช", "หักบัญชี", "ตัดเงิน",
             "เงินออก", "ซื้อ", "ใช้จ่าย", "จ่ายจาก", "จ่าย", "หัก",
             "จากบัญชี", "จากบ/ช",
-            "Withdrawal", "Transfer Out", "Payment", "Paid",
+            "ชำระคืน", "จ่ายคืน", "คืน", "ผ่อนชำระ", "ผ่อนคืน",  // Repayment context
+            "Withdrawal", "Transfer Out", "Payment", "Paid", "Repay", "Repayment",
             "DR", "Debit", "Purchase", "Money Out", "Outgoing", "Spend"
         )
 
@@ -390,7 +391,8 @@ class BankSmsParser {
                 // Only unambiguous keywords like "รับโอน", "เงินเข้า", "เข้าบัญชี" remain
                 val hasStrongCredit = listOf("เงินเข้า", "เข้าบัญชี", "เข้าบ/ช", "รับโอน", "received", "credit", "incoming", "money in")
                     .any { lowerMsg.contains(it.lowercase()) }
-                val hasStrongDebit = listOf("เงินออก", "ออกจาก", "จ่ายจาก", "จากบัญชี", "จากบ/ช", "หักบัญชี", "หักบ/ช", "ชำระเงิน", "ชำระค่า", "withdrawal", "debit", "outgoing", "money out")
+                // "คืน" = repayment context (ชำระคืน, จ่ายคืน, ส่งคืน) - always money out
+                val hasStrongDebit = listOf("เงินออก", "ออกจาก", "จ่ายจาก", "จากบัญชี", "จากบ/ช", "หักบัญชี", "หักบ/ช", "ชำระเงิน", "ชำระค่า", "ชำระคืน", "จ่ายคืน", "คืน", "withdrawal", "debit", "outgoing", "money out", "repay")
                     .any { lowerMsg.contains(it.lowercase()) }
 
                 when {
