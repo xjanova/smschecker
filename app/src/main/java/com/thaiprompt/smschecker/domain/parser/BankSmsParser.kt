@@ -386,9 +386,11 @@ class BankSmsParser {
             creditAmount != null && debitAmount != null -> {
                 // Both matched — disambiguate using strong signals first, then keyword position
                 val lowerMsg = message.lowercase()
-                val hasStrongCredit = listOf("เงินเข้า", "เข้าบัญชี", "เข้าบ/ช", "รับโอน", "รับเงิน", "received", "credit", "incoming", "money in")
+                // Note: "รับเงิน" removed from strong credit - ambiguous (bank receives payment vs user receives)
+                // Only unambiguous keywords like "รับโอน", "เงินเข้า", "เข้าบัญชี" remain
+                val hasStrongCredit = listOf("เงินเข้า", "เข้าบัญชี", "เข้าบ/ช", "รับโอน", "received", "credit", "incoming", "money in")
                     .any { lowerMsg.contains(it.lowercase()) }
-                val hasStrongDebit = listOf("เงินออก", "ออกจาก", "จ่ายจาก", "จากบัญชี", "จากบ/ช", "หักบัญชี", "หักบ/ช", "withdrawal", "debit", "outgoing", "money out")
+                val hasStrongDebit = listOf("เงินออก", "ออกจาก", "จ่ายจาก", "จากบัญชี", "จากบ/ช", "หักบัญชี", "หักบ/ช", "ชำระเงิน", "ชำระค่า", "withdrawal", "debit", "outgoing", "money out")
                     .any { lowerMsg.contains(it.lowercase()) }
 
                 when {
