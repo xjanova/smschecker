@@ -54,6 +54,20 @@ class ApiClientFactory @Inject constructor() {
         }
     }
 
+    /**
+     * Creates a raw Retrofit client for a given base URL.
+     * Use this when you need to create a custom API service interface
+     * (e.g., BugReportApiService) instead of the default PaymentApiService.
+     */
+    fun createRetrofitClient(baseUrl: String): Retrofit {
+        val normalizedUrl = normalizeUrl(baseUrl)
+        return Retrofit.Builder()
+            .baseUrl(normalizedUrl)
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
     fun clearCache() {
         clientCache.clear()
     }
