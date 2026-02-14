@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.thaiprompt.smschecker.data.api.ApiClientFactory
+import com.thaiprompt.smschecker.data.api.BugReportApiService
 import com.thaiprompt.smschecker.data.api.WebSocketManager
 import com.thaiprompt.smschecker.data.db.AppDatabase
 import com.thaiprompt.smschecker.data.db.MatchHistoryDao
@@ -48,7 +49,8 @@ object AppModule {
                 AppDatabase.MIGRATION_8_9,
                 AppDatabase.MIGRATION_9_10,
                 AppDatabase.MIGRATION_10_11,
-                AppDatabase.MIGRATION_11_12
+                AppDatabase.MIGRATION_11_12,
+                AppDatabase.MIGRATION_12_13
             )
             .fallbackToDestructiveMigration()
             .build()
@@ -102,4 +104,14 @@ object AppModule {
     @Provides
     @Singleton
     fun provideBankSmsParser(): BankSmsParser = BankSmsParser()
+
+    @Provides
+    @Singleton
+    fun provideBugReportApiService(
+        apiClientFactory: ApiClientFactory
+    ): BugReportApiService {
+        // Use xmanstudio backend for bug reporting
+        val retrofit = apiClientFactory.createRetrofitClient("https://xman4289.com/api/")
+        return retrofit.create(BugReportApiService::class.java)
+    }
 }

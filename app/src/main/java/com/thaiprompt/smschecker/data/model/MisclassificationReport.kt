@@ -38,7 +38,12 @@ data class MisclassificationReport(
     // Metadata
     val reportedAt: Long = System.currentTimeMillis(),
     val deviceId: String? = null,
-    val appVersion: String? = null
+    val appVersion: String? = null,
+
+    // Sync status
+    val isSynced: Boolean = false,
+    val syncedAt: Long? = null,
+    val backendReportId: Long? = null
 )
 
 /**

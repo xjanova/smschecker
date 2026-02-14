@@ -58,4 +58,13 @@ interface MisclassificationReportDao {
         ORDER BY reportedAt DESC
     """)
     fun getReportsByDateRange(startTime: Long, endTime: Long): Flow<List<MisclassificationReport>>
+
+    @Query("SELECT * FROM misclassification_reports WHERE isSynced = 0 ORDER BY reportedAt ASC")
+    suspend fun getUnsyncedReports(): List<MisclassificationReport>
+
+    @Query("SELECT COUNT(*) FROM misclassification_reports WHERE isSynced = 0")
+    suspend fun getUnsyncedCount(): Int
+
+    @Update
+    suspend fun updateAll(reports: List<MisclassificationReport>)
 }

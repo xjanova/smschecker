@@ -25,7 +25,7 @@ import com.thaiprompt.smschecker.data.model.SyncLog
         MatchHistory::class,
         MisclassificationReport::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -252,6 +252,15 @@ abstract class AppDatabase : RoomDatabase() {
                 // เพิ่ม deviceId ใน order_approvals เพื่อกรองบิลตาม device
                 // บิลของ admin จะไม่ปรากฏบนเครื่องร้านค้า, บิลดูดวงจะแสดงเฉพาะ device ที่ถูกต้อง
                 db.execSQL("ALTER TABLE order_approvals ADD COLUMN deviceId TEXT")
+            }
+        }
+
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // เพิ่ม sync fields ใน misclassification_reports เพื่อ sync ไป backend
+                db.execSQL("ALTER TABLE misclassification_reports ADD COLUMN isSynced INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE misclassification_reports ADD COLUMN syncedAt INTEGER")
+                db.execSQL("ALTER TABLE misclassification_reports ADD COLUMN backendReportId INTEGER")
             }
         }
 

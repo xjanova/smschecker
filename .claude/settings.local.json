@@ -188,7 +188,8 @@
       "Bash(cmd.exe /c \"set JAVA_HOME=C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr && D:\\\\Code\\\\SmsChecker\\\\gradlew.bat -p D:\\\\Code\\\\SmsChecker assembleRelease 2>&1\")",
       "Bash(export JAVA_HOME=\"/c/Program Files/Android/Android Studio/jbr\")",
       "Bash(composer show:*)",
-      "Bash(./gradlew testReleaseUnitTest:*)"
+      "Bash(./gradlew testReleaseUnitTest:*)",
+      "Bash(certutil:*)"
     ]
   }
 }
