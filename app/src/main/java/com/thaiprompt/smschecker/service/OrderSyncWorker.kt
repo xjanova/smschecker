@@ -6,6 +6,7 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.*
 import com.thaiprompt.smschecker.BuildConfig
 import com.thaiprompt.smschecker.data.api.DebugReportBody
+import com.thaiprompt.smschecker.data.repository.MisclassificationReportRepository
 import com.thaiprompt.smschecker.data.repository.OrderRepository
 import com.thaiprompt.smschecker.data.repository.OrphanTransactionRepository
 import com.thaiprompt.smschecker.security.SecureStorage
@@ -19,6 +20,7 @@ class OrderSyncWorker @AssistedInject constructor(
     @Assisted workerParams: WorkerParameters,
     private val orderRepository: OrderRepository,
     private val orphanRepository: OrphanTransactionRepository,
+    private val misclassificationRepository: MisclassificationReportRepository,
     private val secureStorage: SecureStorage
 ) : CoroutineWorker(appContext, workerParams) {
 
@@ -49,6 +51,9 @@ class OrderSyncWorker @AssistedInject constructor(
 
             // 5. Cleanup old orphan transactions
             runOrphanCleanup()
+
+            // 6. Sync misclassification reports to backend
+            syncMisclassificationReports()
 
             val duration = System.currentTimeMillis() - startTime
             Log.d(TAG, "Sync completed in ${duration}ms")
@@ -205,6 +210,24 @@ class OrderSyncWorker @AssistedInject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "sendFcmToken: 💥 EXCEPTION: ${e.javaClass.simpleName}: ${e.message}", e)
             lastFcmSyncResult = "exception:${e.javaClass.simpleName}:${e.message}"
+        }
+    }
+
+    /**
+     * Sync misclassification reports to xman4289.com backend.
+     * Reports are created locally when users long-press a transaction
+     * and report SMS parsing issues. This syncs them in batch.
+     */
+    private suspend fun syncMisclassificationReports() {
+        try {
+            val unsyncedCount = misclassificationRepository.getUnsyncedCount()
+            if (unsyncedCount == 0) return
+
+            Log.d(TAG, "Syncing $unsyncedCount misclassification reports to backend...")
+            val (success, failed) = misclassificationRepository.syncReportsToBackend()
+            Log.d(TAG, "Misclassification sync: success=$success, failed=$failed")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to sync misclassification reports", e)
         }
     }
 
