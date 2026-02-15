@@ -220,7 +220,7 @@ class SmsHistoryViewModel @Inject constructor(
                         appContext.contentResolver,
                         android.provider.Settings.Secure.ANDROID_ID
                     ),
-                    appVersion = "1.0.0" // TODO: Get from BuildConfig
+                    appVersion = com.thaiprompt.smschecker.BuildConfig.VERSION_NAME
                 )
 
                 reportRepository.insertReport(report)
@@ -228,7 +228,13 @@ class SmsHistoryViewModel @Inject constructor(
 
                 hideReportDialog()
 
-                // TODO: อาจจะส่งไปยัง server สำหรับวิเคราะห์ต่อ
+                // ส่งไป server (xman4289.com) ทันที
+                try {
+                    val (success, failed) = reportRepository.syncReportsToBackend()
+                    Log.d(TAG, "Report sync: success=$success, failed=$failed")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Report sync failed, will retry in background", e)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to submit report", e)
             }

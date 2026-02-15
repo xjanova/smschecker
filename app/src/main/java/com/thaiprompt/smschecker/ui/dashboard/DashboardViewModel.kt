@@ -319,11 +319,8 @@ class DashboardViewModel @Inject constructor(
                         // สลับประเภท
                         if (transaction.type == TransactionType.CREDIT) TransactionType.DEBIT else TransactionType.CREDIT
                     } else null,
-                    deviceId = android.provider.Settings.Secure.getString(
-                        null,
-                        android.provider.Settings.Secure.ANDROID_ID
-                    ),
-                    appVersion = "1.0.0" // TODO: Get from BuildConfig
+                    deviceId = secureStorage.getDeviceId(),
+                    appVersion = com.thaiprompt.smschecker.BuildConfig.VERSION_NAME
                 )
 
                 reportRepository.insertReport(report)
@@ -331,7 +328,13 @@ class DashboardViewModel @Inject constructor(
 
                 hideReportDialog()
 
-                // TODO: อาจจะส่งไปยัง server สำหรับวิเคราะห์ต่อ
+                // ส่งไป server (xman4289.com) ทันที
+                try {
+                    val (success, failed) = reportRepository.syncReportsToBackend()
+                    Log.d(TAG, "Report sync: success=$success, failed=$failed")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Report sync failed, will retry in background", e)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to submit report", e)
             }
