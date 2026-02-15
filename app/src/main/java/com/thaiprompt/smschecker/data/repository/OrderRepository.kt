@@ -136,11 +136,20 @@ class OrderRepository @Inject constructor(
             if (response.isSuccessful) {
                 val orders = response.body()?.data?.data ?: emptyList()
                 Log.d("OrderRepository", "Fetched ${orders.size} orders from ${server.name} (id=$serverId)")
+                // 🔍 Debug: log แต่ละ order ที่ได้รับจาก server
+                for ((idx, order) in orders.withIndex()) {
+                    Log.d("OrderRepository", "  order[$idx]: id=${order.id}, status=${order.approval_status}, " +
+                        "orderNum=${order.order_details_json?.get("order_number")}, " +
+                        "amount=${order.order_details_json?.get("amount")}, " +
+                        "notif=${order.notification?.let { "bank=${it.bank},amt=${it.amount}" } ?: "null"}")
+                }
                 if (orders.isNotEmpty()) {
-                    try {
-                        // Smart upsert: ป้องกัน pendingAction (offline queue) หาย
-                        // และป้องกัน server เขียนทับ approved status ที่แอพ approve ไปแล้ว
-                        for (remote in orders) {
+                    // Smart upsert: ป้องกัน pendingAction (offline queue) หาย
+                    // และป้องกัน server เขียนทับ approved status ที่แอพ approve ไปแล้ว
+                    var successCount = 0
+                    var errorCount = 0
+                    for (remote in orders) {
+                        try {
                             val localOrder = remote.toLocalEntity(serverId)
                             val existing = orderApprovalDao.getByRemoteId(remote.id, serverId)
 
@@ -155,9 +164,14 @@ class OrderRepository @Inject constructor(
                             } else {
                                 orderApprovalDao.insert(localOrder)
                             }
+                            successCount++
+                        } catch (e: Exception) {
+                            errorCount++
+                            Log.e("OrderRepository", "Failed to upsert order id=${remote.id}, status=${remote.approval_status}, orderNum=${remote.order_details_json?.get("order_number")}", e)
                         }
-                    } catch (e: Exception) {
-                        Log.e("OrderRepository", "Failed to upsert orders", e)
+                    }
+                    if (errorCount > 0) {
+                        Log.w("OrderRepository", "Upsert completed with errors: $successCount success, $errorCount failed out of ${orders.size} from ${server.name}")
                     }
                 }
 
@@ -595,33 +609,44 @@ class OrderRepository @Inject constructor(
             if (response.isSuccessful) {
                 val orders = response.body()?.data?.orders ?: emptyList()
                 Log.d("OrderRepository", "Synced ${orders.size} orders from ${server.name} (id=$serverId)")
+                var successCount = 0
+                var errorCount = 0
                 for (remote in orders) {
-                    val existing = orderApprovalDao.getByRemoteId(remote.id, serverId)
-                    val remoteStatus = ApprovalStatus.fromApiValue(remote.approval_status)
+                    try {
+                        val existing = orderApprovalDao.getByRemoteId(remote.id, serverId)
+                        val remoteStatus = ApprovalStatus.fromApiValue(remote.approval_status)
 
-                    // Handle server-side deletion
-                    if (remoteStatus == ApprovalStatus.DELETED) {
-                        if (existing != null) {
-                            orderApprovalDao.deleteById(existing.id)
-                        }
-                        continue
-                    }
-
-                    if (existing != null) {
-                        // Local pending action wins (offline action ยังไม่ได้ส่ง)
-                        if (existing.pendingAction != null) {
+                        // Handle server-side deletion
+                        if (remoteStatus == ApprovalStatus.DELETED) {
+                            if (existing != null) {
+                                orderApprovalDao.deleteById(existing.id)
+                            }
                             continue
                         }
 
-                        // Server is the source of truth — always accept server status
-                    }
+                        if (existing != null) {
+                            // Local pending action wins (offline action ยังไม่ได้ส่ง)
+                            if (existing.pendingAction != null) {
+                                continue
+                            }
 
-                    val local = remote.toLocalEntity(serverId)
-                    if (existing != null) {
-                        orderApprovalDao.update(local.copy(id = existing.id))
-                    } else {
-                        orderApprovalDao.insert(local)
+                            // Server is the source of truth — always accept server status
+                        }
+
+                        val local = remote.toLocalEntity(serverId)
+                        if (existing != null) {
+                            orderApprovalDao.update(local.copy(id = existing.id))
+                        } else {
+                            orderApprovalDao.insert(local)
+                        }
+                        successCount++
+                    } catch (e: Exception) {
+                        errorCount++
+                        Log.e("OrderRepository", "Failed to sync order id=${remote.id}, status=${remote.approval_status}", e)
                     }
+                }
+                if (errorCount > 0) {
+                    Log.w("OrderRepository", "Sync upsert completed with errors: $successCount success, $errorCount failed out of ${orders.size} from ${server.name}")
                 }
                 true
             } else {
