@@ -182,6 +182,10 @@ class BankSmsParser {
 
             // KBANK-specific: "โอนเงิน...สำเร็จ" without เข้า/ออก = typically debit
             Regex("""โอนเงิน\s*$CUR_PRE$AMT\s*$CUR_SUF\s*(?:สำเร็จ|เรียบร้อย|successfully)""", RegexOption.IGNORE_CASE),
+
+            // Loan repayment: "จ่ายเงินคืน...ได้รับเงิน 10.22" / "ชำระคืน...ได้รับเงิน 500.00"
+            // "ได้รับเงิน" ในบริบทนี้ = ธนาคารได้รับเงินจากเรา (DEBIT)
+            Regex("""(?:จ่ายเงินคืน|ชำระคืน|ผ่อนชำระ|ผ่อนคืน).+?(?:ได้รับเงิน|รับเงิน)\s*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
         )}
 
         // =====================================================================
@@ -253,6 +257,24 @@ class BankSmsParser {
             "ชำระคืน", "จ่ายคืน", "คืน", "ผ่อนชำระ", "ผ่อนคืน",  // Repayment context
             "Withdrawal", "Transfer Out", "Payment", "Paid", "Repay", "Repayment",
             "DR", "Debit", "Purchase", "Money Out", "Outgoing", "Spend"
+        )
+
+        // =====================================================================
+        // LOAN REPAYMENT CONTEXT KEYWORDS
+        // ข้อความที่มีคำเหล่านี้ = บริบทชำระคืนเงินกู้/สินเชื่อ → เป็น DEBIT เสมอ
+        // เพราะ "ได้รับเงิน" ในบริบทนี้ = ธนาคารได้รับเงินจากเรา ไม่ใช่เราได้รับ
+        // =====================================================================
+        private val LOAN_REPAYMENT_CONTEXT = listOf(
+            "จ่ายเงินคืน",           // จ่ายเงินคืน UP เงินทันใจ
+            "ชำระคืนสินเชื่อ",       // ชำระคืนสินเชื่อ
+            "ชำระคืนเงินกู้",        // ชำระคืนเงินกู้
+            "ผ่อนชำระ",             // ผ่อนชำระ
+            "ผ่อนคืน",              // ผ่อนคืน
+            "เงินทันใจ",            // UP เงินทันใจ
+            "สินเชื่อหมุนเวียน",     // สินเชื่อหมุนเวียน
+            "Loan Repay",           // English variants
+            "loan repayment",
+            "repay",
         )
 
         // =====================================================================
@@ -379,8 +401,34 @@ class BankSmsParser {
     // =====================================================================
 
     private fun parseMessage(bank: String, message: String): ParseResult? {
+        // === Pre-check: Loan repayment context ===
+        // ข้อความที่มีบริบทชำระคืนเงินกู้/สินเชื่อ เช่น
+        // "จ่ายเงินคืน UP เงินทันใจสำเร็จ | เราได้รับเงิน 10.22 แล้ว"
+        // คำว่า "ได้รับเงิน" ในบริบทนี้หมายถึงธนาคารได้รับเงิน (เงินออก) ไม่ใช่เราได้รับเงิน
+        val isLoanRepaymentContext = LOAN_REPAYMENT_CONTEXT.any { message.contains(it, ignoreCase = true) }
+
         val creditAmount = tryParseCredit(message)
         val debitAmount = tryParseDebit(message)
+
+        // ถ้าเป็นบริบทชำระคืนเงินกู้ → บังคับเป็น DEBIT เสมอ
+        if (isLoanRepaymentContext && (creditAmount != null || debitAmount != null)) {
+            val amount = debitAmount ?: creditAmount ?: return null
+            val normalizedAmount = normalizeAmount(amount)
+            val amountDouble = normalizedAmount.toDoubleOrNull() ?: return null
+            if (amountDouble <= 0.0 || amountDouble > 999_999_999.99) return null
+
+            Log.d(TAG, "Loan repayment context detected, forcing DEBIT: $normalizedAmount")
+            return ParseResult(
+                bank = bank,
+                type = TransactionType.DEBIT,
+                amount = normalizedAmount,
+                accountNumber = extractAccountNumber(message),
+                senderOrReceiver = extractName(message),
+                referenceNumber = extractReference(message),
+                balance = extractBalance(message),
+                channel = extractChannel(message)
+            )
+        }
 
         // Determine transaction type
         val (type, amount) = when {
