@@ -174,13 +174,18 @@ class TransactionRepository @Inject constructor(
             if (response.isSuccessful && response.body()?.success == true) {
                 // Process matched order from server response
                 val responseData = response.body()?.data
+                // ✅ เช็คทั้ง matched (ecommerce) และ fortune_reading (ดูดวง)
                 val matched = responseData?.get("matched") as? Boolean ?: false
-                if (matched) {
-                    Log.i(TAG, "syncToServer: Server matched payment! Updating local order.")
+                val fortuneReading = responseData?.get("fortune_reading") as? Boolean ?: false
+                val anyMatched = matched || fortuneReading
+                if (anyMatched) {
+                    Log.i(TAG, "syncToServer: Server matched payment! matched=$matched fortuneReading=$fortuneReading")
                     try {
-                        // Server returns order data in response when matched
+                        // ✅ ลองอ่านจาก "order" ก่อน แล้ว fallback เป็น "matched_order"
+                        // เซิร์ฟเวอร์ส่งทั้ง 2 key เพื่อ backward compatibility
                         @Suppress("UNCHECKED_CAST")
-                        val orderMap = responseData?.get("order") as? Map<String, Any?>
+                        val orderMap = (responseData?.get("order") as? Map<String, Any?>)
+                            ?: (responseData?.get("matched_order") as? Map<String, Any?>)
                         if (orderMap != null) {
                             val orderJson = gson.toJson(orderMap)
                             val remoteOrder = gson.fromJson(orderJson, RemoteOrderApproval::class.java)
@@ -195,6 +200,8 @@ class TransactionRepository @Inject constructor(
                                     Log.i(TAG, "syncToServer: Inserted matched order ${remoteOrder.id} as local id=$insertedId")
                                 }
                             }
+                        } else {
+                            Log.w(TAG, "syncToServer: matched=true but no order data in response. Keys: ${responseData?.keys}")
                         }
                     } catch (e: Exception) {
                         Log.w(TAG, "syncToServer: Failed to process matched order from response", e)
