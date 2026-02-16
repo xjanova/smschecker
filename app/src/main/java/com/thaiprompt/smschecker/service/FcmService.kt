@@ -10,8 +10,17 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.thaiprompt.smschecker.R
 import com.thaiprompt.smschecker.SmsCheckerApp
+import com.thaiprompt.smschecker.data.db.OrderApprovalDao
+import com.thaiprompt.smschecker.data.db.ServerConfigDao
+import com.thaiprompt.smschecker.data.model.ApprovalStatus
+import com.thaiprompt.smschecker.data.model.MatchConfidence
+import com.thaiprompt.smschecker.data.model.OrderApproval
 import com.thaiprompt.smschecker.ui.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 /**
  * Firebase Cloud Messaging Service
@@ -23,6 +32,9 @@ import dagger.hilt.android.AndroidEntryPoint
  */
 @AndroidEntryPoint
 class FcmService : FirebaseMessagingService() {
+
+    @Inject lateinit var orderApprovalDao: OrderApprovalDao
+    @Inject lateinit var serverConfigDao: ServerConfigDao
 
     companion object {
         private const val TAG = "FcmService"
@@ -84,6 +96,8 @@ class FcmService : FirebaseMessagingService() {
 
     /**
      * คำสั่งซื้อใหม่ถูกสร้าง — แสดง notification + ทริก sync
+     * สำหรับ fortune orders: insert เข้า Room DB ทันทีจาก FCM data
+     * เพื่อให้บิลแสดงในหน้า Orders โดยไม่ต้องรอ sync สำเร็จ
      */
     private fun handleNewOrder(data: Map<String, String>) {
         val orderId = data["order_id"] ?: "N/A"
@@ -105,8 +119,72 @@ class FcmService : FirebaseMessagingService() {
 
         showNotification(title = title, body = body, notificationId = notifKey)
 
-        // Trigger immediate sync to get the new order
+        // Fortune orders: insert เข้า DB ทันทีจาก FCM data
+        // ไม่ต้องรอ sync เพราะ sync อาจ fail หรือ fortune order อาจไม่กลับมาใน response
+        if (isFortune) {
+            val remoteId = orderId.toLongOrNull()
+            if (remoteId != null) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        insertFortuneOrderFromFcm(
+                            remoteId = remoteId,
+                            orderNumber = orderNumber,
+                            amount = amount.toDoubleOrNull() ?: 0.0,
+                            customerName = data["customer_name"]
+                        )
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to insert fortune order from FCM: ${e.message}", e)
+                    }
+                }
+            }
+        }
+
+        // Trigger immediate sync to get the new order (and update with full server data)
         OrderSyncWorker.enqueueOneTimeSync(applicationContext)
+    }
+
+    /**
+     * Insert fortune order เข้า Room DB ทันทีจาก FCM data
+     * ใช้ server แรกที่ active เป็น serverId (fortune orders มาจาก thaiprompt เท่านั้น)
+     * ถ้า order มีอยู่แล้ว (จาก sync ก่อนหน้า) จะไม่ overwrite
+     */
+    private suspend fun insertFortuneOrderFromFcm(
+        remoteId: Long,
+        orderNumber: String,
+        amount: Double,
+        customerName: String?
+    ) {
+        // หา server แรกที่ active
+        val servers = serverConfigDao.getActiveConfigs()
+        val server = servers.firstOrNull()
+        if (server == null) {
+            Log.w(TAG, "insertFortuneOrderFromFcm: No active servers")
+            return
+        }
+
+        // เช็คว่ามีอยู่แล้วหรือไม่
+        val existing = orderApprovalDao.getByRemoteId(remoteId, server.id)
+        if (existing != null) {
+            Log.d(TAG, "insertFortuneOrderFromFcm: Order $remoteId already exists (id=${existing.id}), skip")
+            return
+        }
+
+        val order = OrderApproval(
+            serverId = server.id,
+            remoteApprovalId = remoteId,
+            approvalStatus = ApprovalStatus.PENDING_REVIEW,
+            confidence = MatchConfidence.HIGH,
+            orderNumber = orderNumber,
+            productName = "ดูดวง",
+            customerName = customerName ?: "ลูกค้าดูดวง",
+            amount = amount,
+            serverName = server.name,
+            syncedVersion = System.currentTimeMillis(),
+            lastSyncedAt = System.currentTimeMillis()
+        )
+
+        val insertedId = orderApprovalDao.insert(order)
+        Log.i(TAG, "insertFortuneOrderFromFcm: Inserted fortune order remoteId=$remoteId, orderNum=$orderNumber, amount=$amount, localId=$insertedId")
     }
 
     /**

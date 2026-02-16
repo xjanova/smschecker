@@ -1,9 +1,7 @@
 package com.thaiprompt.smschecker.data.repository
 
-import android.os.Build
 import android.util.Log
 import com.google.gson.Gson
-import com.thaiprompt.smschecker.BuildConfig
 import com.thaiprompt.smschecker.data.api.*
 import com.thaiprompt.smschecker.data.db.MatchHistoryDao
 import com.thaiprompt.smschecker.data.db.OrderApprovalDao
@@ -26,8 +24,7 @@ class OrderRepository @Inject constructor(
     private val apiClientFactory: ApiClientFactory,
     private val cryptoManager: CryptoManager,
     private val secureStorage: SecureStorage,
-    private val gson: Gson,
-    private val bugReportApi: BugReportApiService
+    private val gson: Gson
 ) {
     companion object {
         private const val TAG = "OrderRepository"
@@ -186,25 +183,6 @@ class OrderRepository @Inject constructor(
                     Log.i("OrderRepository", "Upsert summary: $successCount ok, $errorCount failed, $skipCount skipped / ${orders.size} total from ${server.name}")
                     if (fortuneIds.isNotEmpty()) {
                         Log.i("OrderRepository", "  Fortune orders (${fortuneIds.size}): $fortuneIds")
-                    }
-
-                    // 🔍 ส่ง debug report ไป xman4289.com เมื่อมี fortune orders
-                    if (fortuneIds.isNotEmpty() || errorCount > 0) {
-                        try {
-                            sendFortuneDebugReport(
-                                action = "fetchOrders",
-                                serverName = server.name,
-                                totalOrders = orders.size,
-                                fortuneCount = fortuneIds.size,
-                                fortuneIds = fortuneIds,
-                                successCount = successCount,
-                                errorCount = errorCount,
-                                skipCount = skipCount,
-                                errorDetails = if (errorCount > 0) "See logcat for details" else null
-                            )
-                        } catch (e: Exception) {
-                            Log.w("OrderRepository", "sendFortuneDebugReport failed: ${e.message}")
-                        }
                     }
                 }
 
@@ -644,13 +622,8 @@ class OrderRepository @Inject constructor(
                 Log.d("OrderRepository", "Synced ${orders.size} orders from ${server.name} (id=$serverId)")
                 var successCount = 0
                 var errorCount = 0
-                var skipCount = 0
-                val fortuneIds = mutableListOf<Long>()
                 for (remote in orders) {
                     try {
-                        val isFortune = remote.id > 10_000_000
-                        if (isFortune) fortuneIds.add(remote.id)
-
                         val existing = orderApprovalDao.getByRemoteId(remote.id, serverId)
                         val remoteStatus = ApprovalStatus.fromApiValue(remote.approval_status)
 
@@ -665,7 +638,6 @@ class OrderRepository @Inject constructor(
                         if (existing != null) {
                             // Local pending action wins (offline action ยังไม่ได้ส่ง)
                             if (existing.pendingAction != null) {
-                                skipCount++
                                 continue
                             }
 
@@ -675,35 +647,17 @@ class OrderRepository @Inject constructor(
                         val local = remote.toLocalEntity(serverId)
                         if (existing != null) {
                             orderApprovalDao.update(local.copy(id = existing.id))
-                            Log.d("OrderRepository", "  SYNC-UPDATE id=${remote.id}, fortune=$isFortune, status=${remote.approval_status}")
                         } else {
                             orderApprovalDao.insert(local)
-                            Log.d("OrderRepository", "  SYNC-INSERT id=${remote.id}, fortune=$isFortune, status=${remote.approval_status}, product=${local.productName}")
                         }
                         successCount++
                     } catch (e: Exception) {
                         errorCount++
-                        Log.e("OrderRepository", "SYNC-FAILED id=${remote.id}, status=${remote.approval_status}, error=${e.message}", e)
+                        Log.e("OrderRepository", "Failed to sync order id=${remote.id}, status=${remote.approval_status}", e)
                     }
                 }
-                Log.i("OrderRepository", "Sync summary: $successCount ok, $errorCount failed, $skipCount skipped / ${orders.size} total from ${server.name}")
-                if (fortuneIds.isNotEmpty()) {
-                    Log.i("OrderRepository", "  Sync fortune orders (${fortuneIds.size}): $fortuneIds")
-                    // ส่ง debug report ไป xman4289.com
-                    try {
-                        sendFortuneDebugReport(
-                            action = "syncOrders",
-                            serverName = server.name,
-                            totalOrders = orders.size,
-                            fortuneCount = fortuneIds.size,
-                            fortuneIds = fortuneIds,
-                            successCount = successCount,
-                            errorCount = errorCount,
-                            skipCount = skipCount
-                        )
-                    } catch (e: Exception) {
-                        Log.w("OrderRepository", "sendFortuneDebugReport (sync) failed: ${e.message}")
-                    }
+                if (errorCount > 0) {
+                    Log.w("OrderRepository", "Sync upsert completed with errors: $successCount success, $errorCount failed out of ${orders.size} from ${server.name}")
                 }
                 true
             } else {
@@ -895,77 +849,6 @@ class OrderRepository @Inject constructor(
             }
         } catch (e: Exception) {
             Log.e("OrderRepository", "sendDebugReport: FAILED: ${e.message}")
-        }
-    }
-
-    /**
-     * ส่ง fortune order debug report ไป xman4289.com/admin/bug-reports
-     * เพื่อ remote debugging ว่า fortune orders ถูก sync สำเร็จหรือไม่
-     */
-    private suspend fun sendFortuneDebugReport(
-        action: String,
-        serverName: String,
-        totalOrders: Int,
-        fortuneCount: Int,
-        fortuneIds: List<Long>,
-        successCount: Int,
-        errorCount: Int,
-        skipCount: Int,
-        errorDetails: String? = null
-    ) {
-        try {
-            val deviceId = secureStorage.getDeviceId() ?: "unknown"
-            val report = BugReportRequest(
-                productName = "smschecker",
-                productVersion = BuildConfig.VERSION_NAME,
-                reportType = "bug",
-                title = "Fortune Order Sync: ${fortuneCount} fortune, ${errorCount} errors",
-                description = buildString {
-                    appendLine("**Action:** $action")
-                    appendLine("**Server:** $serverName")
-                    appendLine()
-                    appendLine("**Orders Summary:**")
-                    appendLine("- Total from server: $totalOrders")
-                    appendLine("- Fortune orders: $fortuneCount")
-                    appendLine("- Success: $successCount")
-                    appendLine("- Failed: $errorCount")
-                    appendLine("- Skipped (pendingAction): $skipCount")
-                    appendLine()
-                    if (fortuneIds.isNotEmpty()) {
-                        appendLine("**Fortune IDs (with 10M offset):** ${fortuneIds.joinToString(", ")}")
-                        appendLine("**Fortune IDs (real):** ${fortuneIds.map { it - 10_000_000 }.joinToString(", ")}")
-                    }
-                    if (errorDetails != null) {
-                        appendLine()
-                        appendLine("**Error Details:** $errorDetails")
-                    }
-                },
-                metadata = mapOf(
-                    "action" to action,
-                    "server_name" to serverName,
-                    "total_orders" to totalOrders,
-                    "fortune_count" to fortuneCount,
-                    "fortune_ids" to fortuneIds.joinToString(","),
-                    "success_count" to successCount,
-                    "error_count" to errorCount,
-                    "skip_count" to skipCount,
-                    "timestamp" to System.currentTimeMillis()
-                ),
-                deviceId = deviceId,
-                priority = if (errorCount > 0) "high" else "low",
-                severity = if (errorCount > 0) "major" else "minor",
-                osVersion = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
-                appVersion = BuildConfig.VERSION_NAME,
-                additionalInfo = mapOf(
-                    "device_model" to "${Build.MANUFACTURER} ${Build.MODEL}",
-                    "build_number" to BuildConfig.VERSION_CODE
-                )
-            )
-
-            val response = bugReportApi.submitReport(report)
-            Log.i(TAG, "sendFortuneDebugReport: HTTP ${response.code()} → ${response.body()?.message}")
-        } catch (e: Exception) {
-            Log.w(TAG, "sendFortuneDebugReport failed: ${e.message}")
         }
     }
 
