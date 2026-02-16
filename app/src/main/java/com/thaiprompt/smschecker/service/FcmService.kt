@@ -89,13 +89,21 @@ class FcmService : FirebaseMessagingService() {
         val orderId = data["order_id"] ?: "N/A"
         val amount = data["amount"] ?: "0.00"
         val orderNumber = data["order_number"] ?: "N/A"
+        val isFortune = data["is_fortune_reading"] == "true"
 
-        // Show notification
-        showNotification(
-            title = "คำสั่งซื้อใหม่ รอชำระเงิน",
-            body = "คำสั่งซื้อ #$orderNumber ยอด ฿$amount กำลังรอการชำระเงิน",
-            notificationId = orderId.hashCode()
-        )
+        // ใช้ order_number เป็น notificationId key เพื่อให้ notification ทับกันเมื่อสถานะเปลี่ยน
+        // (เช่น new_order → order_approved ของบิลเดียวกัน จะทับกันแทนที่จะเด้ง 2 ครั้ง)
+        val notifKey = orderNumber.hashCode()
+
+        val title = if (isFortune) "🔮 บิลดูดวงใหม่ รอชำระเงิน" else "คำสั่งซื้อใหม่ รอชำระเงิน"
+        val body = if (isFortune) {
+            val customer = data["customer_name"] ?: ""
+            "บิล #$orderNumber ยอด ฿$amount $customer"
+        } else {
+            "คำสั่งซื้อ #$orderNumber ยอด ฿$amount กำลังรอการชำระเงิน"
+        }
+
+        showNotification(title = title, body = body, notificationId = notifKey)
 
         // Trigger immediate sync to get the new order
         OrderSyncWorker.enqueueOneTimeSync(applicationContext)
@@ -121,14 +129,28 @@ class FcmService : FirebaseMessagingService() {
     /**
      * สถานะ order เปลี่ยนจาก admin (approved/rejected/cancelled)
      * อัพเดท local DB ทันที ไม่ต้องรอ periodic sync
+     *
+     * สำหรับ fortune reading (is_fortune_reading=true):
+     * - ใช้ข้อความภาษาไทยที่เหมาะสม (เช่น "บิลดูดวงชำระแล้ว")
+     * - notificationId ใช้ orderNumber.hashCode() เพื่อทับ notification เดิมของ new_order
      */
     private fun handleOrderStatusChange(data: Map<String, String>, statusLabel: String, emoji: String) {
         val orderNumber = data["order_number"] ?: "N/A"
-        Log.i(TAG, "FCM: Order status change - $orderNumber $statusLabel")
+        val isFortune = data["is_fortune_reading"] == "true"
+        Log.i(TAG, "FCM: Order status change - $orderNumber $statusLabel (fortune=$isFortune)")
+
+        val title = if (isFortune) "💰 บิลดูดวงชำระแล้ว!" else "$emoji คำสั่งซื้อ $statusLabel"
+        val amount = data["amount"] ?: ""
+        val bank = data["bank"] ?: ""
+        val body = if (isFortune && amount.isNotEmpty()) {
+            "บิล #$orderNumber ยอด ฿$amount จับคู่สำเร็จ" + if (bank.isNotEmpty()) " ($bank)" else ""
+        } else {
+            "คำสั่งซื้อ #$orderNumber $statusLabel"
+        }
 
         showNotification(
-            title = "$emoji คำสั่งซื้อ $statusLabel",
-            body = "คำสั่งซื้อ #$orderNumber $statusLabel",
+            title = title,
+            body = body,
             notificationId = orderNumber.hashCode()
         )
 
@@ -149,17 +171,26 @@ class FcmService : FirebaseMessagingService() {
 
     /**
      * การชำระเงินถูกจับคู่กับคำสั่งซื้อ → sync ทันที
+     * ใช้ orderNumber.hashCode() เป็น notificationId เพื่อทับ notification เดิม
      */
     private fun handlePaymentMatched(data: Map<String, String>) {
         val orderNumber = data["order_number"] ?: "N/A"
         val amount = data["amount"] ?: "0.00"
         val bank = data["bank"] ?: ""
+        val isFortune = data["is_fortune_reading"] == "true"
 
-        Log.i(TAG, "FCM: Payment matched - $orderNumber ฿$amount ($bank)")
+        Log.i(TAG, "FCM: Payment matched - $orderNumber ฿$amount ($bank) fortune=$isFortune")
+
+        val title = if (isFortune) "💰 บิลดูดวงชำระแล้ว!" else "💰 ยืนยันการชำระเงินแล้ว"
+        val body = if (isFortune) {
+            "บิล #$orderNumber ยอด ฿$amount จับคู่สำเร็จ" + if (bank.isNotEmpty()) " ($bank)" else ""
+        } else {
+            "คำสั่งซื้อ #$orderNumber ยอด ฿$amount ชำระเงินสำเร็จ"
+        }
 
         showNotification(
-            title = "💰 ยืนยันการชำระเงินแล้ว",
-            body = "คำสั่งซื้อ #$orderNumber ยอด ฿$amount ชำระเงินสำเร็จ",
+            title = title,
+            body = body,
             notificationId = orderNumber.hashCode()
         )
 

@@ -148,30 +148,41 @@ class OrderRepository @Inject constructor(
                     // และป้องกัน server เขียนทับ approved status ที่แอพ approve ไปแล้ว
                     var successCount = 0
                     var errorCount = 0
+                    var skipCount = 0
+                    // 🔍 แยกนับ fortune orders เพื่อ debug
+                    val fortuneIds = mutableListOf<Long>()
                     for (remote in orders) {
                         try {
+                            val isFortune = remote.id > 10_000_000
+                            if (isFortune) fortuneIds.add(remote.id)
+
                             val localOrder = remote.toLocalEntity(serverId)
                             val existing = orderApprovalDao.getByRemoteId(remote.id, serverId)
 
                             if (existing != null) {
                                 // ถ้า local มี pendingAction ค้างอยู่ → ข้ามไป (offline action ยังไม่ได้ส่ง)
                                 if (existing.pendingAction != null) {
+                                    skipCount++
+                                    Log.d("OrderRepository", "  SKIP order id=${remote.id} (pendingAction=${existing.pendingAction})")
                                     continue
                                 }
 
                                 // Server is the source of truth — always sync server status
                                 orderApprovalDao.update(localOrder.copy(id = existing.id))
+                                Log.d("OrderRepository", "  UPDATE order id=${remote.id}, fortune=$isFortune, status=${remote.approval_status}, orderNum=${localOrder.orderNumber}")
                             } else {
                                 orderApprovalDao.insert(localOrder)
+                                Log.d("OrderRepository", "  INSERT order id=${remote.id}, fortune=$isFortune, status=${remote.approval_status}, orderNum=${localOrder.orderNumber}, product=${localOrder.productName}")
                             }
                             successCount++
                         } catch (e: Exception) {
                             errorCount++
-                            Log.e("OrderRepository", "Failed to upsert order id=${remote.id}, status=${remote.approval_status}, orderNum=${remote.order_details_json?.get("order_number")}", e)
+                            Log.e("OrderRepository", "FAILED upsert order id=${remote.id}, status=${remote.approval_status}, orderNum=${remote.order_details_json?.get("order_number")}, error=${e.message}", e)
                         }
                     }
-                    if (errorCount > 0) {
-                        Log.w("OrderRepository", "Upsert completed with errors: $successCount success, $errorCount failed out of ${orders.size} from ${server.name}")
+                    Log.i("OrderRepository", "Upsert summary: $successCount ok, $errorCount failed, $skipCount skipped / ${orders.size} total from ${server.name}")
+                    if (fortuneIds.isNotEmpty()) {
+                        Log.i("OrderRepository", "  Fortune orders (${fortuneIds.size}): $fortuneIds")
                     }
                 }
 
