@@ -123,6 +123,7 @@ class FcmService : FirebaseMessagingService() {
         // ไม่ต้องรอ sync เพราะ sync อาจ fail หรือ fortune order อาจไม่กลับมาใน response
         if (isFortune) {
             val remoteId = orderId.toLongOrNull()
+            val serverUrl = data["server_url"]  // URL ของเซิร์ฟที่ส่ง FCM มา (อาจเป็น null สำหรับ FCM เก่า)
             if (remoteId != null) {
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
@@ -130,7 +131,8 @@ class FcmService : FirebaseMessagingService() {
                             remoteId = remoteId,
                             orderNumber = orderNumber,
                             amount = amount.toDoubleOrNull() ?: 0.0,
-                            customerName = data["customer_name"]
+                            customerName = data["customer_name"],
+                            serverUrl = serverUrl
                         )
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to insert fortune order from FCM: ${e.message}", e)
@@ -145,22 +147,40 @@ class FcmService : FirebaseMessagingService() {
 
     /**
      * Insert fortune order เข้า Room DB ทันทีจาก FCM data
-     * ใช้ server แรกที่ active เป็น serverId (fortune orders มาจาก thaiprompt เท่านั้น)
+     * ใช้ server_url จาก FCM data เพื่อระบุว่า order มาจากเซิร์ฟไหน
+     * ถ้าไม่มี server_url ใน FCM (FCM เก่า) → ใช้ server ที่มี URL ตรงกับ order แทน
      * ถ้า order มีอยู่แล้ว (จาก sync ก่อนหน้า) จะไม่ overwrite
      */
     private suspend fun insertFortuneOrderFromFcm(
         remoteId: Long,
         orderNumber: String,
         amount: Double,
-        customerName: String?
+        customerName: String?,
+        serverUrl: String? = null
     ) {
-        // หา server แรกที่ active
         val servers = serverConfigDao.getActiveConfigs()
-        val server = servers.firstOrNull()
-        if (server == null) {
+        if (servers.isEmpty()) {
             Log.w(TAG, "insertFortuneOrderFromFcm: No active servers")
             return
         }
+
+        // หาเซิร์ฟที่ตรงกับ server_url จาก FCM (ถ้ามี)
+        val server = if (serverUrl != null) {
+            // Normalize URL เพื่อเปรียบเทียบ (ตัด trailing slash, lowercase)
+            val normalizedFcmUrl = serverUrl.trimEnd('/').lowercase()
+            servers.firstOrNull { it.baseUrl.trimEnd('/').lowercase() == normalizedFcmUrl }
+                ?: servers.firstOrNull { normalizedFcmUrl.contains(it.baseUrl.trimEnd('/').lowercase()) }
+                ?: servers.firstOrNull() // fallback ถ้าหาไม่เจอ
+        } else {
+            servers.firstOrNull()
+        }
+
+        if (server == null) {
+            Log.w(TAG, "insertFortuneOrderFromFcm: Could not find matching server (serverUrl=$serverUrl)")
+            return
+        }
+
+        Log.d(TAG, "insertFortuneOrderFromFcm: Using server=${server.name} (id=${server.id}) for remoteId=$remoteId, fcmServerUrl=$serverUrl")
 
         // เช็คว่ามีอยู่แล้วหรือไม่
         val existing = orderApprovalDao.getByRemoteId(remoteId, server.id)
@@ -184,7 +204,7 @@ class FcmService : FirebaseMessagingService() {
         )
 
         val insertedId = orderApprovalDao.insert(order)
-        Log.i(TAG, "insertFortuneOrderFromFcm: Inserted fortune order remoteId=$remoteId, orderNum=$orderNumber, amount=$amount, localId=$insertedId")
+        Log.i(TAG, "insertFortuneOrderFromFcm: Inserted fortune order remoteId=$remoteId, orderNum=$orderNumber, amount=$amount, serverId=${server.id}, localId=$insertedId")
     }
 
     /**
