@@ -46,6 +46,58 @@ interface OrderApprovalDao {
         endTime: Long?
     ): Flow<List<OrderApproval>>
 
+    @Query("""
+        SELECT * FROM order_approvals
+        WHERE approvalStatus != 'DELETED'
+        AND (:status IS NULL OR approvalStatus = :status)
+        AND (:serverId IS NULL OR serverId = :serverId)
+        AND (:startTime IS NULL OR COALESCE(paymentTimestamp, createdAt) >= :startTime)
+        AND (:endTime IS NULL OR COALESCE(paymentTimestamp, createdAt) <= :endTime)
+        AND (:search IS NULL OR :search = ''
+            OR orderNumber LIKE '%' || :search || '%'
+            OR productName LIKE '%' || :search || '%'
+            OR customerName LIKE '%' || :search || '%'
+            OR websiteName LIKE '%' || :search || '%'
+            OR serverName LIKE '%' || :search || '%'
+            OR bank LIKE '%' || :search || '%'
+        )
+        ORDER BY COALESCE(paymentTimestamp, createdAt) DESC
+        LIMIT :limit OFFSET :offset
+    """)
+    suspend fun getFilteredOrdersPaged(
+        status: String?,
+        serverId: Long?,
+        startTime: Long?,
+        endTime: Long?,
+        search: String?,
+        limit: Int,
+        offset: Int
+    ): List<OrderApproval>
+
+    @Query("""
+        SELECT COUNT(*) FROM order_approvals
+        WHERE approvalStatus != 'DELETED'
+        AND (:status IS NULL OR approvalStatus = :status)
+        AND (:serverId IS NULL OR serverId = :serverId)
+        AND (:startTime IS NULL OR COALESCE(paymentTimestamp, createdAt) >= :startTime)
+        AND (:endTime IS NULL OR COALESCE(paymentTimestamp, createdAt) <= :endTime)
+        AND (:search IS NULL OR :search = ''
+            OR orderNumber LIKE '%' || :search || '%'
+            OR productName LIKE '%' || :search || '%'
+            OR customerName LIKE '%' || :search || '%'
+            OR websiteName LIKE '%' || :search || '%'
+            OR serverName LIKE '%' || :search || '%'
+            OR bank LIKE '%' || :search || '%'
+        )
+    """)
+    suspend fun getFilteredOrdersCount(
+        status: String?,
+        serverId: Long?,
+        startTime: Long?,
+        endTime: Long?,
+        search: String?
+    ): Int
+
     @Query("SELECT * FROM order_approvals WHERE id = :id")
     suspend fun getById(id: Long): OrderApproval?
 

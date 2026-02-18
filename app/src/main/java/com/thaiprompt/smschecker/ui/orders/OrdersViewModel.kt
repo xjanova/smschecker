@@ -27,7 +27,11 @@ data class OrdersState(
     val offlineQueueCount: Int = 0,
     val servers: List<ServerConfig> = emptyList(),
     val error: String? = null,
-    val actionResult: ActionResult? = null
+    val actionResult: ActionResult? = null,
+    val searchQuery: String = "",
+    val isLoadingMore: Boolean = false,
+    val hasMorePages: Boolean = true,
+    val totalCount: Int = 0
 )
 
 data class ActionResult(
@@ -42,6 +46,10 @@ class OrdersViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository
 ) : ViewModel() {
 
+    companion object {
+        private const val PAGE_SIZE = 30
+    }
+
     private val _state = MutableStateFlow(OrdersState())
     val state: StateFlow<OrdersState> = _state.asStateFlow()
 
@@ -54,6 +62,9 @@ class OrdersViewModel @Inject constructor(
     private var offlineQueueJob: Job? = null
     private var serversJob: Job? = null
     private var autoRefreshJob: Job? = null
+    private var searchJob: Job? = null
+
+    private val _searchQuery = MutableStateFlow("")
 
     init {
         try {
@@ -82,6 +93,7 @@ class OrdersViewModel @Inject constructor(
                     delay(30_000L) // 30 seconds
                     Log.d("OrdersViewModel", "Auto-refreshing orders...")
                     orderRepository.fetchOrders()
+                    loadOrders()
                 } catch (e: Exception) {
                     Log.w("OrdersViewModel", "Auto-refresh failed: ${e.message}")
                 }
@@ -96,25 +108,97 @@ class OrdersViewModel @Inject constructor(
         pendingCountJob?.cancel()
         offlineQueueJob?.cancel()
         serversJob?.cancel()
+        searchJob?.cancel()
     }
 
     private fun loadOrders() {
         ordersJob?.cancel()
         ordersJob = viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, hasMorePages = true) }
             try {
-                orderRepository.getFilteredOrders(
-                    status = _state.value.statusFilter,
-                    serverId = _state.value.serverFilter,
-                    startTime = _state.value.dateFrom,
-                    endTime = _state.value.dateTo
-                ).collect { orders ->
-                    _state.update { it.copy(orders = orders, isLoading = false, error = null) }
+                val search = _searchQuery.value.trim()
+                val s = _state.value
+                val orders = orderRepository.getFilteredOrdersPaged(
+                    status = s.statusFilter,
+                    serverId = s.serverFilter,
+                    startTime = s.dateFrom,
+                    endTime = s.dateTo,
+                    search = search.takeIf { it.isNotEmpty() },
+                    limit = PAGE_SIZE,
+                    offset = 0
+                )
+                val totalCount = orderRepository.getFilteredOrdersCount(
+                    status = s.statusFilter,
+                    serverId = s.serverFilter,
+                    startTime = s.dateFrom,
+                    endTime = s.dateTo,
+                    search = search.takeIf { it.isNotEmpty() }
+                )
+                _state.update {
+                    it.copy(
+                        orders = orders,
+                        isLoading = false,
+                        error = null,
+                        hasMorePages = orders.size >= PAGE_SIZE && orders.size < totalCount,
+                        totalCount = totalCount,
+                        searchQuery = search
+                    )
                 }
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error loading orders", e)
                 _state.update { it.copy(isLoading = false, error = e.message) }
             }
         }
+    }
+
+    fun loadMoreOrders() {
+        val currentState = _state.value
+        if (currentState.isLoadingMore || !currentState.hasMorePages || currentState.isLoading) return
+
+        viewModelScope.launch {
+            _state.update { it.copy(isLoadingMore = true) }
+            try {
+                val search = _searchQuery.value.trim()
+                val currentOffset = currentState.orders.size
+                val moreOrders = orderRepository.getFilteredOrdersPaged(
+                    status = currentState.statusFilter,
+                    serverId = currentState.serverFilter,
+                    startTime = currentState.dateFrom,
+                    endTime = currentState.dateTo,
+                    search = search.takeIf { it.isNotEmpty() },
+                    limit = PAGE_SIZE,
+                    offset = currentOffset
+                )
+                _state.update {
+                    val combined = it.orders + moreOrders
+                    it.copy(
+                        orders = combined,
+                        isLoadingMore = false,
+                        hasMorePages = moreOrders.size >= PAGE_SIZE && combined.size < it.totalCount
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("OrdersViewModel", "Error loading more orders", e)
+                _state.update { it.copy(isLoadingMore = false) }
+            }
+        }
+    }
+
+    fun setSearchQuery(query: String) {
+        _searchQuery.value = query
+        _state.update { it.copy(searchQuery = query) }
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            delay(400L)
+            loadOrders()
+        }
+    }
+
+    fun clearSearch() {
+        _searchQuery.value = ""
+        _state.update { it.copy(searchQuery = "") }
+        searchJob?.cancel()
+        loadOrders()
     }
 
     private fun loadCounts() {
@@ -169,6 +253,7 @@ class OrdersViewModel @Inject constructor(
                 } catch (e: Exception) {
                     Log.w("OrdersViewModel", "Cleanup failed", e)
                 }
+                loadOrders()
             } finally {
                 _isRefreshing.value = false
             }

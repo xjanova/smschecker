@@ -42,6 +42,42 @@ class OrderRepository @Inject constructor(
         endTime: Long?
     ): Flow<List<OrderApproval>> = orderApprovalDao.getFilteredOrders(status, serverId, startTime, endTime)
 
+    suspend fun getFilteredOrdersPaged(
+        status: ApprovalStatus?,
+        serverId: Long?,
+        startTime: Long?,
+        endTime: Long?,
+        search: String?,
+        limit: Int,
+        offset: Int
+    ): List<OrderApproval> {
+        return orderApprovalDao.getFilteredOrdersPaged(
+            status = status?.name,
+            serverId = serverId,
+            startTime = startTime,
+            endTime = endTime,
+            search = search?.takeIf { it.isNotBlank() },
+            limit = limit,
+            offset = offset
+        )
+    }
+
+    suspend fun getFilteredOrdersCount(
+        status: ApprovalStatus?,
+        serverId: Long?,
+        startTime: Long?,
+        endTime: Long?,
+        search: String?
+    ): Int {
+        return orderApprovalDao.getFilteredOrdersCount(
+            status = status?.name,
+            serverId = serverId,
+            startTime = startTime,
+            endTime = endTime,
+            search = search?.takeIf { it.isNotBlank() }
+        )
+    }
+
     fun getPendingReviewCount(): Flow<Int> = orderApprovalDao.getPendingReviewCount()
 
     fun getOfflineQueueCount(): Flow<Int> = orderApprovalDao.getOfflineQueueCount()

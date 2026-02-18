@@ -170,7 +170,48 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
             }
         }
 
-        item { Spacer(modifier = Modifier.height(16.dp)) }
+        item { Spacer(modifier = Modifier.height(12.dp)) }
+
+        // Search Bar
+        item {
+            OutlinedTextField(
+                value = state.searchQuery,
+                onValueChange = { viewModel.setSearchQuery(it) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                placeholder = { Text(strings.searchPlaceholder, fontSize = 13.sp) },
+                leadingIcon = {
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                },
+                trailingIcon = {
+                    if (state.searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { viewModel.clearSearch() }) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = strings.clearFilter,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = AppColors.GoldAccent,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
+                ),
+                textStyle = MaterialTheme.typography.bodyMedium
+            )
+        }
+
+        item { Spacer(modifier = Modifier.height(8.dp)) }
 
         // Status Filter Chips
         item {
@@ -276,7 +317,7 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    StatItem(strings.totalLabel, state.orders.size, MaterialTheme.colorScheme.onBackground)
+                    StatItem(strings.totalLabel, state.totalCount, MaterialTheme.colorScheme.onBackground)
                     Box(
                         modifier = Modifier
                             .width(1.dp)
@@ -349,6 +390,27 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
             Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        // Load more trigger
+        if (state.hasMorePages && !state.isLoading) {
+            item {
+                LaunchedEffect(Unit) {
+                    viewModel.loadMoreOrders()
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp,
+                        color = AppColors.GoldAccent
+                    )
+                }
+            }
         }
 
         item { Spacer(modifier = Modifier.height(8.dp)) }
