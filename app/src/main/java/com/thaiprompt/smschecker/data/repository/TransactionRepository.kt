@@ -57,6 +57,10 @@ class TransactionRepository @Inject constructor(
      *
      * CRITICAL: This is the main entry point for syncing SMS/notification transactions.
      * Using parallel sync reduces latency from O(n * timeout) to O(timeout).
+     *
+     * FIX: Only sends to servers that haven't received this transaction yet.
+     * Previously, isSynced was marked true after first server success,
+     * causing other servers to never receive the transaction.
      */
     suspend fun syncTransaction(transaction: BankTransaction): Boolean {
         val activeServers = serverConfigDao.getActiveConfigs()
@@ -64,10 +68,26 @@ class TransactionRepository @Inject constructor(
 
         val deviceId = secureStorage.getDeviceId() ?: return false
 
-        // Prepare server list for parallel execution
-        val serverList = activeServers.map { it.id to it.name }
+        // FIX: Filter out servers that already received this transaction successfully
+        val alreadySyncedServerIds = try {
+            syncLogDao.getSuccessfulServerIds(transaction.id)
+        } catch (e: Exception) {
+            emptyList()
+        }
 
-        // Execute sync to all servers in parallel
+        val serversToSync = activeServers.filter { it.id !in alreadySyncedServerIds }
+        if (serversToSync.isEmpty()) {
+            // All active servers already have this transaction — mark as fully synced
+            if (!transaction.isSynced) {
+                transactionDao.markAsSynced(transaction.id, activeServers.first().id, "ALL_SYNCED")
+            }
+            return true
+        }
+
+        // Prepare server list for parallel execution
+        val serverList = serversToSync.map { it.id to it.name }
+
+        // Execute sync to all remaining servers in parallel
         val results = ParallelSyncHelper.executeParallelBoolean(
             servers = serverList,
             maxConcurrency = 5,
@@ -81,22 +101,38 @@ class TransactionRepository @Inject constructor(
         for (result in results.results) {
             try {
                 if (result.success) {
-                    transactionDao.markAsSynced(transaction.id, result.serverId, "OK")
                     serverConfigDao.updateSyncStatus(result.serverId, System.currentTimeMillis(), "success")
                 } else {
                     serverConfigDao.updateSyncStatus(result.serverId, System.currentTimeMillis(), "failed")
                 }
             } catch (e: Exception) {
-                Log.e("TransactionRepository", "Failed to update status for ${result.serverName}", e)
+                Log.e(TAG, "Failed to update status for ${result.serverName}", e)
             }
         }
 
-        Log.d("TransactionRepository", "Parallel sync: ${results.successCount}/${results.results.size} in ${results.totalDurationMs}ms")
+        // FIX: Only mark transaction as globally synced when ALL active servers have it
+        val newSyncedIds = alreadySyncedServerIds + results.results.filter { it.success }.map { it.serverId }
+        val allServersSynced = activeServers.all { it.id in newSyncedIds }
+
+        if (allServersSynced) {
+            // All servers received the transaction — mark as fully synced
+            transactionDao.markAsSynced(transaction.id, activeServers.first().id, "ALL_SYNCED")
+            Log.i(TAG, "Transaction ${transaction.id} fully synced to ALL ${activeServers.size} servers")
+        } else if (results.anySucceeded) {
+            // Partial success — keep isSynced = false so retry picks it up
+            val syncedNames = results.results.filter { it.success }.joinToString { it.serverName }
+            val failedNames = results.results.filter { !it.success }.joinToString { it.serverName }
+            Log.w(TAG, "Transaction ${transaction.id} partial sync: OK=[$syncedNames] FAILED=[$failedNames]")
+        }
+
+        Log.d(TAG, "Parallel sync: ${results.successCount}/${results.results.size} servers, " +
+                "total synced: ${newSyncedIds.size}/${activeServers.size} in ${results.totalDurationMs}ms")
         return results.anySucceeded
     }
 
     /**
-     * Sync all unsynced transactions.
+     * Sync all unsynced transactions to all servers.
+     * Picks up transactions that failed to sync to some servers.
      */
     suspend fun syncAllUnsynced(): Int {
         val unsynced = try {
