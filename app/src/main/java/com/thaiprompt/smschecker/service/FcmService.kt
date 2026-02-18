@@ -235,15 +235,21 @@ class FcmService : FirebaseMessagingService() {
     private fun handleOrderStatusChange(data: Map<String, String>, statusLabel: String, emoji: String) {
         val orderNumber = data["order_number"] ?: "N/A"
         val isFortune = data["is_fortune_reading"] == "true"
-        Log.i(TAG, "FCM: Order status change - $orderNumber $statusLabel (fortune=$isFortune)")
+        val paymentStatus = data["payment_status"] ?: ""
+        val isCancelled = paymentStatus == "cancelled"
+        Log.i(TAG, "FCM: Order status change - $orderNumber $statusLabel (fortune=$isFortune, cancelled=$isCancelled)")
 
-        val title = if (isFortune) "💰 บิลดูดวงชำระแล้ว!" else "$emoji คำสั่งซื้อ $statusLabel"
+        val title = when {
+            isFortune && isCancelled -> "🚫 บิลดูดวงถูกยกเลิก"
+            isFortune -> "💰 บิลดูดวงชำระแล้ว!"
+            else -> "$emoji คำสั่งซื้อ $statusLabel"
+        }
         val amount = data["amount"] ?: ""
         val bank = data["bank"] ?: ""
-        val body = if (isFortune && amount.isNotEmpty()) {
-            "บิล #$orderNumber ยอด ฿$amount จับคู่สำเร็จ" + if (bank.isNotEmpty()) " ($bank)" else ""
-        } else {
-            "คำสั่งซื้อ #$orderNumber $statusLabel"
+        val body = when {
+            isFortune && isCancelled -> "บิล #$orderNumber ถูกยกเลิกโดยลูกค้า"
+            isFortune && amount.isNotEmpty() -> "บิล #$orderNumber ยอด ฿$amount จับคู่สำเร็จ" + if (bank.isNotEmpty()) " ($bank)" else ""
+            else -> "คำสั่งซื้อ #$orderNumber $statusLabel"
         }
 
         showNotification(
