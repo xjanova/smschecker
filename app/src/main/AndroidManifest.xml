@@ -18,6 +18,9 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
+    <!-- Battery optimization exemption — critical for SMS monitoring while device sleeps -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <!-- Boot -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 

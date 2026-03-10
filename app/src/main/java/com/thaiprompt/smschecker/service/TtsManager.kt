@@ -27,6 +27,8 @@ class TtsManager @Inject constructor(
     private var isInitialized = false
     private val pendingQueue = CopyOnWriteArrayList<String>()
     private val mainHandler = Handler(Looper.getMainLooper())
+    @Volatile
+    private var cachedLangKey: String? = null // Cache language to avoid re-applying every speak
 
     init {
         // TextToSpeech must be created on a thread with a Looper (Main thread)
@@ -59,10 +61,16 @@ class TtsManager @Inject constructor(
     /**
      * Apply TTS language based on settings.
      * "auto" follows app language, "th" forces Thai, "en" forces English.
+     * Uses caching to avoid unnecessary setLanguage() calls which are expensive.
      */
     private fun applyTtsLanguage() {
         val ttsLang = secureStorage.getTtsLanguage()
         val langKey = if (ttsLang == "auto") secureStorage.getLanguage() else ttsLang
+
+        // Skip if language hasn't changed since last apply
+        if (langKey == cachedLangKey) return
+        cachedLangKey = langKey
+
         val locale = if (langKey == "en") Locale.ENGLISH else Locale("th", "TH")
 
         val result = tts?.setLanguage(locale)
@@ -70,6 +78,13 @@ class TtsManager @Inject constructor(
             Log.w(TAG, "$langKey TTS not available, using default locale")
             tts?.setLanguage(Locale.getDefault())
         }
+    }
+
+    /**
+     * Call this when language settings change to force re-apply on next speak.
+     */
+    fun invalidateLanguageCache() {
+        cachedLangKey = null
     }
 
     /**

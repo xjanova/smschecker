@@ -82,18 +82,21 @@ class OrdersViewModel @Inject constructor(
     }
 
     /**
-     * Auto-refresh orders every 30 seconds to ensure orders are always up-to-date
-     * even if FCM push notification doesn't arrive
+     * Auto-refresh orders every 90 seconds as fallback for FCM push notifications.
+     * RealtimeSyncService already handles real-time sync via WebSocket + periodic polling,
+     * so this is just a safety net for the UI while on the Orders screen.
      */
     private fun startAutoRefresh() {
         autoRefreshJob?.cancel()
         autoRefreshJob = viewModelScope.launch {
-            while (true) {
+            while (isActive) {
+                delay(90_000L) // 90 seconds — FCM + WebSocket is primary, this is fallback
                 try {
-                    delay(30_000L) // 30 seconds
                     Log.d("OrdersViewModel", "Auto-refreshing orders...")
                     orderRepository.fetchOrders()
                     loadOrders()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Log.w("OrdersViewModel", "Auto-refresh failed: ${e.message}")
                 }

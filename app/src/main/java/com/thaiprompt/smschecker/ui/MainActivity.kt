@@ -3,10 +3,15 @@
 package com.thaiprompt.smschecker.ui
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -80,6 +85,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         checkAndRequestPermissions()
+        requestBatteryOptimizationExemption()
         OrderSyncWorker.enqueuePeriodicSync(applicationContext)
         RealtimeSyncService.start(applicationContext)
 
@@ -132,6 +138,30 @@ class MainActivity : ComponentActivity() {
             startSmsService()
         } else {
             permissionLauncher.launch(notGranted.toTypedArray())
+        }
+    }
+
+    /**
+     * Request battery optimization exemption so the app can run reliably in background.
+     * This is critical for SMS monitoring while the device is sleeping.
+     * Shows the system dialog only if not already exempted.
+     */
+    private fun requestBatteryOptimizationExemption() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                Log.i("MainActivity", "Requesting battery optimization exemption")
+                try {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Failed to request battery optimization exemption", e)
+                }
+            } else {
+                Log.d("MainActivity", "Already exempt from battery optimization")
+            }
         }
     }
 

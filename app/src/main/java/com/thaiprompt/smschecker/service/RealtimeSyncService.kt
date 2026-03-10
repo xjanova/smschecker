@@ -46,8 +46,9 @@ class RealtimeSyncService : Service() {
         private const val CHANNEL_NAME = "Real-time Sync"
 
         private const val WAKELOCK_TAG = "SmsChecker:RealtimeSyncWakeLock"
-        // WakeLock renewal interval - renew before timeout to keep sync alive
-        private const val WAKELOCK_RENEWAL_INTERVAL_MS = 5 * 60 * 1000L // 5 minutes
+        // WakeLock timeout - use 10 minutes, renew every 8 minutes (before expiry)
+        private const val WAKELOCK_TIMEOUT_MS = 10 * 60 * 1000L // 10 minutes
+        private const val WAKELOCK_RENEWAL_INTERVAL_MS = 8 * 60 * 1000L // 8 minutes (renew before 10min timeout)
 
         // Actions
         const val ACTION_START = "com.thaiprompt.smschecker.action.START_SYNC"
@@ -162,21 +163,24 @@ class RealtimeSyncService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        Log.d(TAG, "Task removed, restarting service")
-        // Schedule restart when user swipes away app
-        val restartIntent = Intent(this, RealtimeSyncService::class.java).apply {
-            action = ACTION_START
+        Log.d(TAG, "Task removed, scheduling service restart")
+        try {
+            val restartIntent = Intent(this, RealtimeSyncService::class.java).apply {
+                action = ACTION_START
+            }
+            val pendingIntent = PendingIntent.getService(
+                this, 1, restartIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarmManager.set(
+                AlarmManager.RTC_WAKEUP,
+                System.currentTimeMillis() + 3000, // 3 seconds delay to avoid rapid restart loop
+                pendingIntent
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to schedule service restart", e)
         }
-        val pendingIntent = PendingIntent.getService(
-            this, 1, restartIntent,
-            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        alarmManager.set(
-            AlarmManager.RTC_WAKEUP,
-            System.currentTimeMillis() + 1000,
-            pendingIntent
-        )
         super.onTaskRemoved(rootIntent)
     }
 
@@ -544,35 +548,55 @@ class RealtimeSyncService : Service() {
     }
 
     private fun acquireWakeLock() {
-        if (wakeLock == null) {
-            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = powerManager.newWakeLock(
-                PowerManager.PARTIAL_WAKE_LOCK,
-                WAKELOCK_TAG
-            ).apply {
-                // Acquire indefinitely (no timeout) - we manage renewal ourselves
-                acquire()
+        try {
+            if (wakeLock == null) {
+                val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+                wakeLock = powerManager.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    WAKELOCK_TAG
+                )
             }
-            Log.d(TAG, "WakeLock acquired (indefinite)")
+            wakeLock?.let { wl ->
+                if (!wl.isHeld) {
+                    wl.acquire(WAKELOCK_TIMEOUT_MS) // 10-minute timeout — auto-releases if not renewed
+                    Log.d(TAG, "WakeLock acquired (timeout=${WAKELOCK_TIMEOUT_MS/1000}s)")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to acquire WakeLock", e)
         }
     }
 
     private fun renewWakeLock() {
-        wakeLock?.let { wl ->
-            if (wl.isHeld) {
-                wl.release()
+        try {
+            wakeLock?.let { wl ->
+                if (wl.isHeld) {
+                    wl.release()
+                }
+                wl.acquire(WAKELOCK_TIMEOUT_MS) // Re-acquire with fresh timeout
+                Log.d(TAG, "WakeLock renewed (timeout=${WAKELOCK_TIMEOUT_MS/1000}s)")
+            } ?: run {
+                // WakeLock was garbage-collected, create new one
+                acquireWakeLock()
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to renew WakeLock", e)
+            // Try fresh acquisition
+            wakeLock = null
+            acquireWakeLock()
         }
-        wakeLock = null
-        acquireWakeLock()
     }
 
     private fun releaseWakeLock() {
-        wakeLock?.let {
-            if (it.isHeld) {
-                it.release()
-                Log.d(TAG, "WakeLock released")
+        try {
+            wakeLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                    Log.d(TAG, "WakeLock released")
+                }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to release WakeLock", e)
         }
         wakeLock = null
     }
