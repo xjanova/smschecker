@@ -89,8 +89,10 @@ class OrdersViewModel @Inject constructor(
     private fun startAutoRefresh() {
         autoRefreshJob?.cancel()
         autoRefreshJob = viewModelScope.launch {
-            while (isActive) {
+            while (true) {
                 delay(90_000L) // 90 seconds — FCM + WebSocket is primary, this is fallback
+                // delay() throws CancellationException when scope is cancelled (onCleared),
+                // so while(true) is safe here — the coroutine will be cancelled properly.
                 try {
                     Log.d("OrdersViewModel", "Auto-refreshing orders...")
                     orderRepository.fetchOrders()
