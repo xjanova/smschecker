@@ -743,7 +743,7 @@ object LicenseManager {
         return try {
             // Try java.time first (available on API 26+, which is our minSdk)
             val cleaned = isoString.replace(Regex("\\.[0-9]+Z$"), "Z").let {
-                if (!it.endsWith("Z") && !it.contains("+") && !it.contains("-", startIndex = 10)) {
+                if (!it.endsWith("Z") && !it.contains("+") && it.indexOf("-", 10) == -1) {
                     "${it}Z" // assume UTC if no timezone
                 } else it
             }
