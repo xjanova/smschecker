@@ -1,0 +1,828 @@
+package com.thaiprompt.smschecker.data.license
+
+import android.content.Context
+import android.content.SharedPreferences
+import android.util.Log
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKeys
+import com.thaiprompt.smschecker.BuildConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
+
+/**
+ * Central license state manager for SmsChecker.
+ * Tries server-based trial/license verification first.
+ * Falls back to LOCAL trial (24h) when server is unreachable — app must always be usable.
+ */
+object LicenseManager {
+
+    private const val TAG = "LicenseManager"
+    private const val PREFS_NAME = "smschecker_license"
+    private const val KEY_LICENSE_KEY = "license_key"
+    private const val KEY_LICENSE_TYPE = "license_type"
+    private const val KEY_LICENSE_STATUS = "license_status"
+    private const val KEY_LICENSE_EXPIRES_AT = "license_expires_at"
+    private const val KEY_DEVICE_REGISTERED = "device_registered"
+    private const val KEY_DEVICE_ID = "device_id"
+    private const val KEY_MACHINE_ID = "machine_id"
+    private const val KEY_FIRST_LAUNCH_AT = "first_launch_at"
+    private const val KEY_LOCAL_TRIAL_USED = "local_trial_used"
+    private const val KEY_LAST_VERIFIED_AT = "last_verified_at"
+    private const val KEY_SERVER_TIME_DRIFT_MS = "server_time_drift_ms"
+    private const val KEY_CLOCK_TAMPER_COUNT = "clock_tamper_count"
+
+    // Local trial: 24 hours (fallback when server unreachable)
+    private const val LOCAL_TRIAL_DURATION_MS = 24L * 60 * 60 * 1000
+
+    // Max allowed clock drift before flagging (5 minutes)
+    private const val MAX_CLOCK_DRIFT_MS = 5L * 60 * 1000
+
+    // Max clock tamper events before forcing server-only mode
+    private const val MAX_TAMPER_COUNT = 3
+
+    // Purchase URL (base for plan-specific URLs)
+    private const val PURCHASE_BASE_URL = "https://xman4289.com/smschecker/buy"
+
+    private val _state = MutableStateFlow(LicenseState())
+    val state: StateFlow<LicenseState> = _state
+
+    @Volatile
+    private var prefs: SharedPreferences? = null
+    @Volatile
+    private var appContext: Context? = null
+
+    /**
+     * Get machine ID for server API calls.
+     * Uses hardware hash (SHA-256, 64 chars) to satisfy server min:32 requirement.
+     */
+    private fun getMachineId(context: Context): String {
+        return try {
+            DeviceManager.getHardwareHash(context)
+        } catch (e: Exception) {
+            Log.e(TAG, "getMachineId failed", e)
+            "unknown-device"
+        }
+    }
+
+    /**
+     * Get raw DRM ID (Widevine) for server-side device lookup.
+     */
+    private fun getDrmId(): String {
+        return try {
+            DeviceManager.getDrmId() ?: ""
+        } catch (e: Exception) {
+            Log.e(TAG, "getDrmId failed", e)
+            ""
+        }
+    }
+
+    /**
+     * Initialize on app start. Must be called from MainActivity LaunchedEffect.
+     * NEVER throws — all errors are caught and handled gracefully.
+     */
+    suspend fun initialize(context: Context) {
+        try {
+            appContext = context.applicationContext
+            prefs = getPrefs(context)
+
+            val displayId = try {
+                DeviceManager.getStableDisplayId(context)
+            } catch (e: Exception) {
+                Log.e(TAG, "getStableDisplayId failed", e)
+                "unknown"
+            }
+
+            val machineId = getMachineId(context)
+            val drmId = getDrmId()
+            val androidId = try { DeviceManager.getAndroidId(context) } catch (_: Exception) { "" }
+
+            val oldMachineId = try { prefs?.getString(KEY_MACHINE_ID, "") ?: "" } catch (_: Exception) { "" }
+
+            try {
+                prefs?.edit()
+                    ?.putString(KEY_DEVICE_ID, displayId)
+                    ?.putString(KEY_MACHINE_ID, machineId)
+                    ?.apply()
+            } catch (e: Exception) {
+                Log.e(TAG, "prefs write failed", e)
+            }
+
+            Log.d(TAG, "init: displayId=$displayId, machineId=${machineId.take(16)}..., " +
+                "drmId=${drmId.take(16).ifEmpty { "NONE" }}..., androidId=${androidId.take(8)}...")
+
+            _state.value = LicenseState(
+                status = LicenseStatus.CHECKING,
+                deviceId = displayId,
+                isLoading = true
+            )
+
+            // Anti-clock-tampering
+            detectClockTampering()
+
+            // Runtime integrity check
+            val integrityResult = IntegrityChecker.runAllChecks(context)
+            if (integrityResult.shouldBlockLicense) {
+                Log.w(TAG, "Integrity check FAILED — blocking license")
+                _state.value = LicenseState(
+                    status = LicenseStatus.EXPIRED,
+                    deviceId = displayId,
+                    isLoading = false,
+                    errorMessage = "ตรวจพบการแก้ไขแอป กรุณาดาวน์โหลดจากแหล่งที่ถูกต้อง"
+                )
+                return
+            }
+
+            val licenseKey = try {
+                prefs?.getString(KEY_LICENSE_KEY, "") ?: ""
+            } catch (e: Exception) {
+                Log.e(TAG, "read license key failed", e)
+                ""
+            }
+
+            val hwidChanged = oldMachineId.isNotEmpty() && oldMachineId != machineId
+
+            if (licenseKey.isNotEmpty()) {
+                if (hwidChanged) {
+                    Log.i(TAG, "Re-activating license with new HWID")
+                    migrateHwid(context, licenseKey, machineId, displayId)
+                } else {
+                    validatePaidLicense(context, licenseKey, machineId, displayId)
+                }
+            } else {
+                val found = checkMachineForExistingLicense(context, machineId, displayId)
+                if (!found) {
+                    checkOrStartDemo(context, machineId, displayId)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "initialize failed completely", e)
+            useLocalTrialFallback(context)
+        }
+    }
+
+    /**
+     * Validate paid license (with offline cached fallback).
+     */
+    private suspend fun validatePaidLicense(
+        context: Context,
+        licenseKey: String,
+        machineId: String,
+        displayId: String
+    ) {
+        try {
+            val result = withContext(Dispatchers.IO) {
+                LicenseApiClient.validateLicense(licenseKey, machineId)
+            }
+            if (result.success) {
+                val valid = result.data.get("is_valid")?.asBoolean ?: false
+                val data = result.data.getAsJsonObject("data") ?: result.data
+                val type = data.get("license_type")?.asString ?: ""
+                val expiresAtStr = data.get("expires_at")?.asString
+                val daysRemaining = data.get("days_remaining")?.asInt ?: 0
+                val expiresAt = parseIsoTimestamp(expiresAtStr)
+
+                if (valid) {
+                    prefs?.edit()
+                        ?.putString(KEY_LICENSE_TYPE, type)
+                        ?.putString(KEY_LICENSE_STATUS, "active")
+                        ?.putLong(KEY_LICENSE_EXPIRES_AT, expiresAt)
+                        ?.apply()
+
+                    _state.value = LicenseState(
+                        status = LicenseStatus.ACTIVE,
+                        licenseType = type,
+                        expiresAt = expiresAt,
+                        remainingDays = daysRemaining,
+                        deviceId = displayId,
+                        isLoading = false
+                    )
+                } else {
+                    val drmId = getDrmId()
+                    if (drmId.isNotEmpty()) {
+                        val reActivated = tryReActivate(context, licenseKey, machineId, displayId)
+                        if (!reActivated) {
+                            prefs?.edit()?.putString(KEY_LICENSE_STATUS, "expired")?.apply()
+                            _state.value = LicenseState(
+                                status = LicenseStatus.EXPIRED,
+                                licenseType = type,
+                                deviceId = displayId,
+                                isLoading = false,
+                                errorMessage = result.message.ifEmpty { "License หมดอายุ" }
+                            )
+                        }
+                    } else {
+                        prefs?.edit()?.putString(KEY_LICENSE_STATUS, "expired")?.apply()
+                        _state.value = LicenseState(
+                            status = LicenseStatus.EXPIRED,
+                            licenseType = type,
+                            deviceId = displayId,
+                            isLoading = false,
+                            errorMessage = result.message.ifEmpty { "License หมดอายุ" }
+                        )
+                    }
+                }
+            } else {
+                val errorCode = try { result.data.get("error_code")?.asString ?: "" } catch (_: Exception) { "" }
+                if (errorCode == "ALREADY_ACTIVATED_OTHER_DEVICE" || result.statusCode == 403) {
+                    prefs?.edit()
+                        ?.remove(KEY_LICENSE_KEY)
+                        ?.putString(KEY_LICENSE_STATUS, "blocked")
+                        ?.apply()
+                    _state.value = LicenseState(
+                        status = LicenseStatus.EXPIRED,
+                        deviceId = displayId,
+                        isLoading = false,
+                        errorMessage = "License นี้ถูกใช้งานบนเครื่องอื่นแล้ว\nกรุณาติดต่อแอดมินเพื่อย้ายเครื่อง"
+                    )
+                } else {
+                    val drmId = getDrmId()
+                    if (drmId.isNotEmpty()) {
+                        val reActivated = tryReActivate(context, licenseKey, machineId, displayId)
+                        if (!reActivated) {
+                            useCachedState(displayId)
+                        }
+                    } else {
+                        useCachedState(displayId)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "validatePaidLicense failed", e)
+            useCachedState(displayId)
+        }
+    }
+
+    private suspend fun tryReActivate(
+        context: Context,
+        licenseKey: String,
+        machineId: String,
+        displayId: String
+    ): Boolean {
+        return try {
+            val hardwareHash = try { DeviceManager.getHardwareHash(context) } catch (_: Exception) { "" }
+            val drmId = getDrmId()
+            val androidId = try { DeviceManager.getAndroidId(context) } catch (_: Exception) { "" }
+            val result = withContext(Dispatchers.IO) {
+                LicenseApiClient.activateLicense(licenseKey, machineId, hardwareHash, drmId, androidId)
+            }
+            if (result.success) {
+                val data = result.data.getAsJsonObject("data") ?: result.data
+                val type = data.get("license_type")?.asString ?: "unknown"
+                val expiresAtStr = data.get("expires_at")?.asString
+                val expiresAt = parseIsoTimestamp(expiresAtStr)
+                val daysRemaining = data.get("days_remaining")?.asInt ?: 0
+
+                prefs?.edit()
+                    ?.putString(KEY_LICENSE_TYPE, type)
+                    ?.putString(KEY_LICENSE_STATUS, "active")
+                    ?.putLong(KEY_LICENSE_EXPIRES_AT, expiresAt)
+                    ?.apply()
+
+                _state.value = LicenseState(
+                    status = LicenseStatus.ACTIVE,
+                    licenseType = type,
+                    expiresAt = expiresAt,
+                    remainingDays = daysRemaining,
+                    deviceId = displayId,
+                    isLoading = false
+                )
+                Log.i(TAG, "Re-activate succeeded — HWID rebound to current device")
+                true
+            } else {
+                val errorCode = try { result.data.get("error_code")?.asString ?: "" } catch (_: Exception) { "" }
+                val isOtherDevice = errorCode == "ALREADY_ACTIVATED_OTHER_DEVICE" || result.statusCode == 403
+                if (isOtherDevice) {
+                    prefs?.edit()
+                        ?.remove(KEY_LICENSE_KEY)
+                        ?.putString(KEY_LICENSE_STATUS, "blocked")
+                        ?.apply()
+                    _state.value = LicenseState(
+                        status = LicenseStatus.EXPIRED,
+                        deviceId = displayId,
+                        isLoading = false,
+                        errorMessage = "License นี้ถูกใช้งานบนเครื่องอื่นแล้ว\nกรุณาติดต่อแอดมินเพื่อย้ายเครื่อง"
+                    )
+                }
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "tryReActivate failed", e)
+            false
+        }
+    }
+
+    private suspend fun migrateHwid(
+        context: Context,
+        licenseKey: String,
+        newMachineId: String,
+        displayId: String
+    ) {
+        try {
+            val hardwareHash = try { DeviceManager.getHardwareHash(context) } catch (_: Exception) { "" }
+            val drmId = getDrmId()
+            val androidId = try { DeviceManager.getAndroidId(context) } catch (_: Exception) { "" }
+            val result = withContext(Dispatchers.IO) {
+                LicenseApiClient.activateLicense(licenseKey, newMachineId, hardwareHash, drmId, androidId)
+            }
+            if (result.success) {
+                val data = result.data.getAsJsonObject("data") ?: result.data
+                val type = data.get("license_type")?.asString ?: "unknown"
+                val expiresAtStr = data.get("expires_at")?.asString
+                val expiresAt = parseIsoTimestamp(expiresAtStr)
+                val daysRemaining = data.get("days_remaining")?.asInt ?: 0
+
+                prefs?.edit()
+                    ?.putString(KEY_MACHINE_ID, newMachineId)
+                    ?.putString(KEY_LICENSE_TYPE, type)
+                    ?.putString(KEY_LICENSE_STATUS, "active")
+                    ?.putLong(KEY_LICENSE_EXPIRES_AT, expiresAt)
+                    ?.apply()
+
+                _state.value = LicenseState(
+                    status = LicenseStatus.ACTIVE,
+                    licenseType = type,
+                    expiresAt = expiresAt,
+                    remainingDays = daysRemaining,
+                    deviceId = displayId,
+                    isLoading = false
+                )
+                Log.i(TAG, "HWID migration successful")
+            } else {
+                Log.w(TAG, "HWID migration failed: ${result.message}, falling back to validate")
+                validatePaidLicense(context, licenseKey, newMachineId, displayId)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "migrateHwid failed", e)
+            validatePaidLicense(context, licenseKey, newMachineId, displayId)
+        }
+    }
+
+    private suspend fun checkMachineForExistingLicense(
+        context: Context,
+        machineId: String,
+        displayId: String
+    ): Boolean {
+        return try {
+            val drmId = getDrmId()
+            val androidId = try { DeviceManager.getAndroidId(context) } catch (_: Exception) { "" }
+            val result = withContext(Dispatchers.IO) {
+                LicenseApiClient.checkMachine(machineId, drmId, androidId)
+            }
+            if (result.success) {
+                val hasLicense = result.data.get("has_license")?.asBoolean ?: false
+                if (hasLicense) {
+                    val data = result.data.getAsJsonObject("data") ?: return false
+                    val key = data.get("license_key")?.asString ?: return false
+                    val type = data.get("license_type")?.asString ?: ""
+                    val expiresAtStr = data.get("expires_at")?.asString
+                    val expiresAt = parseIsoTimestamp(expiresAtStr)
+                    val daysRemaining = data.get("days_remaining")?.asInt ?: 0
+
+                    prefs?.edit()
+                        ?.putString(KEY_LICENSE_KEY, key)
+                        ?.putString(KEY_LICENSE_TYPE, type)
+                        ?.putString(KEY_LICENSE_STATUS, "active")
+                        ?.putLong(KEY_LICENSE_EXPIRES_AT, expiresAt)
+                        ?.apply()
+
+                    _state.value = LicenseState(
+                        status = LicenseStatus.ACTIVE,
+                        licenseType = type,
+                        expiresAt = expiresAt,
+                        remainingDays = daysRemaining,
+                        deviceId = displayId,
+                        isLoading = false
+                    )
+                    Log.d(TAG, "Auto-activated license from HWID: $key")
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "checkMachineForExistingLicense failed", e)
+            false
+        }
+    }
+
+    private suspend fun checkOrStartDemo(
+        context: Context,
+        machineId: String,
+        displayId: String
+    ) {
+        try {
+            val drmId = getDrmId()
+            val checkResult = withContext(Dispatchers.IO) {
+                LicenseApiClient.checkDemo(machineId, drmId)
+            }
+
+            if (!checkResult.success) {
+                useLocalTrialFallback(context)
+                return
+            }
+
+            val serverTimeStr = checkResult.data.get("server_time")?.asString
+            updateServerTimeDrift(serverTimeStr)
+
+            val data = checkResult.data.getAsJsonObject("data") ?: checkResult.data
+            val hasUsedDemo = data.get("has_used_demo")?.asBoolean ?: false
+            val canStartDemo = data.get("can_start_demo")?.asBoolean ?: false
+            val isTrialActive = data.get("is_trial_active")?.asBoolean ?: false
+
+            if (isTrialActive) {
+                val trialInfo = data.getAsJsonObject("trial_info")
+                val daysRemaining = trialInfo?.get("days_remaining")?.asInt ?: 0
+                val serverHoursRemaining = trialInfo?.get("hours_remaining")?.asInt
+                val expiresAtStr = trialInfo?.get("expires_at")?.asString
+                val expiresAt = parseIsoTimestamp(expiresAtStr)
+
+                val hoursRemaining = serverHoursRemaining
+                    ?: if (expiresAt > 0) {
+                        ((expiresAt - getAdjustedCurrentTimeMs()) / (60 * 60 * 1000)).toInt().coerceAtLeast(0)
+                    } else {
+                        daysRemaining * 24
+                    }
+
+                recordVerification()
+
+                _state.value = LicenseState(
+                    status = LicenseStatus.TRIAL,
+                    licenseType = "trial",
+                    expiresAt = expiresAt,
+                    remainingDays = daysRemaining,
+                    remainingHours = hoursRemaining,
+                    deviceId = displayId,
+                    isLoading = false
+                )
+            } else if (!hasUsedDemo && canStartDemo) {
+                startDemoOnServer(context, machineId, displayId)
+            } else {
+                _state.value = LicenseState(
+                    status = LicenseStatus.EXPIRED,
+                    licenseType = "trial",
+                    deviceId = displayId,
+                    isLoading = false
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "checkOrStartDemo failed", e)
+            useLocalTrialFallback(context)
+        }
+    }
+
+    private suspend fun startDemoOnServer(
+        context: Context,
+        machineId: String,
+        displayId: String
+    ) {
+        try {
+            val drmId = getDrmId()
+            withContext(Dispatchers.IO) {
+                val deviceName = DeviceManager.getDeviceName()
+                val osVersion = DeviceManager.getOsVersion()
+                val appVersion = BuildConfig.VERSION_NAME
+                val hardwareHash = DeviceManager.getHardwareHash(context)
+                LicenseApiClient.registerDevice(machineId, deviceName, osVersion, appVersion, hardwareHash, drmId)
+            }
+
+            val demoResult = withContext(Dispatchers.IO) {
+                LicenseApiClient.startDemo(machineId = machineId, drmId = drmId)
+            }
+
+            if (demoResult.success) {
+                prefs?.edit()?.putBoolean(KEY_DEVICE_REGISTERED, true)?.apply()
+
+                val serverTimeStr = demoResult.data.get("server_time")?.asString
+                updateServerTimeDrift(serverTimeStr)
+
+                val data = demoResult.data.getAsJsonObject("data") ?: demoResult.data
+                val daysRemaining = data.get("days_remaining")?.asInt ?: 7
+                val serverHoursRemaining = data.get("hours_remaining")?.asInt
+                val expiresAtStr = data.get("expires_at")?.asString
+                val expiresAt = parseIsoTimestamp(expiresAtStr)
+                val hoursRemaining = serverHoursRemaining ?: (daysRemaining * 24)
+
+                recordVerification()
+
+                _state.value = LicenseState(
+                    status = LicenseStatus.TRIAL,
+                    licenseType = "trial",
+                    expiresAt = expiresAt,
+                    remainingDays = daysRemaining,
+                    remainingHours = hoursRemaining,
+                    deviceId = displayId,
+                    isLoading = false
+                )
+            } else {
+                useLocalTrialFallback(context)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "startDemoOnServer failed", e)
+            useLocalTrialFallback(context)
+        }
+    }
+
+    private fun useLocalTrialFallback(context: Context?) {
+        try {
+            val p = prefs ?: context?.let { getPrefs(it) }
+            val displayId = p?.getString(KEY_DEVICE_ID, "") ?: ""
+
+            val tamperCount = try { p?.getInt(KEY_CLOCK_TAMPER_COUNT, 0) ?: 0 } catch (_: Exception) { 0 }
+            if (tamperCount >= MAX_TAMPER_COUNT) {
+                _state.value = LicenseState(
+                    status = LicenseStatus.EXPIRED,
+                    licenseType = "trial",
+                    deviceId = displayId,
+                    isLoading = false,
+                    errorMessage = "กรุณาเชื่อมต่ออินเทอร์เน็ตเพื่อตรวจสอบสิทธิ์"
+                )
+                return
+            }
+
+            val firstLaunch = p?.getLong(KEY_FIRST_LAUNCH_AT, 0L) ?: 0L
+            val now = System.currentTimeMillis()
+
+            if (firstLaunch == 0L) {
+                p?.edit()
+                    ?.putLong(KEY_FIRST_LAUNCH_AT, now)
+                    ?.putBoolean(KEY_LOCAL_TRIAL_USED, true)
+                    ?.apply()
+
+                val expiresAt = now + LOCAL_TRIAL_DURATION_MS
+                val hoursRemaining = (LOCAL_TRIAL_DURATION_MS / (60 * 60 * 1000)).toInt()
+
+                _state.value = LicenseState(
+                    status = LicenseStatus.TRIAL,
+                    licenseType = "trial",
+                    expiresAt = expiresAt,
+                    remainingDays = 1,
+                    remainingHours = hoursRemaining,
+                    deviceId = displayId,
+                    isLoading = false
+                )
+            } else {
+                val expiresAt = firstLaunch + LOCAL_TRIAL_DURATION_MS
+                if (now < expiresAt) {
+                    val hoursRemaining = ((expiresAt - now) / (60 * 60 * 1000)).toInt().coerceAtLeast(0)
+                    val daysRemaining = (hoursRemaining / 24).coerceAtLeast(0)
+
+                    _state.value = LicenseState(
+                        status = LicenseStatus.TRIAL,
+                        licenseType = "trial",
+                        expiresAt = expiresAt,
+                        remainingDays = daysRemaining,
+                        remainingHours = hoursRemaining,
+                        deviceId = displayId,
+                        isLoading = false
+                    )
+                } else {
+                    _state.value = LicenseState(
+                        status = LicenseStatus.EXPIRED,
+                        licenseType = "trial",
+                        deviceId = displayId,
+                        isLoading = false,
+                        errorMessage = "ทดลองใช้หมดแล้ว กรุณาซื้อ License Key"
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "useLocalTrialFallback failed", e)
+            _state.value = LicenseState(
+                status = LicenseStatus.TRIAL,
+                licenseType = "trial",
+                remainingHours = 24,
+                remainingDays = 1,
+                isLoading = false
+            )
+        }
+    }
+
+    /**
+     * Activate a license key.
+     */
+    suspend fun activateKey(context: Context, key: String): Result<String> {
+        val machineId = getMachineId(context)
+        val stableDisplayId = try { DeviceManager.getStableDisplayId(context) } catch (_: Exception) { "unknown" }
+        val hardwareHash = try { DeviceManager.getHardwareHash(context) } catch (_: Exception) { "" }
+        val drmId = getDrmId()
+        val androidId = try { DeviceManager.getAndroidId(context) } catch (_: Exception) { "" }
+
+        _state.value = _state.value.copy(isLoading = true)
+
+        return try {
+            val result = withContext(Dispatchers.IO) {
+                LicenseApiClient.activateLicense(key, machineId, hardwareHash, drmId, androidId)
+            }
+            if (result.success) {
+                val data = result.data.getAsJsonObject("data") ?: result.data
+                val type = data.get("license_type")?.asString ?: "unknown"
+                val expiresAtStr = data.get("expires_at")?.asString
+                val expiresAt = parseIsoTimestamp(expiresAtStr)
+                val daysRemaining = data.get("days_remaining")?.asInt ?: 0
+
+                prefs?.edit()
+                    ?.putString(KEY_LICENSE_KEY, key)
+                    ?.putString(KEY_LICENSE_TYPE, type)
+                    ?.putString(KEY_LICENSE_STATUS, "active")
+                    ?.putLong(KEY_LICENSE_EXPIRES_AT, expiresAt)
+                    ?.apply()
+
+                _state.value = LicenseState(
+                    status = LicenseStatus.ACTIVE,
+                    licenseType = type,
+                    expiresAt = expiresAt,
+                    remainingDays = daysRemaining,
+                    deviceId = stableDisplayId,
+                    isLoading = false
+                )
+
+                Result.success(getLicenseTypeDisplay(type))
+            } else {
+                val errorCode = try { result.data.get("error_code")?.asString ?: "" } catch (_: Exception) { "" }
+                val errorMsg = when (errorCode) {
+                    "ALREADY_ACTIVATED_OTHER_DEVICE" ->
+                        "License นี้ถูกใช้งานบนเครื่องอื่นแล้ว\nกรุณาติดต่อแอดมินเพื่อย้ายเครื่อง"
+                    "LICENSE_REVOKED" -> "License ถูกยกเลิกแล้ว กรุณาติดต่อแอดมิน"
+                    "LICENSE_EXPIRED" -> "License หมดอายุแล้ว กรุณาต่ออายุ"
+                    else -> result.message.ifEmpty { "ไม่สามารถเปิดใช้งานคีย์ได้" }
+                }
+                _state.value = _state.value.copy(isLoading = false, errorMessage = errorMsg)
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "activateKey failed", e)
+            _state.value = _state.value.copy(isLoading = false, errorMessage = e.localizedMessage ?: "เกิดข้อผิดพลาด")
+            Result.failure(e)
+        }
+    }
+
+    // ---- Queries ----
+
+    fun isLicenseValid(): Boolean {
+        val s = _state.value
+        return s.status == LicenseStatus.ACTIVE || s.status == LicenseStatus.TRIAL
+    }
+
+    fun shouldShowGate(): Boolean {
+        val s = _state.value
+        return s.status == LicenseStatus.EXPIRED || s.status == LicenseStatus.NONE
+    }
+
+    fun isTrialActive(): Boolean = _state.value.status == LicenseStatus.TRIAL
+
+    fun isNearExpiry(): Boolean {
+        val s = _state.value
+        return s.status == LicenseStatus.ACTIVE && s.remainingDays in 1..7
+    }
+
+    fun getPurchaseUrl(plan: String = ""): String {
+        return if (plan.isNotEmpty()) {
+            "$PURCHASE_BASE_URL?plan=$plan"
+        } else {
+            PURCHASE_BASE_URL
+        }
+    }
+
+    fun getLicenseTypeDisplay(type: String = _state.value.licenseType): String {
+        return when (type) {
+            "lifetime" -> "ตลอดชีพ"
+            "yearly" -> "รายปี"
+            "monthly" -> "รายเดือน"
+            "demo", "trial" -> "ทดลองใช้"
+            else -> type
+        }
+    }
+
+    fun getDeviceId(): String = try {
+        val saved = prefs?.getString(KEY_DEVICE_ID, "") ?: ""
+        saved.ifEmpty {
+            appContext?.let { DeviceManager.getStableDisplayId(it) } ?: ""
+        }
+    } catch (_: Exception) { "" }
+
+    fun getLicenseKey(): String? = try {
+        val key = prefs?.getString(KEY_LICENSE_KEY, "") ?: ""
+        key.ifEmpty { null }
+    } catch (_: Exception) { null }
+
+    fun getMachineIdValue(): String? = try {
+        val id = prefs?.getString(KEY_MACHINE_ID, "") ?: ""
+        id.ifEmpty { null }
+    } catch (_: Exception) { null }
+
+    // ---- Private helpers ----
+
+    private fun useCachedState(displayId: String) {
+        val cachedStatus = prefs?.getString(KEY_LICENSE_STATUS, "") ?: ""
+        val cachedType = prefs?.getString(KEY_LICENSE_TYPE, "") ?: ""
+        val cachedExpiry = prefs?.getLong(KEY_LICENSE_EXPIRES_AT, 0L) ?: 0L
+        val now = System.currentTimeMillis()
+
+        if (cachedStatus == "active" && cachedType != "demo" && cachedType != "trial" &&
+            (cachedExpiry == 0L || cachedExpiry > now)) {
+            val days = if (cachedExpiry > 0) ((cachedExpiry - now + 86_400_000 - 1) / 86_400_000).toInt().coerceAtLeast(0) else 999
+            _state.value = LicenseState(
+                status = LicenseStatus.ACTIVE,
+                licenseType = cachedType,
+                expiresAt = cachedExpiry,
+                remainingDays = days,
+                deviceId = displayId,
+                isLoading = false
+            )
+        } else {
+            useLocalTrialFallback(appContext)
+        }
+    }
+
+    private fun parseIsoTimestamp(isoString: String?): Long {
+        if (isoString.isNullOrBlank()) return 0L
+        return try {
+            // Try java.time first (available on API 26+, which is our minSdk)
+            val cleaned = isoString.replace(Regex("\\.[0-9]+Z$"), "Z").let {
+                if (!it.endsWith("Z") && !it.contains("+") && !it.contains("-", startIndex = 10)) {
+                    "${it}Z" // assume UTC if no timezone
+                } else it
+            }
+            java.time.Instant.parse(cleaned).toEpochMilli()
+        } catch (_: Exception) {
+            try {
+                // Fallback: manual parsing for formats like "2026-03-21T10:00:00"
+                java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+                    .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+                    .parse(isoString.replace(Regex("\\.[0-9]+Z?$"), "").replace("Z", ""))
+                    ?.time ?: 0L
+            } catch (_: Exception) {
+                0L
+            }
+        }
+    }
+
+    private fun detectClockTampering() {
+        try {
+            val lastVerified = prefs?.getLong(KEY_LAST_VERIFIED_AT, 0L) ?: 0L
+            val now = System.currentTimeMillis()
+            if (lastVerified > 0 && now < lastVerified - 60_000) {
+                val tamperCount = (prefs?.getInt(KEY_CLOCK_TAMPER_COUNT, 0) ?: 0) + 1
+                prefs?.edit()?.putInt(KEY_CLOCK_TAMPER_COUNT, tamperCount)?.apply()
+                Log.w(TAG, "Clock tampering detected! Count: $tamperCount")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "detectClockTampering failed", e)
+        }
+    }
+
+    private fun updateServerTimeDrift(serverTimeIso: String?) {
+        if (serverTimeIso.isNullOrBlank()) return
+        try {
+            val serverTimeMs = parseIsoTimestamp(serverTimeIso)
+            if (serverTimeMs <= 0) return
+            val localTimeMs = System.currentTimeMillis()
+            val driftMs = localTimeMs - serverTimeMs
+            prefs?.edit()?.putLong(KEY_SERVER_TIME_DRIFT_MS, driftMs)?.apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "updateServerTimeDrift failed", e)
+        }
+    }
+
+    private fun getAdjustedCurrentTimeMs(): Long {
+        val now = System.currentTimeMillis()
+        try {
+            val driftMs = prefs?.getLong(KEY_SERVER_TIME_DRIFT_MS, 0L) ?: 0L
+            if (Math.abs(driftMs) > MAX_CLOCK_DRIFT_MS) {
+                return now - driftMs
+            }
+        } catch (_: Exception) {}
+        return now
+    }
+
+    private fun recordVerification() {
+        try {
+            prefs?.edit()?.putLong(KEY_LAST_VERIFIED_AT, System.currentTimeMillis())?.apply()
+        } catch (_: Exception) {}
+    }
+
+    fun isClockTampered(): Boolean {
+        val count = try { prefs?.getInt(KEY_CLOCK_TAMPER_COUNT, 0) ?: 0 } catch (_: Exception) { 0 }
+        return count >= MAX_TAMPER_COUNT
+    }
+
+    private fun getPrefs(context: Context): SharedPreferences {
+        return try {
+            val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+            EncryptedSharedPreferences.create(
+                PREFS_NAME,
+                masterKeyAlias,
+                context.applicationContext,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "EncryptedSharedPreferences failed, using fallback", e)
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        }
+    }
+}

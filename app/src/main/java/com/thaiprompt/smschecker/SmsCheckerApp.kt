@@ -10,6 +10,7 @@ import android.util.Log
 import com.google.firebase.messaging.FirebaseMessaging
 import com.thaiprompt.smschecker.service.FcmService
 import com.thaiprompt.smschecker.service.OrderSyncWorker
+import com.thaiprompt.smschecker.data.license.IntegrityChecker
 import dagger.hilt.android.HiltAndroidApp
 
 @HiltAndroidApp
@@ -29,6 +30,13 @@ class SmsCheckerApp : Application() {
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             Log.e(TAG, "UNCAUGHT EXCEPTION on ${thread.name}", throwable)
             defaultHandler?.uncaughtException(thread, throwable)
+        }
+
+        // Quick integrity check (debugger + Frida ports)
+        // Result is logged but not acted on here — full check runs in LicenseManager.initialize()
+        val quickCheck = IntegrityChecker.runQuickCheck()
+        if (quickCheck.hasAnyFlag) {
+            Log.w(TAG, "Quick integrity flags: ${quickCheck.details.joinToString(", ")}")
         }
 
         createNotificationChannels()

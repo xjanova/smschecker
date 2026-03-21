@@ -47,6 +47,10 @@ import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 import com.thaiprompt.smschecker.ui.theme.LocalLanguageMode
 import com.thaiprompt.smschecker.ui.theme.ThemeMode
 import androidx.compose.animation.core.*
+import com.thaiprompt.smschecker.data.license.LicenseManager
+import com.thaiprompt.smschecker.data.license.LicenseStatus
+import com.thaiprompt.smschecker.data.update.UpdateChecker
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -1036,6 +1040,152 @@ fun SettingsScreen(
                             thickness = 0.5.dp
                         )
                     }
+                }
+            }
+        }
+
+        // ── License & Update Section ──
+        item { Spacer(modifier = Modifier.height(16.dp)) }
+
+        item {
+            SectionTitle(
+                "License & อัพเดท",
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+        }
+
+        item { Spacer(modifier = Modifier.height(8.dp)) }
+
+        item {
+            val licenseState by LicenseManager.state.collectAsState()
+            val updateInfo by UpdateChecker.updateInfo.collectAsState()
+            val scope = rememberCoroutineScope()
+
+            GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+                // License Status
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("สถานะ License", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val statusText = when (licenseState.status) {
+                            LicenseStatus.ACTIVE -> "เปิดใช้งาน (${LicenseManager.getLicenseTypeDisplay()})"
+                            LicenseStatus.TRIAL -> "ทดลองใช้ (เหลือ ${licenseState.remainingHours} ชม.)"
+                            LicenseStatus.EXPIRED -> "หมดอายุ"
+                            LicenseStatus.CHECKING -> "กำลังตรวจสอบ..."
+                            LicenseStatus.NONE -> "ไม่มี License"
+                        }
+                        val statusColor = when (licenseState.status) {
+                            LicenseStatus.ACTIVE -> Color(0xFF22C55E)
+                            LicenseStatus.TRIAL -> Color(0xFFF59E0B)
+                            else -> Color(0xFFEF4444)
+                        }
+                        Text(statusText, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = statusColor)
+                    }
+                    val statusIcon = when (licenseState.status) {
+                        LicenseStatus.ACTIVE -> Icons.Default.CheckCircle
+                        LicenseStatus.TRIAL -> Icons.Default.Timer
+                        else -> Icons.Default.Warning
+                    }
+                    Icon(statusIcon, null, tint = when (licenseState.status) {
+                        LicenseStatus.ACTIVE -> Color(0xFF22C55E)
+                        LicenseStatus.TRIAL -> Color(0xFFF59E0B)
+                        else -> Color(0xFFEF4444)
+                    })
+                }
+
+                if (licenseState.deviceId.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Device ID", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                        Text(licenseState.deviceId, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                    }
+                }
+
+                if (licenseState.status == LicenseStatus.ACTIVE && licenseState.remainingDays in 1..30) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("หมดอายุ", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                        Text("อีก ${licenseState.remainingDays} วัน", fontSize = 11.sp, color = Color(0xFFF59E0B))
+                    }
+                }
+
+                // Update Check
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("เวอร์ชัน", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("v${com.thaiprompt.smschecker.BuildConfig.VERSION_NAME}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                UpdateChecker.checkForUpdate(context, isManual = true)
+                            }
+                        },
+                        enabled = !updateInfo.isChecking,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        if (updateInfo.isChecking) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+                        Text(if (updateInfo.isChecking) "กำลังเช็ค..." else "เช็คอัพเดท", fontSize = 12.sp)
+                    }
+                }
+
+                // Update available
+                if (updateInfo.hasUpdate) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF22C55E).copy(alpha = 0.15f)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("อัพเดทใหม่: v${updateInfo.latestVersion}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF22C55E))
+                            if (updateInfo.releaseNotes.isNotBlank()) {
+                                Text(updateInfo.releaseNotes, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3)
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = { scope.launch { UpdateChecker.downloadAndInstall(context) } },
+                                enabled = !updateInfo.isDownloading,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E)),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                if (updateInfo.isDownloading) {
+                                    Text("ดาวน์โหลด ${updateInfo.downloadProgress}%", fontSize = 13.sp)
+                                } else {
+                                    Icon(Icons.Default.Download, null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("ดาวน์โหลดอัพเดท", fontSize = 13.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (updateInfo.isUpToDate) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("ใช้เวอร์ชันล่าสุดแล้ว", fontSize = 11.sp, color = Color(0xFF22C55E))
+                }
+
+                if (updateInfo.error.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(updateInfo.error, fontSize = 11.sp, color = Color(0xFFEF4444))
                 }
             }
         }

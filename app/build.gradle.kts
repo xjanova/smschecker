@@ -38,6 +38,14 @@ android {
         buildConfigField("String", "BUILD_TIME", "\"${System.currentTimeMillis()}\"")
         buildConfigField("String", "GIT_SHA", "\"${System.getenv("GITHUB_SHA")?.take(7) ?: "local"}\"")
 
+        // APK signing cert SHA-256 for runtime integrity verification.
+        // Must match the release keystore used for signing.
+        buildConfigField(
+            "String",
+            "EXPECTED_SIGNING_CERT_HASH",
+            "\"${System.getenv("SIGNING_CERT_HASH") ?: ""}\""
+        )
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true

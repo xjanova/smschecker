@@ -56,6 +56,10 @@ import com.thaiprompt.smschecker.ui.smshistory.SmsHistoryScreen
 import com.thaiprompt.smschecker.ui.smsmatcher.SmsMatcherScreen
 import com.thaiprompt.smschecker.ui.theme.*
 import com.thaiprompt.smschecker.ui.transactions.TransactionListScreen
+import com.thaiprompt.smschecker.data.license.LicenseManager
+import com.thaiprompt.smschecker.data.license.LicenseStatus
+import com.thaiprompt.smschecker.data.update.UpdateChecker
+import com.thaiprompt.smschecker.ui.license.LicenseGateScreen
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -108,22 +112,43 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            // Initialize license system
+            val context = this@MainActivity
+            LaunchedEffect(Unit) {
+                LicenseManager.initialize(context)
+                UpdateChecker.initAutoUpdatePref(context)
+                UpdateChecker.checkForUpdate(context, shouldThrottle = true)
+            }
+
+            val licenseState by LicenseManager.state.collectAsState()
+
             CompositionLocalProvider(
                 LocalAppStrings provides appStrings,
                 LocalThemeMode provides themeMode.value,
                 LocalLanguageMode provides languageMode.value
             ) {
                 SmsCheckerTheme(darkTheme = isDarkTheme) {
-                    MainApp(
-                        onThemeChanged = { mode ->
-                            secureStorage.setThemeMode(mode.key)
-                            themeMode.value = mode
-                        },
-                        onLanguageChanged = { mode ->
-                            secureStorage.setLanguage(mode.key)
-                            languageMode.value = mode
+                    // Show license gate when expired/none, main app when active/trial
+                    when (licenseState.status) {
+                        LicenseStatus.CHECKING -> {
+                            LicenseGateScreen(onLicenseActivated = {})
                         }
-                    )
+                        LicenseStatus.EXPIRED, LicenseStatus.NONE -> {
+                            LicenseGateScreen(onLicenseActivated = {})
+                        }
+                        LicenseStatus.ACTIVE, LicenseStatus.TRIAL -> {
+                            MainApp(
+                                onThemeChanged = { mode ->
+                                    secureStorage.setThemeMode(mode.key)
+                                    themeMode.value = mode
+                                },
+                                onLanguageChanged = { mode ->
+                                    secureStorage.setLanguage(mode.key)
+                                    languageMode.value = mode
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
