@@ -9,6 +9,7 @@ import com.thaiprompt.smschecker.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 
 /**
@@ -611,7 +612,7 @@ object LicenseManager {
         val drmId = getDrmId()
         val androidId = try { DeviceManager.getAndroidId(context) } catch (_: Exception) { "" }
 
-        _state.value = _state.value.copy(isLoading = true)
+        _state.update { it.copy(isLoading = true) }
 
         return try {
             val result = withContext(Dispatchers.IO) {
@@ -650,12 +651,12 @@ object LicenseManager {
                     "LICENSE_EXPIRED" -> "License หมดอายุแล้ว กรุณาต่ออายุ"
                     else -> result.message.ifEmpty { "ไม่สามารถเปิดใช้งานคีย์ได้" }
                 }
-                _state.value = _state.value.copy(isLoading = false, errorMessage = errorMsg)
+                _state.update { it.copy(isLoading = false, errorMessage = errorMsg) }
                 Result.failure(Exception(errorMsg))
             }
         } catch (e: Exception) {
             Log.e(TAG, "activateKey failed", e)
-            _state.value = _state.value.copy(isLoading = false, errorMessage = e.localizedMessage ?: "เกิดข้อผิดพลาด")
+            _state.update { it.copy(isLoading = false, errorMessage = e.localizedMessage ?: "เกิดข้อผิดพลาด") }
             Result.failure(e)
         }
     }

@@ -19,6 +19,8 @@ import com.thaiprompt.smschecker.ui.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -36,6 +38,8 @@ class FcmService : FirebaseMessagingService() {
     @Inject lateinit var orderApprovalDao: OrderApprovalDao
     @Inject lateinit var serverConfigDao: ServerConfigDao
 
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
     companion object {
         private const val TAG = "FcmService"
         const val FCM_TOKEN_KEY = "fcm_token"
@@ -45,6 +49,11 @@ class FcmService : FirebaseMessagingService() {
      * เมื่อได้รับ FCM token ใหม่ (ครั้งแรก หรือ token ถูก refresh)
      * บันทึกลง SharedPreferences เพื่อส่งไปเซิร์ฟเวอร์ตอน register-device
      */
+    override fun onDestroy() {
+        super.onDestroy()
+        serviceScope.cancel()
+    }
+
     override fun onNewToken(token: String) {
         super.onNewToken(token)
         Log.d(TAG, "New FCM token received")
@@ -125,7 +134,7 @@ class FcmService : FirebaseMessagingService() {
             val remoteId = orderId.toLongOrNull()
             val serverUrl = data["server_url"]  // URL ของเซิร์ฟที่ส่ง FCM มา (อาจเป็น null สำหรับ FCM เก่า)
             if (remoteId != null) {
-                CoroutineScope(Dispatchers.IO).launch {
+                serviceScope.launch {
                     try {
                         insertFortuneOrderFromFcm(
                             remoteId = remoteId,

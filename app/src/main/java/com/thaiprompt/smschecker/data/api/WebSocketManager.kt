@@ -80,11 +80,11 @@ class WebSocketManager @Inject constructor(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    private var isNetworkAvailable = true
+    @Volatile private var isNetworkAvailable = true
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
-    // Listeners for incoming messages
-    private val messageListeners = mutableListOf<(Long, WebSocketMessage) -> Unit>()
+    // Listeners for incoming messages — thread-safe for concurrent access
+    private val messageListeners = java.util.concurrent.CopyOnWriteArrayList<(Long, WebSocketMessage) -> Unit>()
 
     data class WebSocketMessage(
         val type: String,

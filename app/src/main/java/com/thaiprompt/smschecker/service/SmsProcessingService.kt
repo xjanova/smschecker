@@ -60,16 +60,20 @@ class SmsProcessingService : Service() {
     @Inject lateinit var orderRepository: OrderRepository
     @Inject lateinit var orphanRepository: OrphanTransactionRepository
 
-    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // Session counters for notification display
-    private var sessionDetectedCount = 0
-    private var sessionMatchedCount = 0
+    // Session counters for notification display — atomic for concurrent access
+    private val sessionDetectedCount = java.util.concurrent.atomic.AtomicInteger(0)
+    private val sessionMatchedCount = java.util.concurrent.atomic.AtomicInteger(0)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        // Recreate scope if previously cancelled (service restart via START_STICKY)
+        if (!serviceScope.coroutineContext[kotlinx.coroutines.Job]!!.isActive) {
+            serviceScope = CoroutineScope(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
+        }
         startForeground(NOTIFICATION_ID, createNotification("SMS Payment Checker กำลังทำงาน"))
     }
 
@@ -141,10 +145,10 @@ class SmsProcessingService : Service() {
                 // Save to local database
                 val savedId = repository.saveTransaction(transaction)
                 val savedTransaction = transaction.copy(id = savedId)
-                sessionDetectedCount++
+                sessionDetectedCount.incrementAndGet()
 
                 // Update foreground notification with counters
-                updateNotification("กำลังทำงาน | ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
+                updateNotification("กำลังทำงาน | ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.get()}")
 
                 // Try to match with orders using MATCH-ONLY MODE
                 // Query servers with SMS amount instead of fetching all orders
@@ -166,11 +170,11 @@ class SmsProcessingService : Service() {
 
                             if (matchResult != null) {
                                 val matchedOrder = matchResult.order
-                                sessionMatchedCount++
+                                sessionMatchedCount.incrementAndGet()
                                 matchedOrderNumber = matchedOrder.orderNumber
                                 matchedProductName = matchedOrder.productName
                                 Log.d(TAG, "✅ Matched transaction with order: ${matchedOrder.orderNumber} on server ${matchResult.serverName}")
-                                updateNotification("กำลังทำงาน | ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
+                                updateNotification("กำลังทำงาน | ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.get()}")
 
                                 // Server's /match endpoint already auto-approves when auto_confirm=true
                                 // Only send approve if order is still pending (server didn't auto-approve)
@@ -300,10 +304,10 @@ class SmsProcessingService : Service() {
                 // Save to local database
                 val savedId = repository.saveTransaction(notifTransaction)
                 val savedTransaction = notifTransaction.copy(id = savedId)
-                sessionDetectedCount++
+                sessionDetectedCount.incrementAndGet()
 
                 // Update foreground notification with counters
-                updateNotification("กำลังทำงาน | ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
+                updateNotification("กำลังทำงาน | ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.get()}")
 
                 // Try to match with orders using MATCH-ONLY MODE
                 // Query servers with notification amount instead of fetching all orders
@@ -325,11 +329,11 @@ class SmsProcessingService : Service() {
 
                             if (matchResult != null) {
                                 val matchedOrder = matchResult.order
-                                sessionMatchedCount++
+                                sessionMatchedCount.incrementAndGet()
                                 matchedOrderNumber = matchedOrder.orderNumber
                                 matchedProductName = matchedOrder.productName
                                 Log.d(TAG, "✅ Matched notification with order: ${matchedOrder.orderNumber} on server ${matchResult.serverName}")
-                                updateNotification("กำลังทำงาน | ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
+                                updateNotification("กำลังทำงาน | ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.get()}")
 
                                 // Server's /match endpoint already auto-approves when auto_confirm=true
                                 // Only send approve if order is still pending
@@ -437,7 +441,7 @@ class SmsProcessingService : Service() {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(transaction.getFormattedAmount())
-            .setSubText("ตรวจจับ $sessionDetectedCount | แมท $sessionMatchedCount")
+            .setSubText("ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.get()}")
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)

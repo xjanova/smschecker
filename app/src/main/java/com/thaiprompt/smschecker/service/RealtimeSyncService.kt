@@ -41,9 +41,11 @@ class RealtimeSyncService : Service() {
 
     companion object {
         private const val TAG = "RealtimeSyncService"
-        private const val NOTIFICATION_ID = 1001
+        private const val NOTIFICATION_ID = 1002
         private const val CHANNEL_ID = "realtime_sync_channel"
         private const val CHANNEL_NAME = "Real-time Sync"
+        private const val ALERT_CHANNEL_ID = "realtime_sync_alert_channel"
+        private const val ALERT_CHANNEL_NAME = "Payment Alerts"
 
         private const val WAKELOCK_TAG = "SmsChecker:RealtimeSyncWakeLock"
         // WakeLock timeout - use 10 minutes, renew every 8 minutes (before expiry)
@@ -104,9 +106,9 @@ class RealtimeSyncService : Service() {
     @Inject
     lateinit var secureStorage: SecureStorage
 
-    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private var wakeLock: PowerManager.WakeLock? = null
-    private var isRunning = false
+    private var serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    @Volatile private var wakeLock: PowerManager.WakeLock? = null
+    @Volatile private var isRunning = false
 
     // Periodic sync job - using polling instead of WebSocket
     // Now using match-only mode, so polling is less frequent (for orphan recovery only)
@@ -132,6 +134,10 @@ class RealtimeSyncService : Service() {
         when (intent?.action) {
             ACTION_START -> {
                 if (!isRunning) {
+                    // Recreate scope if previously cancelled
+                    if (!serviceScope.coroutineContext[kotlinx.coroutines.Job]!!.isActive) {
+                        serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+                    }
                     startForegroundWithNotification()
                     startRealTimeSync()
                     isRunning = true
@@ -468,8 +474,16 @@ class RealtimeSyncService : Service() {
                 description = "Shows real-time sync status"
                 setShowBadge(false)
             }
+            val alertChannel = NotificationChannel(
+                ALERT_CHANNEL_ID,
+                ALERT_CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Payment match alerts"
+            }
             val notificationManager = getSystemService(NotificationManager::class.java)
             notificationManager.createNotificationChannel(channel)
+            notificationManager.createNotificationChannel(alertChannel)
         }
     }
 
@@ -511,7 +525,7 @@ class RealtimeSyncService : Service() {
     private fun showOrphanMatchNotification(amount: Double, orderNumber: String?) {
         val content = "ยอด %.2f บาท จับคู่กับออเดอร์ ${orderNumber ?: "ใหม่"} แล้ว".format(amount)
 
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
             .setContentTitle("💰 พบยอดโอนที่รอจับคู่")
             .setContentText(content)
             .setSmallIcon(R.drawable.ic_check)
