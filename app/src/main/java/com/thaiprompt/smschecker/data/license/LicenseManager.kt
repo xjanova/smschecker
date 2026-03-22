@@ -191,6 +191,9 @@ object LicenseManager {
                         ?.putLong(KEY_LICENSE_EXPIRES_AT, expiresAt)
                         ?.apply()
 
+                    // Backup license to plain prefs (survives EncryptedSharedPreferences corruption)
+                    backupLicenseKey(context, licenseKey, type, expiresAt)
+
                     _state.value = LicenseState(
                         status = LicenseStatus.ACTIVE,
                         licenseType = type,
@@ -396,6 +399,8 @@ object LicenseManager {
                         deviceId = displayId,
                         isLoading = false
                     )
+                    // Backup restored license
+                    backupLicenseKey(context, key, type, expiresAt)
                     Log.d(TAG, "Auto-activated license from HWID: $key")
                     true
                 } else {
@@ -811,8 +816,51 @@ object LicenseManager {
         return count >= MAX_TAMPER_COUNT
     }
 
+    private const val BACKUP_PREFS_NAME = "smschecker_license_backup"
+
     private fun getPrefs(context: Context): SharedPreferences {
         return try {
+            val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+            val encrypted = EncryptedSharedPreferences.create(
+                PREFS_NAME,
+                masterKeyAlias,
+                context.applicationContext,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+            // Verify we can read — if corrupt this will throw
+            encrypted.getString(KEY_LICENSE_KEY, null)
+            encrypted
+        } catch (e: Exception) {
+            Log.w(TAG, "EncryptedSharedPreferences failed, attempting recovery", e)
+            recoverFromBackup(context)
+        }
+    }
+
+    /**
+     * Recovery: ถ้า EncryptedSharedPreferences corrupt (เช่นหลัง update)
+     * 1. ลอง restore license key จาก plain backup
+     * 2. ลบ encrypted prefs file ที่ corrupt
+     * 3. สร้าง EncryptedSharedPreferences ใหม่
+     * 4. ย้าย license key จาก backup กลับ
+     */
+    private fun recoverFromBackup(context: Context): SharedPreferences {
+        val backup = context.getSharedPreferences(BACKUP_PREFS_NAME, Context.MODE_PRIVATE)
+        val backedUpKey = backup.getString(KEY_LICENSE_KEY, null)
+        val backedUpType = backup.getString(KEY_LICENSE_TYPE, null)
+        val backedUpExpires = backup.getLong(KEY_LICENSE_EXPIRES_AT, 0L)
+
+        // Delete corrupt encrypted prefs files
+        try {
+            val prefsDir = java.io.File(context.applicationInfo.dataDir, "shared_prefs")
+            prefsDir.listFiles()?.filter { it.name.startsWith(PREFS_NAME) }?.forEach { it.delete() }
+            Log.i(TAG, "Deleted corrupt encrypted prefs files")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to delete corrupt prefs", e)
+        }
+
+        // Try to create fresh EncryptedSharedPreferences
+        val newPrefs = try {
             val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
             EncryptedSharedPreferences.create(
                 PREFS_NAME,
@@ -822,8 +870,39 @@ object LicenseManager {
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
         } catch (e: Exception) {
-            Log.w(TAG, "EncryptedSharedPreferences failed, using fallback", e)
+            Log.e(TAG, "Cannot create new EncryptedSharedPreferences, using plain", e)
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        }
+
+        // Restore license from backup
+        if (!backedUpKey.isNullOrEmpty()) {
+            Log.i(TAG, "Restoring license from backup: ${backedUpKey.take(8)}...")
+            newPrefs.edit()
+                .putString(KEY_LICENSE_KEY, backedUpKey)
+                .putString(KEY_LICENSE_TYPE, backedUpType ?: "")
+                .putString(KEY_LICENSE_STATUS, "active")
+                .putLong(KEY_LICENSE_EXPIRES_AT, backedUpExpires)
+                .apply()
+        }
+
+        return newPrefs
+    }
+
+    /**
+     * Backup license key ไว้ใน plain SharedPreferences
+     * เรียกหลัง license activate/validate สำเร็จ
+     */
+    private fun backupLicenseKey(context: Context?, key: String, type: String, expiresAt: Long) {
+        try {
+            val ctx = context ?: appContext ?: return
+            ctx.getSharedPreferences(BACKUP_PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_LICENSE_KEY, key)
+                .putString(KEY_LICENSE_TYPE, type)
+                .putLong(KEY_LICENSE_EXPIRES_AT, expiresAt)
+                .apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "backupLicenseKey failed", e)
         }
     }
 }
