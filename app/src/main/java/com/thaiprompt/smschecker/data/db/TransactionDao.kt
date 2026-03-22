@@ -14,16 +14,16 @@ interface TransactionDao {
     @Update
     suspend fun update(transaction: BankTransaction)
 
-    @Query("SELECT * FROM bank_transactions ORDER BY timestamp DESC")
+    @Query("SELECT * FROM bank_transactions ORDER BY timestamp DESC LIMIT 500")
     fun getAllTransactions(): Flow<List<BankTransaction>>
 
-    @Query("SELECT * FROM bank_transactions WHERE type = :type ORDER BY timestamp DESC")
+    @Query("SELECT * FROM bank_transactions WHERE type = :type ORDER BY timestamp DESC LIMIT 500")
     fun getTransactionsByType(type: TransactionType): Flow<List<BankTransaction>>
 
-    @Query("SELECT * FROM bank_transactions WHERE bank = :bank ORDER BY timestamp DESC")
+    @Query("SELECT * FROM bank_transactions WHERE bank = :bank ORDER BY timestamp DESC LIMIT 500")
     fun getTransactionsByBank(bank: String): Flow<List<BankTransaction>>
 
-    @Query("SELECT * FROM bank_transactions WHERE isSynced = 0 ORDER BY timestamp ASC")
+    @Query("SELECT * FROM bank_transactions WHERE isSynced = 0 ORDER BY timestamp ASC LIMIT 200")
     suspend fun getUnsyncedTransactions(): List<BankTransaction>
 
     @Query("SELECT * FROM bank_transactions WHERE id = :id")
@@ -33,6 +33,7 @@ interface TransactionDao {
         SELECT * FROM bank_transactions
         WHERE timestamp >= :startTime AND timestamp <= :endTime
         ORDER BY timestamp DESC
+        LIMIT 500
     """)
     fun getTransactionsByDateRange(startTime: Long, endTime: Long): Flow<List<BankTransaction>>
 

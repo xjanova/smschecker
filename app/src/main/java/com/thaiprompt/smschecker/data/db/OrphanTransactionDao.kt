@@ -38,16 +38,16 @@ interface OrphanTransactionDao {
     // Query - Lists
     // =====================================================================
 
-    @Query("SELECT * FROM orphan_transactions ORDER BY createdAt DESC")
+    @Query("SELECT * FROM orphan_transactions ORDER BY createdAt DESC LIMIT 500")
     fun getAllOrphans(): Flow<List<OrphanTransaction>>
 
-    @Query("SELECT * FROM orphan_transactions WHERE status = :status ORDER BY createdAt DESC")
+    @Query("SELECT * FROM orphan_transactions WHERE status = :status ORDER BY createdAt DESC LIMIT 500")
     fun getByStatus(status: OrphanStatus): Flow<List<OrphanTransaction>>
 
-    @Query("SELECT * FROM orphan_transactions WHERE status = 'PENDING' ORDER BY createdAt DESC")
+    @Query("SELECT * FROM orphan_transactions WHERE status = 'PENDING' ORDER BY createdAt DESC LIMIT 500")
     fun getPendingOrphans(): Flow<List<OrphanTransaction>>
 
-    @Query("SELECT * FROM orphan_transactions WHERE status = 'PENDING' ORDER BY createdAt DESC")
+    @Query("SELECT * FROM orphan_transactions WHERE status = 'PENDING' ORDER BY createdAt DESC LIMIT 500")
     suspend fun getPendingOrphansList(): List<OrphanTransaction>
 
     @Query("SELECT COUNT(*) FROM orphan_transactions WHERE status = 'PENDING'")

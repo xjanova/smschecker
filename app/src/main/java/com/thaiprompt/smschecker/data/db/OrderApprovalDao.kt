@@ -18,16 +18,16 @@ interface OrderApprovalDao {
     @Update
     suspend fun update(order: OrderApproval)
 
-    @Query("SELECT * FROM order_approvals WHERE approvalStatus != 'DELETED' ORDER BY COALESCE(paymentTimestamp, createdAt) DESC")
+    @Query("SELECT * FROM order_approvals WHERE approvalStatus != 'DELETED' ORDER BY COALESCE(paymentTimestamp, createdAt) DESC LIMIT 500")
     fun getAllOrders(): Flow<List<OrderApproval>>
 
-    @Query("SELECT * FROM order_approvals WHERE approvalStatus = :status ORDER BY COALESCE(paymentTimestamp, createdAt) DESC")
+    @Query("SELECT * FROM order_approvals WHERE approvalStatus = :status ORDER BY COALESCE(paymentTimestamp, createdAt) DESC LIMIT 500")
     fun getOrdersByStatus(status: ApprovalStatus): Flow<List<OrderApproval>>
 
-    @Query("SELECT * FROM order_approvals WHERE serverId = :serverId ORDER BY COALESCE(paymentTimestamp, createdAt) DESC")
+    @Query("SELECT * FROM order_approvals WHERE serverId = :serverId ORDER BY COALESCE(paymentTimestamp, createdAt) DESC LIMIT 500")
     fun getOrdersByServer(serverId: Long): Flow<List<OrderApproval>>
 
-    @Query("SELECT * FROM order_approvals WHERE COALESCE(paymentTimestamp, createdAt) BETWEEN :startTime AND :endTime ORDER BY COALESCE(paymentTimestamp, createdAt) DESC")
+    @Query("SELECT * FROM order_approvals WHERE COALESCE(paymentTimestamp, createdAt) BETWEEN :startTime AND :endTime ORDER BY COALESCE(paymentTimestamp, createdAt) DESC LIMIT 500")
     fun getOrdersByDateRange(startTime: Long, endTime: Long): Flow<List<OrderApproval>>
 
     @Query("""
@@ -38,6 +38,7 @@ interface OrderApprovalDao {
         AND (:startTime IS NULL OR COALESCE(paymentTimestamp, createdAt) >= :startTime)
         AND (:endTime IS NULL OR COALESCE(paymentTimestamp, createdAt) <= :endTime)
         ORDER BY COALESCE(paymentTimestamp, createdAt) DESC
+        LIMIT 500
     """)
     fun getFilteredOrders(
         status: ApprovalStatus?,
@@ -107,13 +108,13 @@ interface OrderApprovalDao {
     @Query("SELECT * FROM order_approvals WHERE remoteApprovalId = :remoteId AND serverId = :serverId")
     suspend fun getByRemoteId(remoteId: Long, serverId: Long): OrderApproval?
 
-    @Query("SELECT * FROM order_approvals WHERE pendingAction IS NOT NULL")
+    @Query("SELECT * FROM order_approvals WHERE pendingAction IS NOT NULL LIMIT 100")
     suspend fun getPendingActions(): List<OrderApproval>
 
     @Query("SELECT COUNT(*) FROM order_approvals WHERE approvalStatus = 'PENDING_REVIEW'")
     fun getPendingReviewCount(): Flow<Int>
 
-    @Query("SELECT * FROM order_approvals WHERE approvalStatus = 'PENDING_REVIEW' ORDER BY COALESCE(paymentTimestamp, createdAt) DESC")
+    @Query("SELECT * FROM order_approvals WHERE approvalStatus = 'PENDING_REVIEW' ORDER BY COALESCE(paymentTimestamp, createdAt) DESC LIMIT 200")
     suspend fun getPendingReviewOrders(): List<OrderApproval>
 
     @Query("SELECT COUNT(*) FROM order_approvals WHERE pendingAction IS NOT NULL")

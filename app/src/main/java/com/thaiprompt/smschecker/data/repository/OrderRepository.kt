@@ -113,6 +113,17 @@ class OrderRepository @Inject constructor(
     }
 
     /**
+     * Delete very old orders (> retention days) to prevent DB bloat.
+     */
+    suspend fun cleanupOldOrders(cutoffTimestamp: Long) {
+        try {
+            orderApprovalDao.deleteOlderThan(cutoffTimestamp)
+        } catch (e: Exception) {
+            Log.e("OrderRepository", "Error cleaning up old orders", e)
+        }
+    }
+
+    /**
      * Fetch orders from all active servers in PARALLEL.
      * Much faster than sequential fetch, especially with multiple servers.
      */

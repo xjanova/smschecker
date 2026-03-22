@@ -11,19 +11,19 @@ interface MatchHistoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(history: MatchHistory): Long
 
-    @Query("SELECT * FROM match_history ORDER BY matchedAt DESC")
+    @Query("SELECT * FROM match_history ORDER BY matchedAt DESC LIMIT 500")
     fun getAllHistory(): Flow<List<MatchHistory>>
 
     @Query("SELECT * FROM match_history ORDER BY matchedAt DESC LIMIT :limit")
     fun getRecentHistory(limit: Int = 50): Flow<List<MatchHistory>>
 
-    @Query("SELECT * FROM match_history WHERE matchResult = :result ORDER BY matchedAt DESC")
+    @Query("SELECT * FROM match_history WHERE matchResult = :result ORDER BY matchedAt DESC LIMIT 500")
     fun getHistoryByResult(result: MatchResult): Flow<List<MatchHistory>>
 
-    @Query("SELECT * FROM match_history WHERE serverId = :serverId ORDER BY matchedAt DESC")
+    @Query("SELECT * FROM match_history WHERE serverId = :serverId ORDER BY matchedAt DESC LIMIT 500")
     fun getHistoryByServer(serverId: Long): Flow<List<MatchHistory>>
 
-    @Query("SELECT * FROM match_history WHERE matchedAt BETWEEN :startTime AND :endTime ORDER BY matchedAt DESC")
+    @Query("SELECT * FROM match_history WHERE matchedAt BETWEEN :startTime AND :endTime ORDER BY matchedAt DESC LIMIT 500")
     fun getHistoryInRange(startTime: Long, endTime: Long): Flow<List<MatchHistory>>
 
     // Statistics

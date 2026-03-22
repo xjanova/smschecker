@@ -106,6 +106,15 @@ class RealtimeSyncService : Service() {
     @Inject
     lateinit var secureStorage: SecureStorage
 
+    @Inject
+    lateinit var transactionDao: com.thaiprompt.smschecker.data.db.TransactionDao
+
+    @Inject
+    lateinit var matchHistoryDao: com.thaiprompt.smschecker.data.db.MatchHistoryDao
+
+    @Inject
+    lateinit var syncLogDao: com.thaiprompt.smschecker.data.db.SyncLogDao
+
     private var serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     @Volatile private var wakeLock: PowerManager.WakeLock? = null
     @Volatile private var isRunning = false
@@ -118,6 +127,10 @@ class RealtimeSyncService : Service() {
     // Orphan cleanup job
     private var orphanCleanupJob: Job? = null
     private val ORPHAN_CLEANUP_INTERVAL_MS = 60 * 60 * 1000L // 1 hour
+
+    // Data retention cleanup job
+    private var dataCleanupJob: Job? = null
+    private val DATA_CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000L // 6 hours
 
     // WakeLock renewal job - keeps sync alive indefinitely
     private var wakeLockRenewalJob: Job? = null
@@ -215,6 +228,9 @@ class RealtimeSyncService : Service() {
         // Start orphan cleanup
         startOrphanCleanup()
 
+        // Start data retention cleanup (delete old records every 6 hours)
+        startDataCleanup()
+
         // Start WakeLock renewal to keep sync alive indefinitely
         startWakeLockRenewal()
 
@@ -240,6 +256,7 @@ class RealtimeSyncService : Service() {
 
         periodicSyncJob?.cancel()
         orphanCleanupJob?.cancel()
+        dataCleanupJob?.cancel()
         wakeLockRenewalJob?.cancel()
         webSocketManager.disconnectAll()
         serviceScope.cancel()
@@ -329,6 +346,43 @@ class RealtimeSyncService : Service() {
                 } catch (e: Exception) {
                     Log.e(TAG, "Orphan cleanup failed", e)
                 }
+            }
+        }
+    }
+
+    /**
+     * Periodic data retention cleanup — delete old records to prevent DB bloat.
+     * Runs every 6 hours. Retention periods:
+     * - Transactions: 90 days
+     * - Match history: 60 days
+     * - Sync logs: 30 days
+     * - Completed orders: 90 days
+     */
+    private fun startDataCleanup() {
+        dataCleanupJob?.cancel()
+        dataCleanupJob = serviceScope.launch {
+            // Initial delay: run first cleanup 5 minutes after start
+            delay(5 * 60 * 1000L)
+            while (isActive) {
+                try {
+                    val now = System.currentTimeMillis()
+                    val txCutoff = now - 90L * 24 * 60 * 60 * 1000  // 90 days
+                    val matchCutoff = now - 60L * 24 * 60 * 60 * 1000  // 60 days
+                    val syncCutoff = now - 30L * 24 * 60 * 60 * 1000  // 30 days
+                    val orderCutoff = now - 90L * 24 * 60 * 60 * 1000  // 90 days
+
+                    val deletedTx = transactionDao.deleteOlderThan(txCutoff)
+                    val deletedMatch = matchHistoryDao.deleteOldRecords(matchCutoff)
+                    val deletedSync = syncLogDao.deleteOlderThan(syncCutoff)
+                    orderRepository.cleanupOldOrders(orderCutoff)
+
+                    if (deletedTx > 0 || deletedMatch > 0 || deletedSync > 0) {
+                        Log.i(TAG, "Data cleanup: tx=$deletedTx, match=$deletedMatch, sync=$deletedSync")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Data cleanup failed", e)
+                }
+                delay(DATA_CLEANUP_INTERVAL_MS)
             }
         }
     }
