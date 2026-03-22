@@ -204,6 +204,12 @@ object UpdateChecker {
                 _updateInfo.value = _updateInfo.value.copy(downloadProgress = 0)
             }
 
+            // Use Content-Length if available, otherwise use file_size from version info
+            val effectiveLength = if (contentLength > 0) contentLength else {
+                // Fallback: estimate ~35MB for typical APK
+                35L * 1024 * 1024
+            }
+
             response.body?.byteStream()?.use { input ->
                 FileOutputStream(apkFile).use { output ->
                     val buffer = ByteArray(8192)
@@ -214,10 +220,11 @@ object UpdateChecker {
                     while (input.read(buffer).also { read = it } != -1) {
                         output.write(buffer, 0, read)
                         bytesRead += read
+                        // Cap at 95% during download — 100% only after file verified
                         val progress = if (contentLength > 0) {
-                            (bytesRead * 100 / contentLength).toInt().coerceIn(0, 100)
+                            (bytesRead * 95 / contentLength).toInt().coerceIn(0, 95)
                         } else {
-                            (bytesRead / 1024 / 10).toInt().coerceIn(0, 99)
+                            (bytesRead * 95 / effectiveLength).toInt().coerceIn(0, 95)
                         }
                         if (progress != lastEmittedProgress) {
                             lastEmittedProgress = progress
@@ -230,7 +237,27 @@ object UpdateChecker {
                 }
             }
 
-            Log.d(TAG, "APK downloaded: ${apkFile.absolutePath} (${apkFile.length()} bytes)")
+            val fileSize = apkFile.length()
+            Log.d(TAG, "APK downloaded: ${apkFile.absolutePath} ($fileSize bytes)")
+
+            // Verify file is valid (at least 1MB for a real APK)
+            if (fileSize < 1_000_000) {
+                apkFile.delete()
+                withContext(Dispatchers.Main) {
+                    _updateInfo.value = _updateInfo.value.copy(
+                        isDownloading = false,
+                        error = "ไฟล์ดาวน์โหลดไม่สมบูรณ์ (${fileSize / 1024} KB) กรุณาลองใหม่"
+                    )
+                }
+                return@withContext
+            }
+
+            withContext(Dispatchers.Main) {
+                _updateInfo.value = _updateInfo.value.copy(downloadProgress = 100)
+            }
+
+            // Small delay for UI to show 100%
+            kotlinx.coroutines.delay(500)
 
             withContext(Dispatchers.Main) {
                 _updateInfo.value = _updateInfo.value.copy(isDownloading = false, downloadProgress = 100)
@@ -251,6 +278,26 @@ object UpdateChecker {
 
     private fun installApk(context: Context, apkFile: File) {
         try {
+            // Check if app has permission to install from unknown sources
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                if (!context.packageManager.canRequestPackageInstalls()) {
+                    Log.w(TAG, "No install permission — opening settings")
+                    _updateInfo.value = _updateInfo.value.copy(
+                        error = "กรุณาเปิดสิทธิ์ \"ติดตั้งแอปที่ไม่รู้จัก\" แล้วลองอีกครั้ง"
+                    )
+                    try {
+                        val settingsIntent = Intent(
+                            android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:${context.packageName}")
+                        ).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(settingsIntent)
+                    } catch (_: Exception) {}
+                    return
+                }
+            }
+
             val uri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",
@@ -272,7 +319,9 @@ object UpdateChecker {
                 context.startActivity(intent)
             } catch (e2: Exception) {
                 Log.e(TAG, "Install APK fallback failed", e2)
-                _updateInfo.value = _updateInfo.value.copy(error = "เปิดตัวติดตั้งไม่ได้")
+                _updateInfo.value = _updateInfo.value.copy(
+                    error = "เปิดตัวติดตั้งไม่ได้ — ลองเปิดไฟล์ APK จาก File Manager"
+                )
             }
         }
     }
