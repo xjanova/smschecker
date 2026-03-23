@@ -115,6 +115,9 @@ class RealtimeSyncService : Service() {
     @Inject
     lateinit var syncLogDao: com.thaiprompt.smschecker.data.db.SyncLogDao
 
+    @Inject
+    lateinit var orphanTransactionDao: com.thaiprompt.smschecker.data.db.OrphanTransactionDao
+
     private var serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     @Volatile private var wakeLock: PowerManager.WakeLock? = null
     @Volatile private var isRunning = false
@@ -365,19 +368,28 @@ class RealtimeSyncService : Service() {
             delay(5 * 60 * 1000L)
             while (isActive) {
                 try {
+                    val prefs = applicationContext.getSharedPreferences("smschecker_cleanup", android.content.Context.MODE_PRIVATE)
+                    val txDays = prefs.getInt("retention_transactions_days", 90).toLong()
+                    val matchDays = prefs.getInt("retention_match_history_days", 60).toLong()
+                    val syncDays = prefs.getInt("retention_sync_logs_days", 30).toLong()
+                    val orderDays = prefs.getInt("retention_orders_days", 90).toLong()
+                    val orphanDays = prefs.getInt("retention_orphans_days", 30).toLong()
+
                     val now = System.currentTimeMillis()
-                    val txCutoff = now - 90L * 24 * 60 * 60 * 1000  // 90 days
-                    val matchCutoff = now - 60L * 24 * 60 * 60 * 1000  // 60 days
-                    val syncCutoff = now - 30L * 24 * 60 * 60 * 1000  // 30 days
-                    val orderCutoff = now - 90L * 24 * 60 * 60 * 1000  // 90 days
+                    val txCutoff = now - txDays * 24 * 60 * 60 * 1000
+                    val matchCutoff = now - matchDays * 24 * 60 * 60 * 1000
+                    val syncCutoff = now - syncDays * 24 * 60 * 60 * 1000
+                    val orderCutoff = now - orderDays * 24 * 60 * 60 * 1000
+                    val orphanCutoff = now - orphanDays * 24 * 60 * 60 * 1000
 
                     val deletedTx = transactionDao.deleteOlderThan(txCutoff)
                     val deletedMatch = matchHistoryDao.deleteOldRecords(matchCutoff)
                     val deletedSync = syncLogDao.deleteOlderThan(syncCutoff)
                     orderRepository.cleanupOldOrders(orderCutoff)
+                    val deletedOrphans = orphanTransactionDao.deleteOldOrphans(orphanCutoff)
 
-                    if (deletedTx > 0 || deletedMatch > 0 || deletedSync > 0) {
-                        Log.i(TAG, "Data cleanup: tx=$deletedTx, match=$deletedMatch, sync=$deletedSync")
+                    if (deletedTx > 0 || deletedMatch > 0 || deletedSync > 0 || deletedOrphans > 0) {
+                        Log.i(TAG, "Data cleanup: tx=$deletedTx, match=$deletedMatch, sync=$deletedSync, orphans=$deletedOrphans (retention: tx=${txDays}d, match=${matchDays}d, sync=${syncDays}d, orphans=${orphanDays}d)")
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Data cleanup failed", e)

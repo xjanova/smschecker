@@ -49,7 +49,14 @@ data class SettingsState(
     val isSyncing: Boolean = false,
     val lastSyncTime: Long? = null,
     val syncIntervalSeconds: Int = 300,
-    val pendingOrdersCount: Int = 0
+    val pendingOrdersCount: Int = 0,
+    // Data retention (days)
+    val retentionTransactionsDays: Int = 90,
+    val retentionMatchHistoryDays: Int = 60,
+    val retentionSyncLogsDays: Int = 30,
+    val retentionOrdersDays: Int = 90,
+    val retentionOrphansDays: Int = 30,
+    val autoCleanupEnabled: Boolean = true
 )
 
 @HiltViewModel
@@ -92,6 +99,19 @@ class SettingsViewModel @Inject constructor(
                     ttsSpeakOrder = secureStorage.isTtsSpeakOrder(),
                     ttsSpeakProduct = secureStorage.isTtsSpeakProduct(),
                     isNotificationListening = secureStorage.isNotificationListeningEnabled()
+                )
+            }
+
+            // Load retention settings
+            val cleanupPrefs = context.getSharedPreferences("smschecker_cleanup", Context.MODE_PRIVATE)
+            _state.update {
+                it.copy(
+                    retentionTransactionsDays = cleanupPrefs.getInt("retention_transactions_days", 90),
+                    retentionMatchHistoryDays = cleanupPrefs.getInt("retention_match_history_days", 60),
+                    retentionSyncLogsDays = cleanupPrefs.getInt("retention_sync_logs_days", 30),
+                    retentionOrdersDays = cleanupPrefs.getInt("retention_orders_days", 90),
+                    retentionOrphansDays = cleanupPrefs.getInt("retention_orphans_days", 30),
+                    autoCleanupEnabled = cleanupPrefs.getBoolean("auto_cleanup_enabled", true)
                 )
             }
         } catch (e: Exception) {
@@ -340,5 +360,45 @@ class SettingsViewModel @Inject constructor(
             secureStorage.setNotificationListeningEnabled(newValue)
             _state.update { it.copy(isNotificationListening = newValue) }
         } catch (e: Exception) { }
+    }
+
+    // ═══════════════════════════════════════
+    // DATA RETENTION SETTINGS
+    // ═══════════════════════════════════════
+
+    private fun saveRetentionSetting(key: String, days: Int) {
+        context.getSharedPreferences("smschecker_cleanup", Context.MODE_PRIVATE)
+            .edit().putInt(key, days).apply()
+    }
+
+    fun setRetentionTransactionsDays(days: Int) {
+        saveRetentionSetting("retention_transactions_days", days)
+        _state.update { it.copy(retentionTransactionsDays = days) }
+    }
+
+    fun setRetentionMatchHistoryDays(days: Int) {
+        saveRetentionSetting("retention_match_history_days", days)
+        _state.update { it.copy(retentionMatchHistoryDays = days) }
+    }
+
+    fun setRetentionSyncLogsDays(days: Int) {
+        saveRetentionSetting("retention_sync_logs_days", days)
+        _state.update { it.copy(retentionSyncLogsDays = days) }
+    }
+
+    fun setRetentionOrdersDays(days: Int) {
+        saveRetentionSetting("retention_orders_days", days)
+        _state.update { it.copy(retentionOrdersDays = days) }
+    }
+
+    fun setRetentionOrphansDays(days: Int) {
+        saveRetentionSetting("retention_orphans_days", days)
+        _state.update { it.copy(retentionOrphansDays = days) }
+    }
+
+    fun setAutoCleanupEnabled(enabled: Boolean) {
+        context.getSharedPreferences("smschecker_cleanup", Context.MODE_PRIVATE)
+            .edit().putBoolean("auto_cleanup_enabled", enabled).apply()
+        _state.update { it.copy(autoCleanupEnabled = enabled) }
     }
 }

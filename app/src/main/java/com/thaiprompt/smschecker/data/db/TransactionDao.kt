@@ -70,8 +70,14 @@ interface TransactionDao {
     @Query("SELECT * FROM bank_transactions ORDER BY timestamp DESC LIMIT 200")
     fun getRecentTransactions(): Flow<List<BankTransaction>>
 
+    @Query("SELECT * FROM bank_transactions ORDER BY timestamp DESC LIMIT :limit OFFSET :offset")
+    suspend fun getTransactionsPaged(limit: Int, offset: Int): List<BankTransaction>
+
     @Query("SELECT COUNT(*) FROM bank_transactions")
     fun getTotalCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM bank_transactions")
+    suspend fun getTotalCountOnce(): Int
 
     @Query("SELECT COUNT(*) FROM bank_transactions WHERE isSynced = 1")
     fun getSyncedCount(): Flow<Int>

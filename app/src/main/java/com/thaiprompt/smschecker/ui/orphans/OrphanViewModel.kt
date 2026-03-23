@@ -3,6 +3,7 @@ package com.thaiprompt.smschecker.ui.orphans
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.thaiprompt.smschecker.data.db.OrphanTransactionDao
 import com.thaiprompt.smschecker.data.model.OrphanStatus
 import com.thaiprompt.smschecker.data.model.OrphanTransaction
 import com.thaiprompt.smschecker.data.repository.OrphanTransactionRepository
@@ -15,6 +16,9 @@ import javax.inject.Inject
 data class OrphanState(
     val orphans: List<OrphanTransaction> = emptyList(),
     val isLoading: Boolean = true,
+    val isLoadingMore: Boolean = false,
+    val hasMorePages: Boolean = true,
+    val totalCount: Int = 0,
     val pendingCount: Int = 0,
     val showPendingOnly: Boolean = true,
     val error: String? = null
@@ -22,36 +26,79 @@ data class OrphanState(
 
 @HiltViewModel
 class OrphanViewModel @Inject constructor(
-    private val orphanRepository: OrphanTransactionRepository
+    private val orphanRepository: OrphanTransactionRepository,
+    private val orphanDao: OrphanTransactionDao
 ) : ViewModel() {
+
+    companion object {
+        private const val PAGE_SIZE = 30
+        private const val TAG = "OrphanViewModel"
+    }
 
     private val _state = MutableStateFlow(OrphanState())
     val state: StateFlow<OrphanState> = _state.asStateFlow()
 
-    private var orphansJob: Job? = null
     private var countJob: Job? = null
 
     init {
-        loadOrphans()
+        loadInitialPage()
         loadCount()
     }
 
-    private fun loadOrphans() {
-        orphansJob?.cancel()
-        orphansJob = viewModelScope.launch {
+    private fun loadInitialPage() {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true) }
             try {
-                val flow = if (_state.value.showPendingOnly) {
-                    orphanRepository.getPendingOrphans()
+                val s = _state.value
+                val (orphans, total) = if (s.showPendingOnly) {
+                    val items = orphanDao.getOrphansByStatusPaged(OrphanStatus.PENDING, PAGE_SIZE, 0)
+                    val count = orphanDao.getCountByStatus(OrphanStatus.PENDING)
+                    items to count
                 } else {
-                    orphanRepository.getAllOrphans()
+                    val items = orphanDao.getOrphansPaged(PAGE_SIZE, 0)
+                    val count = orphanDao.getTotalCountOnce()
+                    items to count
                 }
-
-                flow.collect { orphans ->
-                    _state.update { it.copy(orphans = orphans, isLoading = false, error = null) }
+                _state.update {
+                    it.copy(
+                        orphans = orphans,
+                        isLoading = false,
+                        hasMorePages = orphans.size >= PAGE_SIZE && orphans.size < total,
+                        totalCount = total,
+                        error = null
+                    )
                 }
             } catch (e: Exception) {
-                Log.e("OrphanViewModel", "Error loading orphans", e)
+                Log.e(TAG, "loadInitialPage failed", e)
                 _state.update { it.copy(isLoading = false, error = e.message) }
+            }
+        }
+    }
+
+    fun loadMore() {
+        val s = _state.value
+        if (s.isLoadingMore || !s.hasMorePages || s.isLoading) return
+
+        viewModelScope.launch {
+            _state.update { it.copy(isLoadingMore = true) }
+            try {
+                val offset = s.orphans.size
+                val more = if (s.showPendingOnly) {
+                    orphanDao.getOrphansByStatusPaged(OrphanStatus.PENDING, PAGE_SIZE, offset)
+                } else {
+                    orphanDao.getOrphansPaged(PAGE_SIZE, offset)
+                }
+                _state.update {
+                    val combined = it.orphans + more
+                    it.copy(
+                        orphans = combined,
+                        isLoadingMore = false,
+                        hasMorePages = more.size >= PAGE_SIZE && combined.size < it.totalCount
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "loadMore failed", e)
+                _state.update { it.copy(isLoadingMore = false) }
             }
         }
     }
@@ -64,42 +111,33 @@ class OrphanViewModel @Inject constructor(
                     _state.update { it.copy(pendingCount = count) }
                 }
             } catch (e: Exception) {
-                Log.e("OrphanViewModel", "Error loading count", e)
+                Log.e(TAG, "loadCount failed", e)
             }
         }
     }
 
     fun toggleFilter() {
         _state.update { it.copy(showPendingOnly = !it.showPendingOnly) }
-        loadOrphans()
+        loadInitialPage()
     }
 
-    /**
-     * ยกเลิก/ลบ orphan transaction
-     * ผู้ใช้ไม่ต้องการติดตามยอดนี้แล้ว
-     */
     fun dismissOrphan(orphan: OrphanTransaction) {
         viewModelScope.launch {
             try {
                 orphanRepository.markAsIgnored(orphan.id, "Dismissed by user")
-                Log.i("OrphanViewModel", "Dismissed orphan: ${orphan.id}")
             } catch (e: Exception) {
-                Log.e("OrphanViewModel", "Error dismissing orphan", e)
+                Log.e(TAG, "dismissOrphan failed", e)
                 _state.update { it.copy(error = "Failed to dismiss: ${e.message}") }
             }
         }
     }
 
-    /**
-     * ลบ orphan ออกจากระบบถาวร
-     */
     fun deleteOrphan(orphan: OrphanTransaction) {
         viewModelScope.launch {
             try {
                 orphanRepository.delete(orphan)
-                Log.i("OrphanViewModel", "Deleted orphan: ${orphan.id}")
             } catch (e: Exception) {
-                Log.e("OrphanViewModel", "Error deleting orphan", e)
+                Log.e(TAG, "deleteOrphan failed", e)
                 _state.update { it.copy(error = "Failed to delete: ${e.message}") }
             }
         }

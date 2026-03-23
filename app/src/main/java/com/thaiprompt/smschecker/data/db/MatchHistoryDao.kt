@@ -52,6 +52,13 @@ interface MatchHistoryDao {
     """)
     suspend fun getSummary(since: Long): MatchSummary?
 
+    // Paged query
+    @Query("SELECT * FROM match_history ORDER BY matchedAt DESC LIMIT :limit OFFSET :offset")
+    suspend fun getHistoryPaged(limit: Int, offset: Int): List<MatchHistory>
+
+    @Query("SELECT COUNT(*) FROM match_history")
+    suspend fun getTotalCountOnce(): Int
+
     // Cleanup old records
     @Query("DELETE FROM match_history WHERE matchedAt < :before")
     suspend fun deleteOldRecords(before: Long): Int

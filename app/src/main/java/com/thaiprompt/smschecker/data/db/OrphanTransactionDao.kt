@@ -53,6 +53,18 @@ interface OrphanTransactionDao {
     @Query("SELECT COUNT(*) FROM orphan_transactions WHERE status = 'PENDING'")
     fun getPendingCount(): Flow<Int>
 
+    @Query("SELECT * FROM orphan_transactions ORDER BY createdAt DESC LIMIT :limit OFFSET :offset")
+    suspend fun getOrphansPaged(limit: Int, offset: Int): List<OrphanTransaction>
+
+    @Query("SELECT COUNT(*) FROM orphan_transactions")
+    suspend fun getTotalCountOnce(): Int
+
+    @Query("SELECT COUNT(*) FROM orphan_transactions WHERE status = :status")
+    suspend fun getCountByStatus(status: OrphanStatus): Int
+
+    @Query("SELECT * FROM orphan_transactions WHERE status = :status ORDER BY createdAt DESC LIMIT :limit OFFSET :offset")
+    suspend fun getOrphansByStatusPaged(status: OrphanStatus, limit: Int, offset: Int): List<OrphanTransaction>
+
     // =====================================================================
     // Matching - Find orphans that could match an order amount
     // =====================================================================
