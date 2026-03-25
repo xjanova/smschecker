@@ -5,6 +5,7 @@ import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import com.thaiprompt.smschecker.data.license.LicenseManager
 
 /**
  * Listens for push notifications from Thai banking apps and forwards
@@ -66,6 +67,11 @@ class BankNotificationListenerService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         if (sbn == null) return
+
+        // License check — don't process notifications if license expired
+        if (!LicenseManager.isLicenseValid()) {
+            return
+        }
 
         try {
             val packageName = sbn.packageName ?: return
