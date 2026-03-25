@@ -12,6 +12,7 @@ import androidx.core.app.NotificationCompat
 import com.thaiprompt.smschecker.R
 import com.thaiprompt.smschecker.SmsCheckerApp
 import com.thaiprompt.smschecker.data.db.SmsSenderRuleDao
+import com.thaiprompt.smschecker.data.license.LicenseManager
 import com.thaiprompt.smschecker.data.model.ApprovalStatus
 import com.thaiprompt.smschecker.data.model.TransactionSource
 import com.thaiprompt.smschecker.data.model.TransactionType
@@ -78,6 +79,12 @@ class SmsProcessingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // License check — don't process if license expired
+        if (!LicenseManager.isLicenseValid()) {
+            Log.w(TAG, "License not valid — ignoring command: ${intent?.action}")
+            return START_STICKY
+        }
+
         when (intent?.action) {
             ACTION_PROCESS_SMS -> {
                 val sender = intent.getStringExtra(EXTRA_SENDER) ?: return START_STICKY

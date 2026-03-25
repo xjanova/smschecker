@@ -1,5 +1,7 @@
 import java.util.Properties
 import java.io.FileInputStream
+import java.security.KeyStore
+import java.security.MessageDigest
 
 plugins {
     id("com.android.application")
@@ -39,11 +41,40 @@ android {
         buildConfigField("String", "GIT_SHA", "\"${System.getenv("GITHUB_SHA")?.take(7) ?: "local"}\"")
 
         // APK signing cert SHA-256 for runtime integrity verification.
-        // Must match the release keystore used for signing.
+        // Priority: env var (CI) > computed from keystore > empty (disables check)
+        val certHash = System.getenv("SIGNING_CERT_HASH")
+            ?: run {
+                // Try to compute cert hash from release keystore at build time
+                val ksFile = rootProject.file(
+                    keystoreProperties.getProperty("storeFile")
+                        ?: System.getenv("SIGNING_STORE_FILE")
+                        ?: "smschecker-release.keystore"
+                )
+                val ksPass = keystoreProperties.getProperty("storePassword")
+                    ?: System.getenv("SIGNING_STORE_PASSWORD")
+                val ksAlias = keystoreProperties.getProperty("keyAlias")
+                    ?: System.getenv("SIGNING_KEY_ALIAS")
+                if (ksFile.exists() && ksPass != null && ksAlias != null) {
+                    try {
+                        val ks = KeyStore.getInstance("JKS")
+                            ?: KeyStore.getInstance("PKCS12")
+                        ks.load(ksFile.inputStream(), ksPass.toCharArray())
+                        val cert = ks.getCertificate(ksAlias)
+                        val md = MessageDigest.getInstance("SHA-256")
+                        md.digest(cert.encoded).joinToString("") { "%02x".format(it) }
+                    } catch (e: Exception) {
+                        println("WARNING: Could not compute signing cert hash: ${e.message}")
+                        ""
+                    }
+                } else {
+                    if (!ksFile.exists()) println("WARNING: Keystore not found at ${ksFile.path} — EXPECTED_SIGNING_CERT_HASH will be empty")
+                    ""
+                }
+            }
         buildConfigField(
             "String",
             "EXPECTED_SIGNING_CERT_HASH",
-            "\"${System.getenv("SIGNING_CERT_HASH") ?: ""}\""
+            "\"$certHash\""
         )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

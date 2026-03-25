@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
 import android.util.Log
+import com.thaiprompt.smschecker.data.license.LicenseManager
 import com.thaiprompt.smschecker.service.SmsProcessingService
 
 /**
@@ -19,6 +20,12 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
+
+        // License check — don't process SMS if license expired
+        if (!LicenseManager.isLicenseValid()) {
+            Log.w(TAG, "License not valid — ignoring SMS")
+            return
+        }
 
         val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
         if (messages.isNullOrEmpty()) return
