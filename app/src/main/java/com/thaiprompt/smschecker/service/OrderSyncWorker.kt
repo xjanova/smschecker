@@ -7,6 +7,7 @@ import androidx.work.*
 import com.thaiprompt.smschecker.BuildConfig
 import com.thaiprompt.smschecker.data.api.DebugReportBody
 import com.thaiprompt.smschecker.data.repository.MisclassificationReportRepository
+import com.thaiprompt.smschecker.data.license.LicenseManager
 import com.thaiprompt.smschecker.data.repository.OrderRepository
 import com.thaiprompt.smschecker.data.repository.OrphanTransactionRepository
 import com.thaiprompt.smschecker.security.SecureStorage
@@ -28,6 +29,12 @@ class OrderSyncWorker @AssistedInject constructor(
     private var lastFcmSyncResult: String = "not_attempted"
 
     override suspend fun doWork(): Result {
+        // Skip sync if license is not valid
+        if (!LicenseManager.isLicenseValid()) {
+            Log.w(TAG, "License not valid, skipping sync")
+            return Result.success()
+        }
+
         val startTime = System.currentTimeMillis()
 
         return try {
