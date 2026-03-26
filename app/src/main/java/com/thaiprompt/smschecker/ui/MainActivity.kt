@@ -17,12 +17,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Dashboard
@@ -59,7 +56,9 @@ import com.thaiprompt.smschecker.ui.transactions.TransactionListScreen
 import com.thaiprompt.smschecker.data.license.LicenseManager
 import com.thaiprompt.smschecker.data.license.LicenseStatus
 import com.thaiprompt.smschecker.data.update.UpdateChecker
+import com.thaiprompt.smschecker.data.update.UpdateInfo
 import com.thaiprompt.smschecker.ui.license.LicenseGateScreen
+import kotlinx.coroutines.launch
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -121,6 +120,8 @@ class MainActivity : ComponentActivity() {
             }
 
             val licenseState by LicenseManager.state.collectAsState()
+            val updateInfo by UpdateChecker.updateInfo.collectAsState()
+            val updateScope = rememberCoroutineScope()
 
             CompositionLocalProvider(
                 LocalAppStrings provides appStrings,
@@ -128,6 +129,15 @@ class MainActivity : ComponentActivity() {
                 LocalLanguageMode provides languageMode.value
             ) {
                 SmsCheckerTheme(darkTheme = isDarkTheme) {
+                    // Force update dialog — shows ABOVE license gate so user must update first
+                    if (updateInfo.hasUpdate) {
+                        ForceUpdateDialog(
+                            updateInfo = updateInfo,
+                            onUpdate = { updateScope.launch { UpdateChecker.downloadAndInstall(context) } },
+                            onDismiss = { UpdateChecker.dismissVersion(context, updateInfo.latestVersion) }
+                        )
+                    }
+
                     // Show license gate when expired/none, main app when active/trial
                     when (licenseState.status) {
                         LicenseStatus.CHECKING -> {
@@ -403,4 +413,70 @@ fun MainApp(
             }
         }
     }
+}
+
+/**
+ * Force update dialog — shows above everything including license gate.
+ * User must update or dismiss before using the app.
+ */
+@Composable
+private fun ForceUpdateDialog(
+    updateInfo: UpdateInfo,
+    onUpdate: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = { if (!updateInfo.isDownloading) onDismiss() },
+        title = {
+            Text(
+                if (updateInfo.isDownloading) "กำลังอัพเดท..."
+                else "อัพเดทใหม่ v${updateInfo.latestVersion}",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "v${updateInfo.currentVersion} → v${updateInfo.latestVersion}",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (updateInfo.isDownloading) {
+                    if (updateInfo.downloadProgress < 0) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    } else {
+                        LinearProgressIndicator(
+                            progress = { updateInfo.downloadProgress / 100f },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            "กำลังดาวน์โหลด ${updateInfo.downloadProgress}%",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                if (updateInfo.releaseNotes.isNotEmpty() && !updateInfo.isDownloading) {
+                    Text(updateInfo.releaseNotes, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (updateInfo.error.isNotEmpty()) {
+                    Text(updateInfo.error, fontSize = 11.sp, color = Color(0xFFEF4444))
+                }
+            }
+        },
+        confirmButton = {
+            if (!updateInfo.isDownloading) {
+                Button(onClick = onUpdate) {
+                    Text("อัพเดทเลย", fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        dismissButton = {
+            if (!updateInfo.isDownloading) {
+                TextButton(onClick = onDismiss) {
+                    Text("ภายหลัง")
+                }
+            }
+        }
+    )
 }
