@@ -5,12 +5,21 @@ import android.content.SharedPreferences
 import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
+import com.google.gson.JsonElement
+import com.google.gson.JsonNull
+import com.google.gson.JsonObject
 import com.thaiprompt.smschecker.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
+
+/** Safe JSON accessors — JsonNull returns null instead of crashing */
+private fun JsonElement?.safeString(): String? =
+    if (this == null || this is JsonNull || this.isJsonNull) null else try { asString } catch (_: Exception) { null }
+private fun JsonElement?.safeInt(default: Int = 0): Int =
+    if (this == null || this is JsonNull || this.isJsonNull) default else try { asInt } catch (_: Exception) { default }
 
 /**
  * Central license state manager for SmsChecker.
@@ -179,9 +188,9 @@ object LicenseManager {
             if (result.success) {
                 val valid = result.data.get("is_valid")?.asBoolean ?: false
                 val data = result.data.getAsJsonObject("data") ?: result.data
-                val type = data.get("license_type")?.asString ?: ""
-                val expiresAtStr = data.get("expires_at")?.asString
-                val daysRemaining = data.get("days_remaining")?.asInt ?: 0
+                val type = data.get("license_type").safeString() ?: ""
+                val expiresAtStr = data.get("expires_at").safeString()
+                val daysRemaining = data.get("days_remaining").safeInt() ?: 0
                 val expiresAt = parseIsoTimestamp(expiresAtStr)
 
                 if (valid) {
@@ -228,7 +237,7 @@ object LicenseManager {
                     }
                 }
             } else {
-                val errorCode = try { result.data.get("error_code")?.asString ?: "" } catch (_: Exception) { "" }
+                val errorCode = try { result.data.get("error_code").safeString() ?: "" } catch (_: Exception) { "" }
                 if (errorCode == "ALREADY_ACTIVATED_OTHER_DEVICE" || result.statusCode == 403) {
                     prefs?.edit()
                         ?.remove(KEY_LICENSE_KEY)
@@ -273,10 +282,10 @@ object LicenseManager {
             }
             if (result.success) {
                 val data = result.data.getAsJsonObject("data") ?: result.data
-                val type = data.get("license_type")?.asString ?: "unknown"
-                val expiresAtStr = data.get("expires_at")?.asString
+                val type = data.get("license_type").safeString() ?: "unknown"
+                val expiresAtStr = data.get("expires_at").safeString()
                 val expiresAt = parseIsoTimestamp(expiresAtStr)
-                val daysRemaining = data.get("days_remaining")?.asInt ?: 0
+                val daysRemaining = data.get("days_remaining").safeInt() ?: 0
 
                 prefs?.edit()
                     ?.putString(KEY_LICENSE_TYPE, type)
@@ -295,7 +304,7 @@ object LicenseManager {
                 Log.i(TAG, "Re-activate succeeded — HWID rebound to current device")
                 true
             } else {
-                val errorCode = try { result.data.get("error_code")?.asString ?: "" } catch (_: Exception) { "" }
+                val errorCode = try { result.data.get("error_code").safeString() ?: "" } catch (_: Exception) { "" }
                 val isOtherDevice = errorCode == "ALREADY_ACTIVATED_OTHER_DEVICE" || result.statusCode == 403
                 if (isOtherDevice) {
                     prefs?.edit()
@@ -332,10 +341,10 @@ object LicenseManager {
             }
             if (result.success) {
                 val data = result.data.getAsJsonObject("data") ?: result.data
-                val type = data.get("license_type")?.asString ?: "unknown"
-                val expiresAtStr = data.get("expires_at")?.asString
+                val type = data.get("license_type").safeString() ?: "unknown"
+                val expiresAtStr = data.get("expires_at").safeString()
                 val expiresAt = parseIsoTimestamp(expiresAtStr)
-                val daysRemaining = data.get("days_remaining")?.asInt ?: 0
+                val daysRemaining = data.get("days_remaining").safeInt() ?: 0
 
                 prefs?.edit()
                     ?.putString(KEY_MACHINE_ID, newMachineId)
@@ -378,11 +387,11 @@ object LicenseManager {
                 val hasLicense = result.data.get("has_license")?.asBoolean ?: false
                 if (hasLicense) {
                     val data = result.data.getAsJsonObject("data") ?: return false
-                    val key = data.get("license_key")?.asString ?: return false
-                    val type = data.get("license_type")?.asString ?: ""
-                    val expiresAtStr = data.get("expires_at")?.asString
+                    val key = data.get("license_key").safeString() ?: return false
+                    val type = data.get("license_type").safeString() ?: ""
+                    val expiresAtStr = data.get("expires_at").safeString()
                     val expiresAt = parseIsoTimestamp(expiresAtStr)
-                    val daysRemaining = data.get("days_remaining")?.asInt ?: 0
+                    val daysRemaining = data.get("days_remaining").safeInt() ?: 0
 
                     prefs?.edit()
                         ?.putString(KEY_LICENSE_KEY, key)
@@ -431,7 +440,7 @@ object LicenseManager {
                 return
             }
 
-            val serverTimeStr = checkResult.data.get("server_time")?.asString
+            val serverTimeStr = checkResult.data.get("server_time").safeString()
             updateServerTimeDrift(serverTimeStr)
 
             val data = checkResult.data.getAsJsonObject("data") ?: checkResult.data
@@ -441,9 +450,9 @@ object LicenseManager {
 
             if (isTrialActive) {
                 val trialInfo = data.getAsJsonObject("trial_info")
-                val daysRemaining = trialInfo?.get("days_remaining")?.asInt ?: 0
-                val serverHoursRemaining = trialInfo?.get("hours_remaining")?.asInt
-                val expiresAtStr = trialInfo?.get("expires_at")?.asString
+                val daysRemaining = trialInfo?.get("days_remaining").safeInt() ?: 0
+                val serverHoursRemaining = trialInfo?.get("hours_remaining").safeInt()
+                val expiresAtStr = trialInfo?.get("expires_at").safeString()
                 val expiresAt = parseIsoTimestamp(expiresAtStr)
 
                 val hoursRemaining = serverHoursRemaining
@@ -502,13 +511,13 @@ object LicenseManager {
             if (demoResult.success) {
                 prefs?.edit()?.putBoolean(KEY_DEVICE_REGISTERED, true)?.apply()
 
-                val serverTimeStr = demoResult.data.get("server_time")?.asString
+                val serverTimeStr = demoResult.data.get("server_time").safeString()
                 updateServerTimeDrift(serverTimeStr)
 
                 val data = demoResult.data.getAsJsonObject("data") ?: demoResult.data
-                val daysRemaining = data.get("days_remaining")?.asInt ?: 7
-                val serverHoursRemaining = data.get("hours_remaining")?.asInt
-                val expiresAtStr = data.get("expires_at")?.asString
+                val daysRemaining = data.get("days_remaining").safeInt(7)
+                val serverHoursRemaining = data.get("hours_remaining").safeInt()
+                val expiresAtStr = data.get("expires_at").safeString()
                 val expiresAt = parseIsoTimestamp(expiresAtStr)
                 val hoursRemaining = serverHoursRemaining ?: (daysRemaining * 24)
 
@@ -625,10 +634,10 @@ object LicenseManager {
             }
             if (result.success) {
                 val data = result.data.getAsJsonObject("data") ?: result.data
-                val type = data.get("license_type")?.asString ?: "unknown"
-                val expiresAtStr = data.get("expires_at")?.asString
+                val type = data.get("license_type").safeString() ?: "unknown"
+                val expiresAtStr = data.get("expires_at").safeString()
                 val expiresAt = parseIsoTimestamp(expiresAtStr)
-                val daysRemaining = data.get("days_remaining")?.asInt ?: 0
+                val daysRemaining = data.get("days_remaining").safeInt() ?: 0
 
                 prefs?.edit()
                     ?.putString(KEY_LICENSE_KEY, key)
@@ -648,7 +657,7 @@ object LicenseManager {
 
                 Result.success(getLicenseTypeDisplay(type))
             } else {
-                val errorCode = try { result.data.get("error_code")?.asString ?: "" } catch (_: Exception) { "" }
+                val errorCode = try { result.data.get("error_code").safeString() ?: "" } catch (_: Exception) { "" }
                 val errorMsg = when (errorCode) {
                     "ALREADY_ACTIVATED_OTHER_DEVICE" ->
                         "License นี้ถูกใช้งานบนเครื่องอื่นแล้ว\nกรุณาติดต่อแอดมินเพื่อย้ายเครื่อง"
