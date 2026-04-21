@@ -40,8 +40,10 @@ class TtsManager @Inject constructor(
     private val audioManager by lazy {
         context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     }
-    @Volatile private var audioFocusRequest: AudioFocusRequest? = null
-    @Volatile private var activeUtteranceCount: Int = 0
+    // Note: no @Volatile needed — all reads/writes happen inside `synchronized(audioFocusLock)`.
+    // Adding @Volatile would be dead weight and could confuse readers about the model.
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var activeUtteranceCount: Int = 0
     private val audioFocusLock = Any()
 
     private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { /* no-op; transient */ }

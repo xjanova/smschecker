@@ -47,7 +47,7 @@ import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
 import com.thaiprompt.smschecker.ui.theme.AppColors
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.android.components.ActivityComponent
-import dagger.hilt.android.internal.managers.ViewComponentManager
+import android.content.ContextWrapper
 
 private enum class CheckSeverity { OK, WARN, FAIL }
 
@@ -161,49 +161,54 @@ fun SystemHealthScreen(onBack: () -> Unit) {
     }
 }
 
+private data class SummaryState(
+    val emoji: String,
+    val title: String,
+    val desc: String,
+    val color: Color
+)
+
 @Composable
 private fun OverallSummaryCard(
     allOk: Boolean,
     hasWarning: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val (emoji, title, desc, color) = when {
-        !allOk -> listOf(
-            "🚨",
-            "พบปัญหาที่ต้องแก้!",
-            "มีการตั้งค่าที่ยังไม่พร้อม กดรายการข้างล่างเพื่อแก้ไข",
-            AppColors.DebitRed
+    val state = when {
+        !allOk -> SummaryState(
+            emoji = "🚨",
+            title = "พบปัญหาที่ต้องแก้!",
+            desc = "มีการตั้งค่าที่ยังไม่พร้อม กดรายการข้างล่างเพื่อแก้ไข",
+            color = AppColors.DebitRed
         )
-        hasWarning -> listOf(
-            "⚠️",
-            "ทำงานได้ แต่ยังไม่ดีที่สุด",
-            "มีบางรายการที่ควรแก้เพื่อความเสถียรสูงสุด",
-            AppColors.WarningOrange
+        hasWarning -> SummaryState(
+            emoji = "⚠️",
+            title = "ทำงานได้ แต่ยังไม่ดีที่สุด",
+            desc = "มีบางรายการที่ควรแก้เพื่อความเสถียรสูงสุด",
+            color = AppColors.WarningOrange
         )
-        else -> listOf(
-            "✅",
-            "ระบบพร้อม 100%",
-            "ทุกอย่างพร้อมทำงานตลอด 24 ชั่วโมง",
-            AppColors.CreditGreen
+        else -> SummaryState(
+            emoji = "✅",
+            title = "ระบบพร้อม 100%",
+            desc = "ทุกอย่างพร้อมทำงานตลอด 24 ชั่วโมง",
+            color = AppColors.CreditGreen
         )
     }
 
-    val statusColor = color as Color
-
     GradientHeader(modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(emoji as String, modifier = Modifier.padding(end = 12.dp))
+            Text(state.emoji, modifier = Modifier.padding(end = 12.dp))
             Column {
                 Text(
-                    title as String,
+                    state.title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
                 Text(
-                    desc as String,
+                    state.desc,
                     style = MaterialTheme.typography.bodySmall,
-                    color = statusColor.copy(alpha = 0.9f)
+                    color = state.color.copy(alpha = 0.9f)
                 )
             }
         }
@@ -558,19 +563,28 @@ private fun isServiceRunning(context: Context, className: String): Boolean {
 /**
  * Resolve TtsManager from the Activity's Hilt component (NOT via hiltViewModel to avoid
  * creating a new VM just for one action).
+ *
+ * Safely walks the ContextWrapper chain to find an Activity — handles both plain Activity
+ * and wrapped contexts (Compose's LocalContext gives us a wrapper). Returns null if the
+ * context isn't rooted in an Activity, and any Hilt access failure is caught.
  */
 private fun resolveTtsManager(context: Context): TtsManager? {
     return try {
-        val activityContext = (context as? ViewComponentManager.FragmentContextWrapper)?.baseContext
-            ?: context
-        val entryPoint = EntryPointAccessors.fromActivity(
-            activityContext as android.app.Activity,
-            TtsEntryPoint::class.java
-        )
+        val activity = findActivity(context) ?: return null
+        val entryPoint = EntryPointAccessors.fromActivity(activity, TtsEntryPoint::class.java)
         entryPoint.ttsManager()
     } catch (_: Exception) {
         null
     }
+}
+
+private fun findActivity(context: Context): android.app.Activity? {
+    var current: Context? = context
+    while (current is ContextWrapper) {
+        if (current is android.app.Activity) return current
+        current = current.baseContext
+    }
+    return null
 }
 
 @dagger.hilt.EntryPoint

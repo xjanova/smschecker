@@ -127,11 +127,31 @@ class RealtimeSyncService : Service() {
     @Volatile private var wakeLock: PowerManager.WakeLock? = null
     @Volatile private var isRunning = false
 
-    /** Ensures we have an active scope; replaces it atomically if cancelled. */
+    /**
+     * Ensures we have an active scope; replaces it atomically if cancelled.
+     *
+     * IMPORTANT: Before swapping the scope, we cancel all child jobs (periodic sync, orphan
+     * cleanup, etc.) that live in the OLD scope. Without this, those jobs continue running
+     * in an orphaned scope forever (resource leak: each service crash+restart would add 4
+     * zombie jobs). The child job fields are nulled out so the fresh scope can launch new
+     * ones via startRealTimeSync() without stepping on zombies.
+     */
     private fun ensureActiveScope(): CoroutineScope {
         val current = scopeRef.get()
         val job = current.coroutineContext[Job]
         if (job?.isActive == true) return current
+
+        // Old scope is dead — cancel and null any child jobs that may be stuck in it
+        try {
+            periodicSyncJob?.cancel(); periodicSyncJob = null
+            orphanCleanupJob?.cancel(); orphanCleanupJob = null
+            dataCleanupJob?.cancel(); dataCleanupJob = null
+            wakeLockRenewalJob?.cancel(); wakeLockRenewalJob = null
+            heartbeatJob?.cancel(); heartbeatJob = null
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to cancel child jobs during scope recreation", e)
+        }
+
         val fresh = CoroutineScope(Dispatchers.IO + SupervisorJob())
         return if (scopeRef.compareAndSet(current, fresh)) fresh else scopeRef.get()
     }
@@ -733,12 +753,6 @@ class RealtimeSyncService : Service() {
                 }
             }
         }
-    }
-
-    /** Call this whenever a transaction is processed to keep the last-trx timestamp fresh. */
-    fun onTransactionSeen() {
-        heartbeatPrefs.edit().putLong(HEARTBEAT_KEY_LAST_TX, System.currentTimeMillis()).apply()
-        updateHeartbeatNotification()
     }
 
     private fun updateHeartbeatNotification() {
