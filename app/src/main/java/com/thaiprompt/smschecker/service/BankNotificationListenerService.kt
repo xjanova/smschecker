@@ -1,7 +1,9 @@
 package com.thaiprompt.smschecker.service
 
+import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.PowerManager
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
@@ -51,6 +53,24 @@ class BankNotificationListenerService : NotificationListenerService() {
 
             // === PromptPay / National Payment ===
             "th.or.itmx.promptpay" to "PROMPTPAY",           // PromptPay Official App
+
+            // === Digital Wallets (KTB ecosystem) ===
+            // เป๋าตัง — KTBCS's consumer wallet (G-wallet, PromptPay, vaccine pass etc.)
+            "com.ktbcs.paotang" to "PAOTANG",
+            "com.ktbcs.paotangpublic" to "PAOTANG",
+            "th.co.ktb.paotang" to "PAOTANG",
+            // ถุงเงิน — KTBCS's merchant acceptance app (shop-side)
+            "com.ktbcs.thungngern" to "THUNGNGERN",
+            "com.ktbcs.merchant" to "THUNGNGERN",
+            "co.th.ktbcs.thungngern" to "THUNGNGERN",
+
+            // === LINE & LINE Pay ===
+            // NOTE: LINE package fires for ALL messages, not just payments.
+            // Filtering to "is this actually a transaction?" is done downstream by
+            // BankSmsParser.isBankTransactionSms() which checks for financial keywords.
+            "jp.naver.line.android" to "LINE",
+            "com.linecorp.linepay" to "LINEPAY",
+            "com.linecorp.linepayth" to "LINEPAY",
         )
 
         /**
@@ -71,6 +91,20 @@ class BankNotificationListenerService : NotificationListenerService() {
         // License check — don't process notifications if license expired
         if (!LicenseManager.isLicenseValid()) {
             return
+        }
+
+        // Acquire a short wake lock so the CPU stays on long enough for
+        // SmsProcessingService to call startForeground() and finish the DB write.
+        // Critical at night when device is in Doze — otherwise transaction can be lost.
+        val wakeLock: PowerManager.WakeLock? = try {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SmsChecker:NotifListenerWakeLock").apply {
+                setReferenceCounted(false)
+                acquire(30_000L)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to acquire wake lock", e)
+            null
         }
 
         try {
@@ -101,6 +135,20 @@ class BankNotificationListenerService : NotificationListenerService() {
             val messageBody = bigText ?: text
             if (messageBody.isBlank()) return
 
+            // ⚠️ LINE package fires for ALL messages (chats, groups, stickers, etc.).
+            // Filter: only process LINE notifications whose title explicitly mentions payment.
+            // This avoids treating casual chats like "จ่ายให้หน่อย 500" as a real transaction.
+            if (bankCode == "LINE") {
+                val isPaymentRelated =
+                    title.contains("LINE Pay", ignoreCase = true) ||
+                    title.contains("ชำระเงิน", ignoreCase = true) ||
+                    title.contains("การแจ้งเตือนการชำระเงิน", ignoreCase = true) ||
+                    title.contains("Payment Notification", ignoreCase = true)
+                if (!isPaymentRelated) {
+                    return
+                }
+            }
+
             // Combine title + text as the synthetic message
             val combinedMessage = if (title.isNotBlank()) "$title\n$messageBody" else messageBody
             val syntheticSender = getSyntheticSender(bankCode)
@@ -124,6 +172,8 @@ class BankNotificationListenerService : NotificationListenerService() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error processing notification from ${sbn.packageName}", e)
+        } finally {
+            try { if (wakeLock?.isHeld == true) wakeLock.release() } catch (_: Exception) {}
         }
     }
 

@@ -152,8 +152,21 @@ class RealtimeSyncService : Service() {
     // WakeLock renewal job - keeps sync alive indefinitely
     private var wakeLockRenewalJob: Job? = null
 
+    // Heartbeat job — updates foreground notification every 5 minutes so the user can
+    // SEE the service is alive (useful for overnight confidence).
+    private var heartbeatJob: Job? = null
+    private val HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000L // 5 minutes
+
     // Tracks last successful sync, used to short-circuit redundant periodic polls
     @Volatile private var lastSyncTimestamp: Long = 0L
+
+    // Last transaction sighting timestamp — persisted via SharedPreferences so it survives
+    // service kill/restart. Used in the heartbeat notification line.
+    private val heartbeatPrefs by lazy {
+        applicationContext.getSharedPreferences("smschecker_heartbeat", Context.MODE_PRIVATE)
+    }
+    private val HEARTBEAT_KEY_LAST_TX = "last_transaction_at"
+    private val HEARTBEAT_KEY_LAST_ALIVE = "last_alive_at"
 
     override fun onCreate() {
         super.onCreate()
@@ -299,6 +312,9 @@ class RealtimeSyncService : Service() {
         // Start WakeLock renewal to keep sync alive indefinitely
         startWakeLockRenewal()
 
+        // Start heartbeat job — updates foreground notification with "alive at HH:mm:ss"
+        startHeartbeat()
+
         // Initial sync — register FCM token FIRST, then fetch orders
         serviceScope.launch {
             try {
@@ -323,6 +339,7 @@ class RealtimeSyncService : Service() {
         orphanCleanupJob?.cancel(); orphanCleanupJob = null
         dataCleanupJob?.cancel(); dataCleanupJob = null
         wakeLockRenewalJob?.cancel(); wakeLockRenewalJob = null
+        heartbeatJob?.cancel(); heartbeatJob = null
         try {
             webSocketManager.disconnectAll()
         } catch (e: Exception) {
@@ -688,6 +705,69 @@ class RealtimeSyncService : Service() {
     // =====================================================================
     // Wake Lock Management
     // =====================================================================
+
+    /**
+     * Heartbeat — update foreground notification every 5 minutes so the user can verify
+     * the service is still alive (critical for overnight operation: if user wakes up and
+     * sees "Alive: 05:15" they know sync was running; if they see "Alive: 22:30" they know
+     * it died before morning).
+     */
+    private fun startHeartbeat() {
+        heartbeatJob?.cancel()
+        // Seed the "alive" timestamp so notification is meaningful immediately
+        heartbeatPrefs.edit().putLong(HEARTBEAT_KEY_LAST_ALIVE, System.currentTimeMillis()).apply()
+        updateHeartbeatNotification()
+
+        heartbeatJob = serviceScope.launch {
+            while (isActive) {
+                delay(HEARTBEAT_INTERVAL_MS)
+                try {
+                    heartbeatPrefs.edit().putLong(
+                        HEARTBEAT_KEY_LAST_ALIVE, System.currentTimeMillis()
+                    ).apply()
+                    updateHeartbeatNotification()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Heartbeat update failed", e)
+                }
+            }
+        }
+    }
+
+    /** Call this whenever a transaction is processed to keep the last-trx timestamp fresh. */
+    fun onTransactionSeen() {
+        heartbeatPrefs.edit().putLong(HEARTBEAT_KEY_LAST_TX, System.currentTimeMillis()).apply()
+        updateHeartbeatNotification()
+    }
+
+    private fun updateHeartbeatNotification() {
+        try {
+            val fmt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+            val now = System.currentTimeMillis()
+            val lastAlive = heartbeatPrefs.getLong(HEARTBEAT_KEY_LAST_ALIVE, now)
+            val lastTx = heartbeatPrefs.getLong(HEARTBEAT_KEY_LAST_TX, 0L)
+            val connected = try { webSocketManager.isAnyConnected() } catch (_: Exception) { false }
+
+            val title = if (connected) "🟢 กำลังตรวจสอบ SMS" else "🟡 กำลังทำงาน (offline)"
+            val content = buildString {
+                append("Alive: ${fmt.format(java.util.Date(lastAlive))}")
+                if (lastTx > 0) {
+                    val diffMin = (now - lastTx) / 60_000L
+                    val lastTxStr = when {
+                        diffMin < 1 -> "เมื่อสักครู่"
+                        diffMin < 60 -> "${diffMin} นาทีที่แล้ว"
+                        diffMin < 1440 -> "${diffMin / 60} ชั่วโมงที่แล้ว"
+                        else -> fmt.format(java.util.Date(lastTx))
+                    }
+                    append(" | รายการล่าสุด: $lastTxStr")
+                }
+            }
+            updateNotification(title, content)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to update heartbeat notification", e)
+        }
+    }
 
     /**
      * Start a job that periodically renews the WakeLock to keep sync alive indefinitely.

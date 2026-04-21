@@ -67,6 +67,19 @@ class SmsProcessingService : Service() {
     private val sessionDetectedCount = java.util.concurrent.atomic.AtomicInteger(0)
     private val sessionMatchedCount = java.util.concurrent.atomic.AtomicInteger(0)
 
+    /**
+     * Persist the timestamp of the last transaction we processed so RealtimeSyncService
+     * (which owns the heartbeat notification) can display it. Survives service restart.
+     */
+    private fun markTransactionSeen() {
+        try {
+            applicationContext.getSharedPreferences("smschecker_heartbeat", Context.MODE_PRIVATE)
+                .edit()
+                .putLong("last_transaction_at", System.currentTimeMillis())
+                .apply()
+        } catch (_: Exception) { }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -145,6 +158,7 @@ class SmsProcessingService : Service() {
                 }
                 val savedTransaction = transaction.copy(id = savedId)
                 sessionDetectedCount.incrementAndGet()
+                markTransactionSeen()
 
                 // Update foreground notification with counters
                 updateNotification("กำลังทำงาน | ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.get()}")
@@ -295,6 +309,7 @@ class SmsProcessingService : Service() {
                 }
                 val savedTransaction = notifTransaction.copy(id = savedId)
                 sessionDetectedCount.incrementAndGet()
+                markTransactionSeen()
 
                 // Update foreground notification with counters
                 updateNotification("กำลังทำงาน | ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.get()}")

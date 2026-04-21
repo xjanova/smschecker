@@ -92,6 +92,20 @@ class BankSmsParser {
                 "BAAC", "ธกส", "ธ.ก.ส.", "BAAC-SMS", "BankBAACThai",
                 "ธนาคารเพื่อการเกษตร"
             ),
+            "PAOTANG" to listOf(
+                "PAOTANG", "เป๋าตัง", "paotang", "pao tang", "KTBCS", "PaoTang",
+                "PAOTANG-NOTIF"
+            ),
+            "THUNGNGERN" to listOf(
+                "THUNGNGERN", "ถุงเงิน", "thungngern", "thung ngern",
+                "ถุงเงิน-กรุงไทย", "THUNGNGERN-NOTIF"
+            ),
+            "LINEPAY" to listOf(
+                "LINEPAY", "LINE Pay", "LinePay", "LINEPAY-NOTIF"
+            ),
+            "LINE" to listOf(
+                "LINE", "LINE-NOTIF"
+            ),
         )
 
         // =====================================================================
@@ -130,6 +144,21 @@ class BankSmsParser {
 
             // "PromptPay: โอนเข้า 500.00 บาท"
             Regex("""PromptPay\s*:?\s*(?:โอนเข้า|รับ|เข้า)\s*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
+
+            // === เป๋าตัง / ถุงเงิน / LINE Pay notification formats ===
+            // "ได้รับเงิน 500.00 บาท" / "คุณได้รับเงิน 1,234.56 บาท"
+            // ⚠️ NOTE: "ได้รับเงิน" can also mean loan repayment (DEBIT) — BUT the LOAN_REPAYMENT_CONTEXT
+            //   check already runs FIRST in parse() and overrides this for loan messages.
+            Regex("""(?:คุณ\s*)?ได้รับเงิน\s*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
+
+            // "ยอดโอนเข้า ฿500.00" / "ยอดเงินเข้า 500.00 บาท"
+            Regex("""ยอด(?:โอนเข้า|เงินเข้า|รับ)\s*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
+
+            // LINE Pay: "รับโอนจาก XXX ฿500.00" / "Received 500.00 from XXX"
+            Regex("""(?:รับโอนจาก|Received\s+from)\s+.+?$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
+
+            // ถุงเงิน merchant: "มีเงินเข้าร้าน 500.00" / "ร้านได้รับเงิน 500.00"
+            Regex("""(?:มีเงินเข้าร้าน|ร้านได้รับเงิน|เงินเข้าร้าน)\s*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
         )}
 
         // =====================================================================
