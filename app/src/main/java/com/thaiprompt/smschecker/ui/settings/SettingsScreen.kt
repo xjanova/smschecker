@@ -58,6 +58,7 @@ import java.util.*
 fun SettingsScreen(
     onNavigateToQrScanner: () -> Unit = {},
     onNavigateToSmsMatcher: () -> Unit = {},
+    onNavigateToHealth: () -> Unit = {},
     onThemeChanged: (ThemeMode) -> Unit = {},
     onLanguageChanged: (LanguageMode) -> Unit = {},
     qrServerName: String? = null,
@@ -172,6 +173,52 @@ fun SettingsScreen(
                 pendingOrdersCount = state.pendingOrdersCount,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
+        }
+
+        item { Spacer(modifier = Modifier.height(12.dp)) }
+
+        // System Health check — entry point to diagnostics screen
+        item {
+            GlassCard(
+                modifier = Modifier.padding(horizontal = 16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(AppColors.CreditGreen.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.HealthAndSafety,
+                            contentDescription = null,
+                            tint = AppColors.CreditGreen,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "ตรวจสอบสุขภาพระบบ",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            "เช็คสิทธิ์แอป, service, heartbeat, และทดสอบเสียงแจ้งเตือน",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    TextButton(onClick = onNavigateToHealth) {
+                        Text("เปิด", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
 
         item { Spacer(modifier = Modifier.height(12.dp)) }

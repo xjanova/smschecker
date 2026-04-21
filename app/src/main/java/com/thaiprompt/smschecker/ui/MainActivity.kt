@@ -47,6 +47,7 @@ import com.thaiprompt.smschecker.service.ServiceWatchdogWorker
 import com.thaiprompt.smschecker.service.SmsProcessingService
 import com.thaiprompt.smschecker.ui.dashboard.DashboardScreen
 import com.thaiprompt.smschecker.ui.dashboard.DashboardViewModel
+import com.thaiprompt.smschecker.ui.health.SystemHealthScreen
 import com.thaiprompt.smschecker.ui.orders.OrdersScreen
 import com.thaiprompt.smschecker.ui.qrscanner.QrScannerScreen
 import com.thaiprompt.smschecker.ui.settings.SettingsScreen
@@ -239,6 +240,7 @@ sealed class Screen(val route: String) {
     data object QrScanner : Screen("qr_scanner")
     data object SmsMatcher : Screen("sms_matcher")
     data object SmsHistory : Screen("sms_history")
+    data object SystemHealth : Screen("system_health")
 }
 
 @Composable
@@ -259,7 +261,9 @@ fun MainApp(
     val pendingCount = dashboardState.pendingApprovalCount
 
     // Hide bottom bar on full-screen routes
-    val showBottomBar = currentRoute != Screen.QrScanner.route && currentRoute != Screen.SmsMatcher.route
+    val showBottomBar = currentRoute != Screen.QrScanner.route &&
+        currentRoute != Screen.SmsMatcher.route &&
+        currentRoute != Screen.SystemHealth.route
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -386,6 +390,9 @@ fun MainApp(
                         onNavigateToSmsMatcher = {
                             navController.navigate(Screen.SmsMatcher.route)
                         },
+                        onNavigateToHealth = {
+                            navController.navigate(Screen.SystemHealth.route)
+                        },
                         onThemeChanged = onThemeChanged,
                         onLanguageChanged = onLanguageChanged,
                         qrServerName = qrServerName,
@@ -431,6 +438,11 @@ fun MainApp(
                         onBack = {
                             navController.popBackStack()
                         }
+                    )
+                }
+                composable(Screen.SystemHealth.route) {
+                    SystemHealthScreen(
+                        onBack = { navController.popBackStack() }
                     )
                 }
             }
