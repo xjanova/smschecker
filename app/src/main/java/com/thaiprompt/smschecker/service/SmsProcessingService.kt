@@ -136,21 +136,13 @@ class SmsProcessingService : Service() {
 
                 Log.d(TAG, "Parsed transaction: ${transaction.bank} ${transaction.type} ${transaction.amount}")
 
-                // Deduplication: check if same transaction was already saved (e.g. from notification)
-                val isDuplicate = repository.findDuplicate(
-                    bank = transaction.bank,
-                    amount = transaction.amount,
-                    type = transaction.type,
-                    timestamp = timestamp,
-                    windowMs = DEDUP_WINDOW_MS
-                )
-                if (isDuplicate) {
+                // Atomic dedup + insert (uses app-wide Mutex to prevent race condition
+                // when SMS and bank-app notification arrive within same millisecond)
+                val savedId = repository.insertIfNotDuplicate(transaction, DEDUP_WINDOW_MS)
+                if (savedId == null) {
                     Log.d(TAG, "Duplicate SMS transaction detected, skipping: ${transaction.bank} ${transaction.amount}")
                     return@launch
                 }
-
-                // Save to local database
-                val savedId = repository.saveTransaction(transaction)
                 val savedTransaction = transaction.copy(id = savedId)
                 sessionDetectedCount.incrementAndGet()
 
@@ -295,21 +287,12 @@ class SmsProcessingService : Service() {
 
                 Log.d(TAG, "Parsed notification: ${notifTransaction.bank} ${notifTransaction.type} ${notifTransaction.amount}")
 
-                // Deduplication: check if same transaction was already saved (e.g. from SMS)
-                val isDuplicate = repository.findDuplicate(
-                    bank = notifTransaction.bank,
-                    amount = notifTransaction.amount,
-                    type = notifTransaction.type,
-                    timestamp = timestamp,
-                    windowMs = DEDUP_WINDOW_MS
-                )
-                if (isDuplicate) {
+                // Atomic dedup + insert (see SMS path above for rationale)
+                val savedId = repository.insertIfNotDuplicate(notifTransaction, DEDUP_WINDOW_MS)
+                if (savedId == null) {
                     Log.d(TAG, "Duplicate notification transaction detected, skipping: ${notifTransaction.bank} ${notifTransaction.amount}")
                     return@launch
                 }
-
-                // Save to local database
-                val savedId = repository.saveTransaction(notifTransaction)
                 val savedTransaction = notifTransaction.copy(id = savedId)
                 sessionDetectedCount.incrementAndGet()
 

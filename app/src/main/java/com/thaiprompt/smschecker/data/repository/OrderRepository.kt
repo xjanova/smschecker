@@ -868,9 +868,13 @@ class OrderRepository @Inject constructor(
         }
 
         Log.i("OrderRepository", "registerFcmToken: END. Sent to $sentCount/${activeServers.size} servers")
-        // Return true only if ALL servers succeeded
-        // This ensures fcm_token_needs_sync flag stays set until every server gets the token
-        return sentCount == activeServers.size
+        // Clear the "needs sync" flag when we've reached majority success (>=80%).
+        // Previously this required 100% which meant a single flaky server caused infinite
+        // retries and duplicate registrations to healthy servers on every attempt.
+        // Majority is enough: the 15-minute periodic worker will retry the stragglers.
+        val ratio = if (activeServers.isNotEmpty())
+            sentCount.toDouble() / activeServers.size else 0.0
+        return ratio >= 0.8 && sentCount > 0
     }
 
     /**

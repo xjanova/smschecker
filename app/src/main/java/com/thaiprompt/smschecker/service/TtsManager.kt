@@ -1,9 +1,14 @@
 package com.thaiprompt.smschecker.service
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import com.thaiprompt.smschecker.security.SecureStorage
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -30,6 +35,17 @@ class TtsManager @Inject constructor(
     @Volatile
     private var cachedLangKey: String? = null // Cache language to avoid re-applying every speak
 
+    // Audio focus: temporarily duck other audio while TTS is speaking so the user
+    // can still hear the announcement while music / videos are playing.
+    private val audioManager by lazy {
+        context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    }
+    @Volatile private var audioFocusRequest: AudioFocusRequest? = null
+    @Volatile private var activeUtteranceCount: Int = 0
+    private val audioFocusLock = Any()
+
+    private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { /* no-op; transient */ }
+
     init {
         // TextToSpeech must be created on a thread with a Looper (Main thread)
         if (Looper.myLooper() == Looper.getMainLooper()) {
@@ -46,6 +62,36 @@ class TtsManager @Inject constructor(
             tts?.setPitch(1.0f)
             tts?.setSpeechRate(0.9f)
 
+            // Route TTS through the ASSISTANCE_SONIFICATION stream so it bypasses music/media
+            // volume and plays even when the user has their ringer muted (this is a notification).
+            try {
+                val attrs = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+                tts?.setAudioAttributes(attrs)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to set TTS audio attributes", e)
+            }
+
+            // Utterance listener — manage audio focus lifecycle.
+            // Request focus on START, release on DONE/ERROR so music/video resumes.
+            tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {
+                    requestAudioFocus()
+                }
+                override fun onDone(utteranceId: String?) {
+                    releaseAudioFocusIfIdle()
+                }
+                @Deprecated("Deprecated in Java", ReplaceWith("onError(utteranceId, errorCode)"))
+                override fun onError(utteranceId: String?) {
+                    releaseAudioFocusIfIdle()
+                }
+                override fun onError(utteranceId: String?, errorCode: Int) {
+                    releaseAudioFocusIfIdle()
+                }
+            })
+
             isInitialized = true
             Log.d(TAG, "TTS initialized successfully")
 
@@ -55,6 +101,60 @@ class TtsManager @Inject constructor(
             queued.forEach { speakOnMainThread(it) }
         } else {
             Log.e(TAG, "TTS initialization failed with status: $status")
+        }
+    }
+
+    /**
+     * Transient audio focus (DUCK) so music plays softly while TTS speaks.
+     * Reference-counted: multiple queued utterances share one focus request.
+     */
+    private fun requestAudioFocus() {
+        synchronized(audioFocusLock) {
+            activeUtteranceCount++
+            if (activeUtteranceCount > 1) return // already focused
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    if (audioFocusRequest == null) {
+                        val attrs = AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                        audioFocusRequest = AudioFocusRequest.Builder(
+                            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+                        )
+                            .setAudioAttributes(attrs)
+                            .setOnAudioFocusChangeListener(audioFocusListener)
+                            .build()
+                    }
+                    audioFocusRequest?.let { audioManager.requestAudioFocus(it) }
+                } else {
+                    @Suppress("DEPRECATION")
+                    audioManager.requestAudioFocus(
+                        audioFocusListener,
+                        AudioManager.STREAM_NOTIFICATION,
+                        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+                    )
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to request audio focus", e)
+            }
+        }
+    }
+
+    private fun releaseAudioFocusIfIdle() {
+        synchronized(audioFocusLock) {
+            activeUtteranceCount = (activeUtteranceCount - 1).coerceAtLeast(0)
+            if (activeUtteranceCount > 0) return
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+                } else {
+                    @Suppress("DEPRECATION")
+                    audioManager.abandonAudioFocus(audioFocusListener)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to abandon audio focus", e)
+            }
         }
     }
 

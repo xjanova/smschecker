@@ -13,6 +13,8 @@ import com.thaiprompt.smschecker.security.SecureStorage
 import com.thaiprompt.smschecker.util.ParallelSyncHelper
 import com.thaiprompt.smschecker.util.RetryHelper
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -29,6 +31,35 @@ class TransactionRepository @Inject constructor(
 ) {
     companion object {
         private const val TAG = "TransactionRepository"
+    }
+
+    /**
+     * Serializes the dedup-check-then-insert critical section. Without this, two coroutines
+     * (e.g. SMS arrives at the same millisecond as a bank-app push-notification) can both
+     * see "no duplicate" and both insert, bypassing app-level dedup entirely.
+     *
+     * App-wide Mutex (not per-instance) because TransactionRepository is @Singleton.
+     */
+    private val dedupMutex = Mutex()
+
+    /**
+     * Atomic "check duplicate, then insert" — call this instead of findDuplicate + saveTransaction
+     * to guarantee dedup under concurrent delivery.
+     *
+     * @return the inserted id, or null if a duplicate was already present.
+     */
+    suspend fun insertIfNotDuplicate(
+        transaction: BankTransaction,
+        dedupWindowMs: Long = 60_000L
+    ): Long? = dedupMutex.withLock {
+        val dup = transactionDao.findDuplicate(
+            bank = transaction.bank,
+            amount = transaction.amount,
+            type = transaction.type,
+            timestamp = transaction.timestamp,
+            windowMs = dedupWindowMs
+        )
+        if (dup != null) null else transactionDao.insert(transaction)
     }
 
     fun getAllTransactions(): Flow<List<BankTransaction>> = transactionDao.getAllTransactions()
