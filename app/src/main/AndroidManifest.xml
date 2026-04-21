@@ -14,9 +14,12 @@
     <!-- Foreground Service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- USE_EXACT_ALARM is granted by default on API 33+ and doesn't need user approval (required for reliable service restart) -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <!-- Battery optimization exemption — critical for SMS monitoring while device sleeps -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -66,15 +69,26 @@
             </intent-filter>
         </receiver>
 
-        <!-- Boot Receiver (exported=false เพียงพอเพราะ system BOOT_COMPLETED broadcast
-             ถูกส่งถึง implicit receivers ที่ declared ใน manifest โดยไม่ต้อง exported=true ตั้งแต่ API 26+) -->
+        <!-- Boot Receiver — รับ event หลายแบบเพื่อให้มั่นใจว่า service จะกลับมาทำงานเสมอ:
+             - BOOT_COMPLETED: หลังเครื่องบูตสำเร็จปกติ
+             - QUICKBOOT_POWERON: HTC/Samsung quick boot (บาง ROM ไม่ส่ง BOOT_COMPLETED)
+             - MY_PACKAGE_REPLACED: หลังอัพเดทแอป (ไม่ต้อง data filter เพราะส่งถึงเฉพาะเรา)
+             exported=false เพียงพอเพราะ implicit system broadcasts ส่งถึง receivers ในแอปตัวเอง -->
         <receiver
             android:name=".receiver.BootReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- AlarmReceiver — ใช้สำหรับ restart service หลัง onTaskRemoved (ใน Doze mode) -->
+        <receiver
+            android:name=".receiver.ServiceRestartReceiver"
+            android:exported="false" />
 
         <!-- SMS Processing Service -->
         <service

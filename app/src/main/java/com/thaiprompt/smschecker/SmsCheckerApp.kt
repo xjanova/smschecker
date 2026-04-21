@@ -10,6 +10,7 @@ import android.util.Log
 import com.google.firebase.messaging.FirebaseMessaging
 import com.thaiprompt.smschecker.service.FcmService
 import com.thaiprompt.smschecker.service.OrderSyncWorker
+import com.thaiprompt.smschecker.service.ServiceWatchdogWorker
 import com.thaiprompt.smschecker.data.license.IntegrityChecker
 import dagger.hilt.android.HiltAndroidApp
 
@@ -41,6 +42,18 @@ class SmsCheckerApp : Application() {
 
         createNotificationChannels()
         initializeFirebaseMessaging()
+
+        // Belt-and-suspenders: WorkManager enqueues are IDEMPOTENT, safe to call on every
+        // process start. These guarantee the watchdog + periodic sync exist even when the
+        // process starts from an FCM message or SMS broadcast (no user-visible activity).
+        // NOTE: we do NOT start the foreground service from here — that would risk
+        // ForegroundServiceStartNotAllowedException on API 31+ background starts.
+        try {
+            ServiceWatchdogWorker.enqueuePeriodic(this)
+            OrderSyncWorker.enqueuePeriodicSync(this)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to enqueue background workers in Application.onCreate", e)
+        }
     }
 
     /**

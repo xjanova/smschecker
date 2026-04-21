@@ -234,7 +234,10 @@ class WebSocketManager @Inject constructor(
         // Cancel existing reconnect job
         reconnectJobs[serverId]?.cancel()
 
-        val delay = reconnectDelays.getOrPut(serverId) { INITIAL_RECONNECT_DELAY_MS }
+        val baseDelay = reconnectDelays.getOrPut(serverId) { INITIAL_RECONNECT_DELAY_MS }
+        // Jitter up to 25% to avoid thundering herd when all clients reconnect at once
+        val jitter = (baseDelay * 0.25 * kotlin.random.Random.nextDouble()).toLong()
+        val delay = baseDelay + jitter
         val attempt = (_connectionStates.value[serverId]?.reconnectAttempt ?: 0) + 1
 
         updateState(serverId, server.name, ConnectionState.RECONNECTING, reconnectAttempt = attempt)
@@ -248,8 +251,8 @@ class WebSocketManager @Inject constructor(
             }
         }
 
-        // Exponential backoff
-        reconnectDelays[serverId] = (delay * 2).coerceAtMost(MAX_RECONNECT_DELAY_MS)
+        // Exponential backoff on the BASE delay (jitter is per-attempt)
+        reconnectDelays[serverId] = (baseDelay * 2).coerceAtMost(MAX_RECONNECT_DELAY_MS)
     }
 
     private fun startPingJob(serverId: Long, webSocket: WebSocket) {
@@ -310,17 +313,24 @@ class WebSocketManager @Inject constructor(
         reconnectJobs.clear()
         pingJobs.values.forEach { it.cancel() }
         pingJobs.clear()
+        reconnectDelays.clear()
         _connectionStates.value = emptyMap()
         _overallConnected.value = false
     }
 
     /**
-     * Disconnect from a specific server.
+     * Disconnect from a specific server and purge its bookkeeping so removed servers
+     * don't leak memory in the concurrent maps.
      */
     fun disconnect(serverId: Long) {
-        reconnectJobs[serverId]?.cancel()
-        pingJobs[serverId]?.cancel()
-        webSockets.remove(serverId)?.close(1000, "Client disconnect")
+        reconnectJobs.remove(serverId)?.cancel()
+        pingJobs.remove(serverId)?.cancel()
+        reconnectDelays.remove(serverId)
+        try {
+            webSockets.remove(serverId)?.close(1000, "Client disconnect")
+        } catch (e: Exception) {
+            Log.w(TAG, "close() failed for server $serverId", e)
+        }
 
         val states = _connectionStates.value.toMutableMap()
         states.remove(serverId)

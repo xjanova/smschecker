@@ -45,6 +45,7 @@ data class SettingsState(
     val isNotificationListening: Boolean = false,
     val isNotificationAccessGranted: Boolean = false,
     val isSmsPermissionGranted: Boolean = false,
+    val isBatteryOptimized: Boolean = false,  // true = Android WILL throttle = BAD
     // Sync status
     val isSyncing: Boolean = false,
     val lastSyncTime: Long? = null,
@@ -351,6 +352,20 @@ class SettingsViewModel @Inject constructor(
                 Manifest.permission.RECEIVE_SMS
             ) == PackageManager.PERMISSION_GRANTED
             _state.update { it.copy(isSmsPermissionGranted = isGranted) }
+        } catch (e: Exception) { }
+    }
+
+    /**
+     * Check whether Android will apply battery optimization (Doze/App Standby).
+     * Returns true (= bad) if the app is NOT whitelisted — user should grant exemption.
+     */
+    fun checkBatteryOptimization(context: Context) {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                val isExempt = pm.isIgnoringBatteryOptimizations(context.packageName)
+                _state.update { it.copy(isBatteryOptimized = !isExempt) }
+            }
         } catch (e: Exception) { }
     }
 

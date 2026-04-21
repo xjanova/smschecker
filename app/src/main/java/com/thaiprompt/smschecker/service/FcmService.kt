@@ -19,9 +19,11 @@ import com.thaiprompt.smschecker.ui.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 
 /**
@@ -38,7 +40,17 @@ class FcmService : FirebaseMessagingService() {
     @Inject lateinit var orderApprovalDao: OrderApprovalDao
     @Inject lateinit var serverConfigDao: ServerConfigDao
 
-    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    // AtomicReference so scope recreation is race-free; the system may kill + recreate FcmService
+    // at any time without calling onDestroy (documented behavior of FirebaseMessagingService).
+    private val scopeRef = AtomicReference(CoroutineScope(Dispatchers.IO + SupervisorJob()))
+
+    private fun activeScope(): CoroutineScope {
+        val current = scopeRef.get()
+        val job = current.coroutineContext[Job]
+        if (job?.isActive == true) return current
+        val fresh = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        return if (scopeRef.compareAndSet(current, fresh)) fresh else scopeRef.get()
+    }
 
     companion object {
         private const val TAG = "FcmService"
@@ -51,7 +63,7 @@ class FcmService : FirebaseMessagingService() {
      */
     override fun onDestroy() {
         super.onDestroy()
-        serviceScope.cancel()
+        try { scopeRef.get().cancel() } catch (_: Exception) {}
     }
 
     override fun onNewToken(token: String) {
@@ -134,7 +146,7 @@ class FcmService : FirebaseMessagingService() {
             val remoteId = orderId.toLongOrNull()
             val serverUrl = data["server_url"]  // URL ของเซิร์ฟที่ส่ง FCM มา (อาจเป็น null สำหรับ FCM เก่า)
             if (remoteId != null) {
-                serviceScope.launch {
+                activeScope().launch {
                     try {
                         insertFortuneOrderFromFcm(
                             remoteId = remoteId,

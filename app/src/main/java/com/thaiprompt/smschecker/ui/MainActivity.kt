@@ -43,6 +43,7 @@ import androidx.navigation.compose.rememberNavController
 import com.thaiprompt.smschecker.security.SecureStorage
 import com.thaiprompt.smschecker.service.OrderSyncWorker
 import com.thaiprompt.smschecker.service.RealtimeSyncService
+import com.thaiprompt.smschecker.service.ServiceWatchdogWorker
 import com.thaiprompt.smschecker.service.SmsProcessingService
 import com.thaiprompt.smschecker.ui.dashboard.DashboardScreen
 import com.thaiprompt.smschecker.ui.dashboard.DashboardViewModel
@@ -90,6 +91,7 @@ class MainActivity : ComponentActivity() {
         checkAndRequestPermissions()
         requestBatteryOptimizationExemption()
         OrderSyncWorker.enqueuePeriodicSync(applicationContext)
+        ServiceWatchdogWorker.enqueuePeriodic(applicationContext)
         RealtimeSyncService.start(applicationContext)
 
         setContent {
@@ -205,6 +207,27 @@ class MainActivity : ComponentActivity() {
             action = SmsProcessingService.ACTION_START_MONITORING
         }
         SmsProcessingService.enqueueWork(this, intent)
+    }
+
+    /**
+     * Every time the user returns to the app, ensure background components are alive.
+     * This is a secondary safety net in addition to BootReceiver + ServiceWatchdogWorker.
+     */
+    override fun onResume() {
+        super.onResume()
+        try {
+            RealtimeSyncService.start(applicationContext)
+            ServiceWatchdogWorker.enqueuePeriodic(applicationContext)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "onResume: failed to ensure services alive", e)
+        }
+    }
+
+    /**
+     * Public helper so Settings screen can re-prompt when user taps the banner.
+     */
+    fun reRequestBatteryOptimizationExemption() {
+        requestBatteryOptimizationExemption()
     }
 }
 

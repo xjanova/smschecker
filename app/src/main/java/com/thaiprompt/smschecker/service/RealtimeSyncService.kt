@@ -14,10 +14,12 @@ import com.thaiprompt.smschecker.data.api.DebugReportBody
 import com.thaiprompt.smschecker.data.api.WebSocketManager
 import com.thaiprompt.smschecker.data.repository.OrderRepository
 import com.thaiprompt.smschecker.data.repository.OrphanTransactionRepository
+import com.thaiprompt.smschecker.receiver.ServiceRestartReceiver
 import com.thaiprompt.smschecker.security.SecureStorage
 import com.thaiprompt.smschecker.ui.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 
 /**
@@ -118,9 +120,21 @@ class RealtimeSyncService : Service() {
     @Inject
     lateinit var orphanTransactionDao: com.thaiprompt.smschecker.data.db.OrphanTransactionDao
 
-    private var serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    // AtomicReference so scope recreation is race-free across threads.
+    private val scopeRef = AtomicReference(CoroutineScope(Dispatchers.IO + SupervisorJob()))
+    private val serviceScope: CoroutineScope get() = scopeRef.get()
+
     @Volatile private var wakeLock: PowerManager.WakeLock? = null
     @Volatile private var isRunning = false
+
+    /** Ensures we have an active scope; replaces it atomically if cancelled. */
+    private fun ensureActiveScope(): CoroutineScope {
+        val current = scopeRef.get()
+        val job = current.coroutineContext[Job]
+        if (job?.isActive == true) return current
+        val fresh = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        return if (scopeRef.compareAndSet(current, fresh)) fresh else scopeRef.get()
+    }
 
     // Periodic sync job - using polling instead of WebSocket
     // Now using match-only mode, so polling is less frequent (for orphan recovery only)
@@ -138,6 +152,9 @@ class RealtimeSyncService : Service() {
     // WakeLock renewal job - keeps sync alive indefinitely
     private var wakeLockRenewalJob: Job? = null
 
+    // Tracks last successful sync, used to short-circuit redundant periodic polls
+    @Volatile private var lastSyncTimestamp: Long = 0L
+
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "Service created")
@@ -147,14 +164,20 @@ class RealtimeSyncService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStartCommand: action=${intent?.action}")
 
+        // Always call startForeground within 5 seconds to avoid ForegroundServiceDidNotStartInTimeException
+        // even on ACTION_RECONNECT or unknown actions.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                startForegroundWithNotification()
+            } catch (e: Exception) {
+                Log.e(TAG, "startForeground failed", e)
+            }
+        }
+
         when (intent?.action) {
             ACTION_START -> {
                 if (!isRunning) {
-                    // Recreate scope if previously cancelled
-                    if (!serviceScope.coroutineContext[kotlinx.coroutines.Job]!!.isActive) {
-                        serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-                    }
-                    startForegroundWithNotification()
+                    ensureActiveScope()
                     startRealTimeSync()
                     isRunning = true
                 }
@@ -168,6 +191,19 @@ class RealtimeSyncService : Service() {
             ACTION_RECONNECT -> {
                 if (isRunning) {
                     reconnectWebSockets()
+                } else {
+                    // Service was revived (e.g. via ServiceRestartReceiver) — start fresh
+                    ensureActiveScope()
+                    startRealTimeSync()
+                    isRunning = true
+                }
+            }
+            else -> {
+                // Null intent = service restart after being killed (START_STICKY)
+                if (!isRunning) {
+                    ensureActiveScope()
+                    startRealTimeSync()
+                    isRunning = true
                 }
             }
         }
@@ -185,21 +221,47 @@ class RealtimeSyncService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        Log.d(TAG, "Task removed, scheduling service restart")
+        Log.d(TAG, "Task removed, scheduling service restart via AlarmManager")
         try {
-            val restartIntent = Intent(this, RealtimeSyncService::class.java).apply {
-                action = ACTION_START
+            // Go through a BroadcastReceiver rather than getService(), because
+            // setExactAndAllowWhileIdle only wakes the device long enough to deliver a broadcast.
+            // Direct service start can be denied when device is idle (API 31+).
+            val restartIntent = Intent(this, ServiceRestartReceiver::class.java).apply {
+                action = ServiceRestartReceiver.ACTION_RESTART
+                `package` = packageName
             }
-            val pendingIntent = PendingIntent.getService(
+            val pendingIntent = PendingIntent.getBroadcast(
                 this, 1, restartIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            alarmManager.set(
-                AlarmManager.RTC_WAKEUP,
-                System.currentTimeMillis() + 3000, // 3 seconds delay to avoid rapid restart loop
-                pendingIntent
-            )
+            val triggerAt = System.currentTimeMillis() + 3000 // 3 seconds delay
+
+            // Prefer setExactAndAllowWhileIdle so the alarm fires EVEN IN DOZE.
+            // On API 31+ this requires SCHEDULE_EXACT_ALARM; fall back to inexact if denied.
+            val useExact = when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+                    try { alarmManager.canScheduleExactAlarms() } catch (_: Exception) { false }
+                else -> true
+            }
+
+            try {
+                if (useExact) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent
+                    )
+                } else {
+                    // Inexact-while-idle: at least fires during next Doze maintenance window
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent
+                    )
+                }
+            } catch (se: SecurityException) {
+                Log.w(TAG, "Exact alarm denied, falling back to inexact", se)
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent
+                )
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to schedule service restart", e)
         }
@@ -257,12 +319,16 @@ class RealtimeSyncService : Service() {
     private fun stopRealTimeSync() {
         Log.i(TAG, "Stopping real-time sync")
 
-        periodicSyncJob?.cancel()
-        orphanCleanupJob?.cancel()
-        dataCleanupJob?.cancel()
-        wakeLockRenewalJob?.cancel()
-        webSocketManager.disconnectAll()
-        serviceScope.cancel()
+        periodicSyncJob?.cancel(); periodicSyncJob = null
+        orphanCleanupJob?.cancel(); orphanCleanupJob = null
+        dataCleanupJob?.cancel(); dataCleanupJob = null
+        wakeLockRenewalJob?.cancel(); wakeLockRenewalJob = null
+        try {
+            webSocketManager.disconnectAll()
+        } catch (e: Exception) {
+            Log.w(TAG, "disconnectAll failed", e)
+        }
+        scopeRef.get().cancel()
         releaseWakeLock()
     }
 
@@ -274,7 +340,8 @@ class RealtimeSyncService : Service() {
     private fun handleWebSocketMessage(serverId: Long, message: WebSocketManager.WebSocketMessage) {
         Log.d(TAG, "WebSocket message from server $serverId: ${message.type}")
 
-        serviceScope.launch {
+        // Use ensureActiveScope so messages arriving after a stop+restart don't silently drop
+        ensureActiveScope().launch {
             when (message.type) {
                 "new_order" -> {
                     // New order received - trigger sync
@@ -315,6 +382,18 @@ class RealtimeSyncService : Service() {
             while (isActive) {
                 delay(syncIntervalMs)
                 try {
+                    // Skip redundant poll when WebSocket is connected to at least one server
+                    // — the WebSocket push + FCM handle real-time updates already.
+                    // But we still run the skip-logic at 3x the interval as a safety net (catches missed pushes).
+                    val anyWsConnected = webSocketManager.isAnyConnected()
+                    val lastSyncTs = lastSyncTimestamp
+                    val skip = anyWsConnected &&
+                        (System.currentTimeMillis() - lastSyncTs) < (syncIntervalMs * 3)
+                    if (skip) {
+                        Log.d(TAG, "Periodic sync skipped (WS connected, recent sync ${(System.currentTimeMillis()-lastSyncTs)/1000}s ago)")
+                        continue
+                    }
+
                     Log.d(TAG, "Running periodic sync (every ${syncIntervalMs/1000}s)")
                     // FCM token sync — ensure token gets to server even if initial sync failed
                     syncFcmTokenIfNeeded()
@@ -323,7 +402,10 @@ class RealtimeSyncService : Service() {
                     orderRepository.pullServerChanges()
                     orderRepository.fetchOrders()
                     checkOrphansForNewOrders()
+                    lastSyncTimestamp = System.currentTimeMillis()
                     updateNotification("Syncing", "Last sync: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}")
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Log.e(TAG, "Periodic sync failed", e)
                     updateNotification("Sync Error", e.message ?: "Unknown error")

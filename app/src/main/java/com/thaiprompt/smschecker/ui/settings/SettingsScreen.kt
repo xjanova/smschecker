@@ -74,11 +74,12 @@ fun SettingsScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Check notification access and SMS permission when screen resumes
+    // Check notification access, SMS permission AND battery optimization on every resume
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             viewModel.checkNotificationAccess(context)
             viewModel.checkSmsPermission(context)
+            viewModel.checkBatteryOptimization(context)
         }
     }
 
@@ -136,6 +137,31 @@ fun SettingsScreen(
         }
 
         item { Spacer(modifier = Modifier.height(16.dp)) }
+
+        // Battery Optimization Warning — CRITICAL for reliable background operation
+        if (state.isBatteryOptimized) {
+            item {
+                BatteryOptimizationBanner(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    onGrant = {
+                        try {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                    data = android.net.Uri.parse("package:${context.packageName}")
+                                }
+                                context.startActivity(intent)
+                            }
+                        } catch (e: Exception) {
+                            // Fallback to generic battery settings
+                            try {
+                                context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                            } catch (_: Exception) {}
+                        }
+                    }
+                )
+            }
+            item { Spacer(modifier = Modifier.height(12.dp)) }
+        }
 
         // Sync Status Card with Animation
         item {
@@ -1413,6 +1439,60 @@ fun ServerCard(
                 }
             }
         )
+    }
+}
+
+/**
+ * Prominent red/orange warning banner shown when battery optimization is enabled.
+ * Without the exemption Android's Doze mode will kill background sync and SMS
+ * processing after the screen has been off for a while.
+ */
+@Composable
+private fun BatteryOptimizationBanner(
+    modifier: Modifier = Modifier,
+    onGrant: () -> Unit
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(AppColors.DebitRed.copy(alpha = 0.12f))
+            .border(1.dp, AppColors.DebitRed.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .padding(14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = AppColors.DebitRed,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                "แอปถูกจำกัดการทำงานเบื้องหลัง!",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = AppColors.DebitRed
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            "ถ้าเครื่องดับ/พักหน้าจอนาน แอปจะหยุดตรวจ SMS และจะพลาดยอดเงินที่เข้ามา " +
+                "กดปุ่มด้านล่างเพื่ออนุญาตให้แอปทำงานเบื้องหลังต่อเนื่อง",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        Button(
+            onClick = onGrant,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = AppColors.DebitRed,
+                contentColor = Color.White
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("อนุญาตให้ทำงานเบื้องหลัง", fontWeight = FontWeight.Bold)
+        }
     }
 }
 

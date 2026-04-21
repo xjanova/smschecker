@@ -1,6 +1,7 @@
 package com.thaiprompt.smschecker.service
 
 import android.content.Context
+import android.os.PowerManager
 import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.*
@@ -14,6 +15,7 @@ import com.thaiprompt.smschecker.security.SecureStorage
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.util.concurrent.TimeUnit
+import kotlin.random.Random
 
 @HiltWorker
 class OrderSyncWorker @AssistedInject constructor(
@@ -36,6 +38,19 @@ class OrderSyncWorker @AssistedInject constructor(
         }
 
         val startTime = System.currentTimeMillis()
+
+        // Acquire a partial wake lock so CPU stays on during network calls
+        // — WorkManager doesn't hold a wake lock for us on API 31+.
+        val wakeLock: PowerManager.WakeLock? = try {
+            val pm = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
+            pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SmsChecker:OrderSyncWorker").apply {
+                setReferenceCounted(false)
+                acquire(5 * 60 * 1000L) // 5-minute max
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to acquire wake lock in worker", e)
+            null
+        }
 
         return try {
             // 0. Sync FCM token if needed
@@ -69,6 +84,8 @@ class OrderSyncWorker @AssistedInject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Sync failed", e)
             if (runAttemptCount < 3) Result.retry() else Result.failure()
+        } finally {
+            try { if (wakeLock?.isHeld == true) wakeLock.release() } catch (_: Exception) {}
         }
     }
 
@@ -248,16 +265,20 @@ class OrderSyncWorker @AssistedInject constructor(
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
 
+            // Add jitter (0-15s) to the base backoff so many devices don't retry simultaneously
+            val jitterSeconds = 30L + Random.nextLong(15L)
+
             val request = PeriodicWorkRequestBuilder<OrderSyncWorker>(
                 15, TimeUnit.MINUTES
             )
                 .setConstraints(constraints)
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, jitterSeconds, TimeUnit.SECONDS)
                 .build()
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME_PERIODIC,
-                ExistingPeriodicWorkPolicy.KEEP,
+                // UPDATE so if constraints/backoff change on app upgrade, the new policy takes effect.
+                ExistingPeriodicWorkPolicy.UPDATE,
                 request
             )
         }
@@ -269,6 +290,10 @@ class OrderSyncWorker @AssistedInject constructor(
 
             val request = OneTimeWorkRequestBuilder<OrderSyncWorker>()
                 .setConstraints(constraints)
+                // Expedited = run ASAP (bypass Doze), required for FCM-triggered sync.
+                // If quota exceeded, fall back to regular work.
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
                 .build()
 
             WorkManager.getInstance(context).enqueueUniqueWork(
