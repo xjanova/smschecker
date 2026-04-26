@@ -392,23 +392,41 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
             Spacer(modifier = Modifier.height(8.dp))
         }
 
-        // Load more trigger
+        // ปุ่มโหลดต่อ — กดเองเพื่อไม่ให้แอพดูดบิลเป็นร้อยมาแสดงทีเดียว
         if (state.hasMorePages && !state.isLoading) {
-            item {
-                LaunchedEffect(Unit) {
-                    viewModel.loadMoreOrders()
-                }
+            item(key = "load_more_button") {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        strokeWidth = 2.dp,
-                        color = AppColors.GoldAccent
-                    )
+                    if (state.isLoadingMore) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp,
+                            color = AppColors.GoldAccent
+                        )
+                    } else {
+                        OutlinedButton(
+                            onClick = { viewModel.loadMoreOrders() },
+                            border = BorderStroke(1.dp, AppColors.GoldAccent.copy(alpha = 0.4f)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = AppColors.GoldAccent
+                            )
+                        ) {
+                            Icon(
+                                Icons.Default.ExpandMore,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "โหลดต่อ (${state.orders.size}/${state.totalCount})",
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
                 }
             }
         }
