@@ -75,12 +75,24 @@ fun SettingsScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
+    // Tracks user's intent to enable Super Mode after granting battery exemption — survives
+    // the trip to Android settings so we can auto-enable when they return with permission granted.
+    var pendingSuperModeOnGrant by remember { mutableStateOf(false) }
+
     // Check notification access, SMS permission AND battery optimization on every resume
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             viewModel.checkNotificationAccess(context)
             viewModel.checkSmsPermission(context)
             viewModel.checkBatteryOptimization(context)
+        }
+    }
+
+    // Auto-enable Super Mode the moment the user returns with battery exemption granted.
+    LaunchedEffect(state.isBatteryOptimized, pendingSuperModeOnGrant) {
+        if (pendingSuperModeOnGrant && !state.isBatteryOptimized) {
+            viewModel.setSuperMode(true)
+            pendingSuperModeOnGrant = false
         }
     }
 
@@ -109,6 +121,62 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = { viewModel.clearAddServerError() }) {
                     Text("OK")
+                }
+            }
+        )
+    }
+
+    // Super Mode requires Battery Unrestricted to actually fire every 2 min;
+    // dialog is shown when user flips the toggle ON without exemption already granted.
+    var showSuperBatteryDialog by remember { mutableStateOf(false) }
+    if (showSuperBatteryDialog) {
+        AlertDialog(
+            onDismissRequest = { showSuperBatteryDialog = false },
+            icon = {
+                Icon(
+                    Icons.Default.BatteryAlert,
+                    contentDescription = null,
+                    tint = AppColors.WarningOrange
+                )
+            },
+            title = { Text("ต้องเปิด Battery Unrestricted ก่อน") },
+            text = {
+                Text(
+                    "Super Mode จะปลุกแอปทุก 2 นาทีแม้เครื่องเข้าโหมดพัก " +
+                        "แต่ Android จะจำกัดเหลือทุก ~9-15 นาทีถ้าแบตเตอรี่ยังไม่ตั้งเป็น 'ไม่จำกัด'\n\n" +
+                        "กด 'ไปตั้งค่า' แล้วเลือก 'อนุญาต' เพื่อให้แอปทำงานได้เต็มที่"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showSuperBatteryDialog = false
+                        // Mark intent so onResume auto-enables Super Mode once battery becomes exempt.
+                        pendingSuperModeOnGrant = true
+                        try {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                    data = android.net.Uri.parse("package:${context.packageName}")
+                                }
+                                context.startActivity(intent)
+                            }
+                        } catch (e: Exception) {
+                            try {
+                                context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                            } catch (_: Exception) {}
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = AppColors.WarningOrange,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("ไปตั้งค่า", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSuperBatteryDialog = false }) {
+                    Text("ยกเลิก")
                 }
             }
         )
@@ -354,6 +422,26 @@ fun SettingsScreen(
                     }
                 }
             }
+        }
+
+        item { Spacer(modifier = Modifier.height(12.dp)) }
+
+        // Super Mode — 2-min AlarmManager heartbeat (Doze-bypass).
+        // Toggle ON => force battery exemption popup (otherwise OS rate-limits to ~9 min).
+        // Dialog state is hoisted to the parent below — LazyListScope isn't composable scope.
+        item {
+            SuperModeCard(
+                enabled = state.isSuperModeEnabled,
+                isBatteryExempt = !state.isBatteryOptimized,
+                modifier = Modifier.padding(horizontal = 16.dp),
+                onToggle = { newValue ->
+                    if (newValue && state.isBatteryOptimized) {
+                        showSuperBatteryDialog = true
+                    } else {
+                        viewModel.setSuperMode(newValue)
+                    }
+                }
+            )
         }
 
         item { Spacer(modifier = Modifier.height(12.dp)) }
@@ -1486,6 +1574,103 @@ fun ServerCard(
                 }
             }
         )
+    }
+}
+
+/**
+ * Super Mode toggle — opt-in 2-min AlarmManager heartbeat that bypasses Doze.
+ *
+ * "Costs more battery but never sleeps." Useful when shop is open all day and the user
+ * wants instant TTS announcements even with screen off. Without Battery Unrestricted
+ * the OS rate-limits to ~9-15 min — UI calls this out clearly so the user knows.
+ */
+@Composable
+private fun SuperModeCard(
+    enabled: Boolean,
+    isBatteryExempt: Boolean,
+    modifier: Modifier = Modifier,
+    onToggle: (Boolean) -> Unit
+) {
+    GlassCard(modifier = modifier) {
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (enabled) AppColors.GoldAccent.copy(alpha = 0.18f)
+                                else MaterialTheme.colorScheme.surfaceVariant
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Bolt,
+                            contentDescription = null,
+                            tint = if (enabled) AppColors.GoldAccent
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            "⚡ Super Mode (ไม่หลับ)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (enabled) AppColors.GoldAccent
+                                else MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            "ปลุกระบบทุก 2 นาที แม้ปิดหน้าจอ — เปลืองแบตขึ้น แต่ตรวจ SMS ทันที",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = onToggle,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = AppColors.GoldAccent,
+                        checkedTrackColor = AppColors.GoldAccent.copy(alpha = 0.3f)
+                    )
+                )
+            }
+            // Inline warning when Super Mode is ON but battery isn't exempt — alarm gets rate-limited.
+            if (enabled && !isBatteryExempt) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(AppColors.WarningOrange.copy(alpha = 0.12f))
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = AppColors.WarningOrange,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Battery ยังไม่ตั้ง 'ไม่จำกัด' — Android จะ rate-limit ให้เหลือทุก ~9 นาที",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppColors.WarningOrange
+                    )
+                }
+            }
+        }
     }
 }
 

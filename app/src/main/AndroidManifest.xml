@@ -90,6 +90,12 @@
             android:name=".receiver.ServiceRestartReceiver"
             android:exported="false" />
 
+        <!-- Super Mode heartbeat — AlarmManager triggers this every ~2 min to bypass Doze.
+             ผู้ใช้ต้องเปิดในหน้า Settings + ติ๊ก Battery Unrestricted เพื่อไม่ให้ OS rate-limit -->
+        <receiver
+            android:name=".receiver.SuperHeartbeatReceiver"
+            android:exported="false" />
+
         <!-- SMS Processing Service -->
         <service
             android:name=".service.SmsProcessingService"

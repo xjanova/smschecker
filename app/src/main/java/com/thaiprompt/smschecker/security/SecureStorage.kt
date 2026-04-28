@@ -129,4 +129,14 @@ class SecureStorage @Inject constructor(
     fun setNotificationListeningEnabled(enabled: Boolean) {
         prefs.edit().putBoolean("notification_listening_enabled", enabled).apply()
     }
+
+    // Super Mode — AlarmManager-based 2-minute heartbeat that bypasses Doze.
+    // Costs more battery; off by default.
+    fun isSuperModeEnabled(): Boolean {
+        return prefs.getBoolean("super_mode_enabled", false)
+    }
+
+    fun setSuperModeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("super_mode_enabled", enabled).apply()
+    }
 }

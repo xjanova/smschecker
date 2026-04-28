@@ -46,6 +46,7 @@ data class SettingsState(
     val isNotificationAccessGranted: Boolean = false,
     val isSmsPermissionGranted: Boolean = false,
     val isBatteryOptimized: Boolean = false,  // true = Android WILL throttle = BAD
+    val isSuperModeEnabled: Boolean = false,  // 2-min AlarmManager heartbeat (Doze-bypass)
     // Sync status
     val isSyncing: Boolean = false,
     val lastSyncTime: Long? = null,
@@ -99,7 +100,8 @@ class SettingsViewModel @Inject constructor(
                     ttsSpeakType = secureStorage.isTtsSpeakType(),
                     ttsSpeakOrder = secureStorage.isTtsSpeakOrder(),
                     ttsSpeakProduct = secureStorage.isTtsSpeakProduct(),
-                    isNotificationListening = secureStorage.isNotificationListeningEnabled()
+                    isNotificationListening = secureStorage.isNotificationListeningEnabled(),
+                    isSuperModeEnabled = secureStorage.isSuperModeEnabled()
                 )
             }
 
@@ -374,6 +376,29 @@ class SettingsViewModel @Inject constructor(
             val newValue = !_state.value.isNotificationListening
             secureStorage.setNotificationListeningEnabled(newValue)
             _state.update { it.copy(isNotificationListening = newValue) }
+        } catch (e: Exception) { }
+    }
+
+    /**
+     * Toggle Super Mode (2-min AlarmManager heartbeat that bypasses Doze).
+     *
+     * Persists the preference and schedules/cancels the alarm directly. The running
+     * RealtimeSyncService also reads this flag on next start, so behavior survives kill.
+     */
+    fun setSuperMode(enabled: Boolean) {
+        try {
+            secureStorage.setSuperModeEnabled(enabled)
+            _state.update { it.copy(isSuperModeEnabled = enabled) }
+            if (enabled) {
+                com.thaiprompt.smschecker.receiver.SuperHeartbeatReceiver.schedule(context)
+                // Also kick the foreground service in case it died — it'll re-arm on next tick anyway,
+                // but starting now means the user sees the green status immediately.
+                try {
+                    com.thaiprompt.smschecker.service.RealtimeSyncService.start(context)
+                } catch (_: Exception) { }
+            } else {
+                com.thaiprompt.smschecker.receiver.SuperHeartbeatReceiver.cancel(context)
+            }
         } catch (e: Exception) { }
     }
 

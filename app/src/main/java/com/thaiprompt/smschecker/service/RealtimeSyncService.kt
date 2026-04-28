@@ -15,6 +15,7 @@ import com.thaiprompt.smschecker.data.api.WebSocketManager
 import com.thaiprompt.smschecker.data.repository.OrderRepository
 import com.thaiprompt.smschecker.data.repository.OrphanTransactionRepository
 import com.thaiprompt.smschecker.receiver.ServiceRestartReceiver
+import com.thaiprompt.smschecker.receiver.SuperHeartbeatReceiver
 import com.thaiprompt.smschecker.security.SecureStorage
 import com.thaiprompt.smschecker.ui.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
@@ -335,6 +336,9 @@ class RealtimeSyncService : Service() {
         // Start heartbeat job — updates foreground notification with "alive at HH:mm:ss"
         startHeartbeat()
 
+        // Super Mode — AlarmManager-based 2-min Doze-bypass heartbeat (opt-in by user)
+        applySuperModeFromPreference()
+
         // Initial sync — register FCM token FIRST, then fetch orders
         serviceScope.launch {
             try {
@@ -365,8 +369,39 @@ class RealtimeSyncService : Service() {
         } catch (e: Exception) {
             Log.w(TAG, "disconnectAll failed", e)
         }
+        // Cancel Super Mode alarm so it doesn't keep waking us back up after stop()
+        try { SuperHeartbeatReceiver.cancel(applicationContext) } catch (_: Exception) { }
         scopeRef.get().cancel()
         releaseWakeLock()
+    }
+
+    /**
+     * Read the Super Mode preference and schedule/cancel the alarm accordingly.
+     * Called on service start and again from setSuperMode() when the user toggles it.
+     */
+    private fun applySuperModeFromPreference() {
+        try {
+            if (secureStorage.isSuperModeEnabled()) {
+                SuperHeartbeatReceiver.schedule(applicationContext)
+                Log.i(TAG, "🚀 Super Mode active — 2-min AlarmManager heartbeat scheduled")
+            } else {
+                SuperHeartbeatReceiver.cancel(applicationContext)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to apply Super Mode preference", e)
+        }
+    }
+
+    /**
+     * Allow external callers (settings toggle) to flip Super Mode without restarting the service.
+     */
+    fun setSuperMode(enabled: Boolean) {
+        try {
+            secureStorage.setSuperModeEnabled(enabled)
+            applySuperModeFromPreference()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set Super Mode=$enabled", e)
+        }
     }
 
     private fun reconnectWebSockets() {
