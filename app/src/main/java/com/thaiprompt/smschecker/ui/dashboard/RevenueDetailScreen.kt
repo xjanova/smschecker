@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -144,15 +145,18 @@ fun RevenueDetailScreen(
                                 (slideOutHorizontally(tween(220)) { -it / 4 } + fadeOut(tween(220)))
                         },
                         label = "chartTransition"
-                    ) { _ ->
-                        InteractiveIncomeExpenseLineChart(
-                            data = state.data,
-                            modifier = Modifier.fillMaxWidth(),
-                            height = 260.dp,
-                            bahtSymbol = strings.bahtSymbol,
-                            incomeLabel = strings.todayIncome,
-                            expenseLabel = strings.todayExpense
-                        )
+                    ) { targetPeriod ->
+                        // re-key on period เพื่อให้ chart instance ใหม่และ trigger animation 0→1
+                        key(targetPeriod) {
+                            InteractiveIncomeExpenseLineChart(
+                                data = state.data,
+                                modifier = Modifier.fillMaxWidth(),
+                                height = 260.dp,
+                                bahtSymbol = strings.bahtSymbol,
+                                incomeLabel = strings.todayIncome,
+                                expenseLabel = strings.todayExpense
+                            )
+                        }
                     }
                 }
             }
