@@ -24,7 +24,8 @@ class OrderRepository @Inject constructor(
     private val apiClientFactory: ApiClientFactory,
     private val cryptoManager: CryptoManager,
     private val secureStorage: SecureStorage,
-    private val gson: Gson
+    private val gson: Gson,
+    private val bugReportApi: com.thaiprompt.smschecker.data.api.BugReportApiService
 ) {
     companion object {
         private const val TAG = "OrderRepository"
@@ -328,6 +329,8 @@ class OrderRepository @Inject constructor(
 
         // Retry with exponential backoff for unstable network
         var lastError: String? = null
+        var lastHttp = 0
+        var lastRawBody: String? = null
         val outcome = RetryHelper.withRetryBoolean {
             val result = sendEncryptedActionDetailed(
                 server = server,
@@ -342,6 +345,8 @@ class OrderRepository @Inject constructor(
             )
             if (result is ActionOutcome.FailedValidation) {
                 lastError = result.message
+                lastHttp = result.httpCode
+                lastRawBody = result.rawBody
             }
             result is ActionOutcome.Success
         }
@@ -353,7 +358,17 @@ class OrderRepository @Inject constructor(
         } else if (lastError != null) {
             // Server ปฏิเสธอย่างชัดเจน (เช่น "ยังไม่จับคู่จ่าย") — ไม่ต้อง queue เพราะ retry ก็ไม่ผ่าน
             Log.w(TAG, "approveOrder: ❌ VALIDATION FAILED for $identifier: $lastError")
-            ActionOutcome.FailedValidation(lastError ?: "ไม่สามารถอนุมัติได้")
+            // ส่ง error report ไป xman4289.com (support category) — fire-and-forget
+            reportActionFailureToBackend(
+                action = "approve",
+                order = order,
+                serverName = server.name,
+                serverUrl = server.baseUrl,
+                httpCode = lastHttp,
+                errorMessage = lastError ?: "",
+                rawErrorBody = lastRawBody
+            )
+            ActionOutcome.FailedValidation(lastError ?: "ไม่สามารถอนุมัติได้", lastHttp, lastRawBody)
         } else {
             Log.w(TAG, "approveOrder: ❌ FAILED for $identifier — queuing offline")
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
@@ -471,6 +486,8 @@ class OrderRepository @Inject constructor(
         Log.i(TAG, "rejectOrder: identifier=$identifier, server=${server.name}")
 
         var lastError: String? = null
+        var lastHttp = 0
+        var lastRawBody: String? = null
         val outcome = RetryHelper.withRetryBoolean {
             val result = sendEncryptedActionDetailed(
                 server = server,
@@ -485,6 +502,8 @@ class OrderRepository @Inject constructor(
             )
             if (result is ActionOutcome.FailedValidation) {
                 lastError = result.message
+                lastHttp = result.httpCode
+                lastRawBody = result.rawBody
             }
             result is ActionOutcome.Success
         }
@@ -495,7 +514,16 @@ class OrderRepository @Inject constructor(
             ActionOutcome.Success
         } else if (lastError != null) {
             Log.w(TAG, "rejectOrder: ❌ VALIDATION FAILED for $identifier: $lastError")
-            ActionOutcome.FailedValidation(lastError ?: "ไม่สามารถปฏิเสธได้")
+            reportActionFailureToBackend(
+                action = "reject",
+                order = order,
+                serverName = server.name,
+                serverUrl = server.baseUrl,
+                httpCode = lastHttp,
+                errorMessage = lastError ?: "",
+                rawErrorBody = lastRawBody
+            )
+            ActionOutcome.FailedValidation(lastError ?: "ไม่สามารถปฏิเสธได้", lastHttp, lastRawBody)
         } else {
             Log.w(TAG, "rejectOrder: ❌ FAILED for $identifier — queuing offline")
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.REJECT)
@@ -574,7 +602,127 @@ class OrderRepository @Inject constructor(
     sealed class ActionOutcome {
         data object Success : ActionOutcome()
         data class Queued(val message: String) : ActionOutcome()
-        data class FailedValidation(val message: String) : ActionOutcome()
+        data class FailedValidation(
+            val message: String,
+            val httpCode: Int = 0,
+            val rawBody: String? = null
+        ) : ActionOutcome()
+    }
+
+    /**
+     * ส่ง error report ไป xman4289.com เมื่อ approve/reject ล้มเหลวที่ฝั่ง server
+     * (ไม่ block flow หลัก — fire-and-forget, error ทำให้ snackbar แสดงแล้ว)
+     * เก็บไว้สำหรับ debug ทำไมการอนุมัติบางบิลถึงไม่ผ่าน
+     */
+    private suspend fun reportActionFailureToBackend(
+        action: String,
+        order: OrderApproval,
+        serverName: String,
+        serverUrl: String,
+        httpCode: Int,
+        errorMessage: String,
+        rawErrorBody: String?
+    ) {
+        try {
+            val deviceId = try { secureStorage.getDeviceId() } catch (_: Exception) { null }
+            val request = com.thaiprompt.smschecker.data.api.BugReportRequest(
+                productName = "smschecker",
+                productVersion = com.thaiprompt.smschecker.BuildConfig.VERSION_NAME,
+                reportType = "support",  // ส่งเข้าหมวด support บน xman4289.com
+                title = "[$action FAILED] order #${order.orderNumber ?: order.remoteApprovalId} on $serverName",
+                description = buildString {
+                    appendLine("**Action:** $action")
+                    appendLine("**HTTP:** $httpCode")
+                    appendLine("**Server message:** $errorMessage")
+                    appendLine()
+                    appendLine("**Order:**")
+                    appendLine("- local_id: ${order.id}")
+                    appendLine("- remote_id: ${order.remoteApprovalId}")
+                    appendLine("- order_number: ${order.orderNumber}")
+                    appendLine("- amount: ${order.amount}")
+                    appendLine("- bank: ${order.bank}")
+                    appendLine("- status: ${order.approvalStatus}")
+                    appendLine("- product: ${order.productName}")
+                    appendLine("- customer: ${order.customerName}")
+                    appendLine("- pending_action: ${order.pendingAction}")
+                    appendLine()
+                    appendLine("**Server:**")
+                    appendLine("- name: $serverName")
+                    appendLine("- url: $serverUrl")
+                    if (!rawErrorBody.isNullOrBlank()) {
+                        appendLine()
+                        appendLine("**Raw response body:**")
+                        appendLine("```")
+                        appendLine(rawErrorBody.take(2000))
+                        appendLine("```")
+                    }
+                },
+                metadata = mapOf(
+                    "action" to action,
+                    "http_code" to httpCode,
+                    "remote_order_id" to order.remoteApprovalId,
+                    "order_number" to (order.orderNumber ?: ""),
+                    "amount" to order.amount,
+                    "bank" to (order.bank ?: ""),
+                    "approval_status" to order.approvalStatus.name,
+                    "server_name" to serverName,
+                    "server_url" to serverUrl,
+                    "error_message" to errorMessage
+                ),
+                deviceId = deviceId,
+                priority = "high",
+                severity = "major",
+                osVersion = "Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})",
+                appVersion = com.thaiprompt.smschecker.BuildConfig.VERSION_NAME,
+                additionalInfo = mapOf(
+                    "device_model" to "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}",
+                    "device_brand" to android.os.Build.BRAND
+                )
+            )
+            val response = bugReportApi.submitReport(request)
+            if (response.isSuccessful && response.body()?.success == true) {
+                Log.i(TAG, "reportActionFailureToBackend: ✅ sent to xman4289.com (${response.body()?.data?.id})")
+            } else {
+                Log.w(TAG, "reportActionFailureToBackend: HTTP ${response.code()} — ${response.body()?.message}")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "reportActionFailureToBackend: failed silently — ${e.javaClass.simpleName}: ${e.message}")
+        }
+    }
+
+    /**
+     * ดึงข้อความ "message" จาก JSON error body ของ Laravel/server มาตรฐาน
+     * รองรับรูปแบบทั่วไป:
+     *   {"success":false,"message":"..."}
+     *   {"message":"..."}
+     *   {"error":"..."}
+     *   {"errors":{"field":["..."]}}  → join ทุก field
+     * ถ้า parse ไม่ได้ → คืนค่า raw (ตัดให้สั้น) เพื่อกัน snackbar ยาวเกิน
+     */
+    private fun extractMessage(rawJson: String?): String? {
+        if (rawJson.isNullOrBlank()) return null
+        return try {
+            val obj = gson.fromJson(rawJson, com.google.gson.JsonObject::class.java)
+            when {
+                obj.has("message") && obj.get("message").isJsonPrimitive ->
+                    obj.get("message").asString
+                obj.has("error") && obj.get("error").isJsonPrimitive ->
+                    obj.get("error").asString
+                obj.has("errors") && obj.get("errors").isJsonObject -> {
+                    val errs = obj.getAsJsonObject("errors")
+                    errs.entrySet().joinToString("; ") { (field, value) ->
+                        val msgs = if (value.isJsonArray) {
+                            value.asJsonArray.joinToString(", ") { it.asString }
+                        } else value.toString()
+                        "$field: $msgs"
+                    }
+                }
+                else -> rawJson.take(200)
+            }
+        } catch (e: Exception) {
+            // JSON parse fail → คืนค่า raw แบบตัดให้สั้น
+            rawJson.take(200)
+        }
     }
 
     /**
@@ -665,26 +813,36 @@ class OrderRepository @Inject constructor(
                 // 422 = Unprocessable Entity. แยกเคส:
                 //   - "already approved/rejected" → success (idempotent)
                 //   - validation อื่น (ยังไม่จับคู่จ่าย, ไม่มีสิทธิ์ ฯลฯ) → fail แบบ "อย่า retry"
-                val errBody = try { response.errorBody()?.string() } catch (_: Exception) { null }
-                val msgFromBody = body?.message ?: errBody ?: ""
-                val alreadyDone = msgFromBody.contains("already", ignoreCase = true) ||
-                                  msgFromBody.contains("already approved", ignoreCase = true) ||
-                                  msgFromBody.contains("already rejected", ignoreCase = true) ||
-                                  msgFromBody.contains("ดำเนินการแล้ว", ignoreCase = true)
+                val rawErr = try { response.errorBody()?.string() } catch (_: Exception) { null }
+                val msgFromBody = body?.message ?: extractMessage(rawErr) ?: ""
+                val haystack = (rawErr ?: "") + msgFromBody
+                val alreadyDone = haystack.contains("already", ignoreCase = true) ||
+                                  haystack.contains("ดำเนินการแล้ว", ignoreCase = true) ||
+                                  haystack.contains("อนุมัติแล้ว", ignoreCase = true) ||
+                                  haystack.contains("ปฏิเสธแล้ว", ignoreCase = true)
                 if (alreadyDone) {
                     Log.i(TAG, "Order $orderIdentifier already ${action}d on server (422)")
                     ActionOutcome.Success
                 } else {
-                    Log.w(TAG, "❌ $action validation failed for $orderIdentifier (422): $msgFromBody")
-                    ActionOutcome.FailedValidation(msgFromBody.ifBlank { "เซิร์ฟเวอร์ปฏิเสธ (422)" })
+                    Log.w(TAG, "❌ $action validation failed for $orderIdentifier (422): rawErr=$rawErr msg=$msgFromBody")
+                    ActionOutcome.FailedValidation(
+                        message = msgFromBody.ifBlank { "เซิร์ฟเวอร์ปฏิเสธ (422)" },
+                        httpCode = 422,
+                        rawBody = rawErr
+                    )
                 }
             }
             else -> {
-                val errBody = try { response.errorBody()?.string() } catch (_: Exception) { null }
-                Log.e(TAG, "❌ $action failed for $orderIdentifier: HTTP ${response.code()} - $errBody")
+                val rawErr = try { response.errorBody()?.string() } catch (_: Exception) { null }
+                Log.e(TAG, "❌ $action failed for $orderIdentifier: HTTP ${response.code()} - $rawErr")
                 // 4xx อื่นๆ → fail แบบ validation (อย่า retry); 5xx → queue
                 if (response.code() in 400..499) {
-                    ActionOutcome.FailedValidation(body?.message ?: errBody ?: "HTTP ${response.code()}")
+                    val msg = body?.message ?: extractMessage(rawErr) ?: "HTTP ${response.code()}"
+                    ActionOutcome.FailedValidation(
+                        message = msg,
+                        httpCode = response.code(),
+                        rawBody = rawErr
+                    )
                 } else {
                     ActionOutcome.Queued("HTTP ${response.code()} — รอ retry")
                 }
