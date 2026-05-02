@@ -670,7 +670,7 @@ fun OrderCard(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // === แถวกลาง: เลขบิล + สินค้า ===
+                // === แถวกลาง: เลขบิล + ลูกค้า + สินค้า ===
                 if (order.orderNumber != null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -685,6 +685,25 @@ fun OrderCard(
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.SemiBold,
                             color = AppColors.GoldAccent.copy(alpha = 0.9f)
+                        )
+                    }
+                }
+                if (!order.customerName.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Person,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = order.customerName,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f),
+                            fontSize = 11.sp
                         )
                     }
                 }
