@@ -28,6 +28,23 @@ class OrderRepository @Inject constructor(
 ) {
     companion object {
         private const val TAG = "OrderRepository"
+
+        /**
+         * เช็คว่า server สะท้อน pendingAction ที่เราตั้งไว้แล้วหรือไม่
+         * ใช้ตอน pull/fetch — ถ้า server มีสถานะที่ตรงกับ action ของเรา = action ถูกประมวลผลแล้ว
+         * ควรเคลียร์ pendingAction ทิ้ง (ไม่ต้องค้างไว้รอ retry)
+         */
+        internal fun pendingActionDoneByServer(
+            action: PendingAction?,
+            serverStatus: ApprovalStatus
+        ): Boolean = when (action) {
+            PendingAction.APPROVE ->
+                serverStatus == ApprovalStatus.AUTO_APPROVED ||
+                serverStatus == ApprovalStatus.MANUALLY_APPROVED
+            PendingAction.REJECT ->
+                serverStatus == ApprovalStatus.REJECTED
+            null -> false
+        }
     }
 
     fun getAllOrders(): Flow<List<OrderApproval>> = orderApprovalDao.getAllOrders()
@@ -208,13 +225,19 @@ class OrderRepository @Inject constructor(
 
                             if (existing != null) {
                                 // ถ้า local มี pendingAction ค้างอยู่ → ข้ามไป (offline action ยังไม่ได้ส่ง)
+                                // ยกเว้น: server สะท้อน action นั้นแล้ว → เคลียร์ pendingAction ทิ้ง
+                                // (ป้องกันบิลค้างที่ "queued" ทั้งที่ server approve ไปแล้ว)
                                 if (existing.pendingAction != null) {
-                                    skipCount++
-                                    Log.d("OrderRepository", "  SKIP order id=${remote.id} (pendingAction=${existing.pendingAction})")
-                                    continue
+                                    val remoteStatus = ApprovalStatus.fromApiValue(remote.approval_status)
+                                    if (!pendingActionDoneByServer(existing.pendingAction, remoteStatus)) {
+                                        skipCount++
+                                        Log.d("OrderRepository", "  SKIP order id=${remote.id} (pendingAction=${existing.pendingAction}, server still=$remoteStatus)")
+                                        continue
+                                    }
+                                    Log.i("OrderRepository", "  CLEAR pendingAction order id=${remote.id} — server already=${remoteStatus} (was ${existing.pendingAction})")
                                 }
 
-                                // Server is the source of truth — always sync server status
+                                // Server is the source of truth — always sync server status (also clears stale pendingAction)
                                 orderApprovalDao.update(localOrder.copy(id = existing.id))
                                 Log.d("OrderRepository", "  UPDATE order id=${remote.id}, fortune=$isFortune, status=${remote.approval_status}, orderNum=${localOrder.orderNumber}")
                             } else {
@@ -461,6 +484,14 @@ class OrderRepository @Inject constructor(
             val apiKey = secureStorage.getApiKey(server.id) ?: continue
             val secretKey = secureStorage.getSecretKey(server.id) ?: continue
 
+            // Self-heal: ถ้า server status สะท้อน action นี้แล้ว → ไม่ต้องส่งอีก เคลียร์ pendingAction ทิ้งเลย
+            // (กรณี action ส่งสำเร็จก่อนหน้าแต่ response timeout → server ทำแล้ว แต่ local ค้าง)
+            if (pendingActionDoneByServer(order.pendingAction, order.approvalStatus)) {
+                Log.i(TAG, "syncOfflineQueue: server already reflects ${order.pendingAction} for order id=${order.id} (status=${order.approvalStatus}) — clearing pendingAction without resend")
+                orderApprovalDao.updateStatus(order.id, order.approvalStatus, null)
+                continue
+            }
+
             // ใช้ orderNumber (bill_reference) ถ้ามี, fallback เป็น remoteApprovalId
             val identifier = order.orderNumber ?: order.remoteApprovalId.toString()
 
@@ -684,8 +715,12 @@ class OrderRepository @Inject constructor(
 
                         if (existing != null) {
                             // Local pending action wins (offline action ยังไม่ได้ส่ง)
+                            // ยกเว้น: server สะท้อน action แล้ว → เคลียร์ pendingAction ทิ้ง
                             if (existing.pendingAction != null) {
-                                continue
+                                if (!pendingActionDoneByServer(existing.pendingAction, remoteStatus)) {
+                                    continue
+                                }
+                                Log.i("OrderRepository", "  pullChanges: CLEAR pendingAction id=${remote.id} — server=${remoteStatus} (was ${existing.pendingAction})")
                             }
 
                             // Server is the source of truth — always accept server status

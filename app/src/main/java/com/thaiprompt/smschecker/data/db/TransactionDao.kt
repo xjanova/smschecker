@@ -106,6 +106,22 @@ interface TransactionDao {
     """)
     suspend fun getDailyIncomeExpense(since: Long): List<DailyIncomeExpense>
 
+    /**
+     * รวมยอดรายเดือน — สำหรับกราฟรายได้รายปี
+     * คืนค่าเป็น YYYY-MM (local time) → credit, debit
+     */
+    @Query("""
+        SELECT
+            strftime('%Y-%m', timestamp/1000, 'unixepoch', 'localtime') as date,
+            COALESCE(SUM(CASE WHEN type = 'CREDIT' THEN CAST(amount AS REAL) ELSE 0 END), 0) as credit,
+            COALESCE(SUM(CASE WHEN type = 'DEBIT' THEN CAST(amount AS REAL) ELSE 0 END), 0) as debit
+        FROM bank_transactions
+        WHERE timestamp >= :since
+        GROUP BY date
+        ORDER BY date ASC
+    """)
+    suspend fun getMonthlyIncomeExpense(since: Long): List<DailyIncomeExpense>
+
     @Query("UPDATE bank_transactions SET isSynced = 1, syncedServerId = :serverId, syncResponse = :response WHERE id = :transactionId")
     suspend fun markAsSynced(transactionId: Long, serverId: Long, response: String?)
 

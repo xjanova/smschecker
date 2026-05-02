@@ -6,6 +6,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -45,7 +46,10 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
-fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
+fun DashboardScreen(
+    viewModel: DashboardViewModel = hiltViewModel(),
+    onChartTap: () -> Unit = {}
+) {
     val state by viewModel.state.collectAsState()
     val strings = LocalAppStrings.current
 
@@ -470,6 +474,7 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
         item(key = "revenue_chart") {
             RevenueChartCard(
                 data = state.dailyIncomeExpense,
+                onTap = onChartTap,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
         }
@@ -647,10 +652,12 @@ private fun StatBox(
 /**
  * RevenueChartCard — กราฟรายได้ย้อนหลัง 7 วัน
  * เส้นเขียว = เงินเข้า, เส้นแดง = เงินออก, ในกราฟเดียวกัน
+ * แตะที่การ์ด → ไปหน้า detail
  */
 @Composable
 private fun RevenueChartCard(
     data: List<DailyIncomeExpense>,
+    onTap: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -660,7 +667,7 @@ private fun RevenueChartCard(
     val net = totalIncome - totalExpense
     val netColor = if (net >= 0) AppColors.CreditGreen else AppColors.DebitRed
 
-    GlassCard(modifier = modifier) {
+    GlassCard(modifier = modifier.clickable(onClick = onTap)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,

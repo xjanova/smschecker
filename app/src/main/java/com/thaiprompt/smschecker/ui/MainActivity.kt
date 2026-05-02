@@ -241,6 +241,7 @@ sealed class Screen(val route: String) {
     data object SmsMatcher : Screen("sms_matcher")
     data object SmsHistory : Screen("sms_history")
     data object SystemHealth : Screen("system_health")
+    data object RevenueDetail : Screen("revenue_detail")
 }
 
 @Composable
@@ -263,7 +264,8 @@ fun MainApp(
     // Hide bottom bar on full-screen routes
     val showBottomBar = currentRoute != Screen.QrScanner.route &&
         currentRoute != Screen.SmsMatcher.route &&
-        currentRoute != Screen.SystemHealth.route
+        currentRoute != Screen.SystemHealth.route &&
+        currentRoute != Screen.RevenueDetail.route
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -367,7 +369,17 @@ fun MainApp(
                 navController = navController,
                 startDestination = Screen.Dashboard.route
             ) {
-                composable(Screen.Dashboard.route) { DashboardScreen(viewModel = dashboardViewModel) }
+                composable(Screen.Dashboard.route) {
+                    DashboardScreen(
+                        viewModel = dashboardViewModel,
+                        onChartTap = { navController.navigate(Screen.RevenueDetail.route) }
+                    )
+                }
+                composable(Screen.RevenueDetail.route) {
+                    com.thaiprompt.smschecker.ui.dashboard.RevenueDetailScreen(
+                        onBack = { navController.popBackStack() }
+                    )
+                }
                 composable(Screen.Orders.route) { OrdersScreen() }
                 composable(Screen.Transactions.route) { TransactionListScreen() }
                 composable(Screen.SmsHistory.route) {
