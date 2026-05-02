@@ -288,14 +288,10 @@ class OrdersViewModel @Inject constructor(
     fun approveOrder(order: OrderApproval) {
         viewModelScope.launch {
             try {
-                orderRepository.approveOrder(order)
-                _state.update { it.copy(
-                    actionResult = ActionResult(
-                        success = true,
-                        message = "Approved",
-                        orderNumber = order.orderNumber
-                    )
-                ) }
+                val outcome = orderRepository.approveOrder(order)
+                _state.update { it.copy(actionResult = outcome.toResult("อนุมัติแล้ว", order.orderNumber)) }
+                // Refresh list so UI shows new status (suspending DAO is not a Flow → ต้อง reload เอง)
+                loadOrders()
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error approving order ${order.id}", e)
                 _state.update { it.copy(
@@ -312,14 +308,9 @@ class OrdersViewModel @Inject constructor(
     fun rejectOrder(order: OrderApproval) {
         viewModelScope.launch {
             try {
-                orderRepository.rejectOrder(order)
-                _state.update { it.copy(
-                    actionResult = ActionResult(
-                        success = true,
-                        message = "Rejected",
-                        orderNumber = order.orderNumber
-                    )
-                ) }
+                val outcome = orderRepository.rejectOrder(order)
+                _state.update { it.copy(actionResult = outcome.toResult("ปฏิเสธแล้ว", order.orderNumber)) }
+                loadOrders()
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error rejecting order ${order.id}", e)
                 _state.update { it.copy(
@@ -333,6 +324,24 @@ class OrdersViewModel @Inject constructor(
         }
     }
 
+    /**
+     * แปลง ActionOutcome จาก repository เป็น ActionResult ให้ snackbar แสดง
+     * - Success: "อนุมัติแล้ว #XXXX" (เขียว)
+     * - Queued: "รอคิวออฟไลน์: ..." (เหลือง)
+     * - FailedValidation: "ไม่สำเร็จ: <ข้อความจาก server>" (แดง)
+     */
+    private fun OrderRepository.ActionOutcome.toResult(
+        successLabel: String,
+        orderNumber: String?
+    ): ActionResult = when (this) {
+        is OrderRepository.ActionOutcome.Success ->
+            ActionResult(success = true, message = successLabel, orderNumber = orderNumber)
+        is OrderRepository.ActionOutcome.Queued ->
+            ActionResult(success = false, message = "รอคิวออฟไลน์: $message", orderNumber = orderNumber)
+        is OrderRepository.ActionOutcome.FailedValidation ->
+            ActionResult(success = false, message = "ไม่สำเร็จ: $message", orderNumber = orderNumber)
+    }
+
     fun clearActionResult() {
         _state.update { it.copy(actionResult = null) }
     }
@@ -341,9 +350,30 @@ class OrdersViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val pending = _state.value.orders.filter { it.approvalStatus == ApprovalStatus.PENDING_REVIEW }
+                if (pending.isEmpty()) return@launch
+                var ok = 0
+                var queued = 0
+                var failed = 0
                 for (order in pending) {
-                    orderRepository.approveOrder(order)
+                    when (orderRepository.approveOrder(order)) {
+                        is OrderRepository.ActionOutcome.Success -> ok++
+                        is OrderRepository.ActionOutcome.Queued -> queued++
+                        is OrderRepository.ActionOutcome.FailedValidation -> failed++
+                    }
                 }
+                val msg = buildString {
+                    if (ok > 0) append("✅ $ok สำเร็จ ")
+                    if (queued > 0) append("⏳ $queued รอคิว ")
+                    if (failed > 0) append("❌ $failed ไม่สำเร็จ")
+                }
+                _state.update { it.copy(
+                    actionResult = ActionResult(
+                        success = failed == 0 && queued == 0,
+                        message = msg.trim(),
+                        orderNumber = null
+                    )
+                ) }
+                loadOrders()
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error bulk approving orders", e)
             }

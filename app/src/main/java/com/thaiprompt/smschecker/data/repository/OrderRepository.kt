@@ -284,35 +284,42 @@ class OrderRepository @Inject constructor(
         }
     }
 
-    suspend fun approveOrder(order: OrderApproval) {
+    /**
+     * Manual approve จากหน้า Orders
+     * คืนค่า ActionOutcome ให้ ViewModel แสดง snackbar ที่ถูกต้อง:
+     *  - SUCCESS: ส่งสำเร็จ + local อัพเดทเป็น MANUALLY_APPROVED แล้ว
+     *  - QUEUED: ส่งไม่สำเร็จ (offline/network) → queue ไว้รอ retry
+     *  - FAILED_VALIDATION: server ปฏิเสธด้วยเหตุผลเฉพาะ (เช่น ยังไม่จับคู่จ่ายเงิน)
+     */
+    suspend fun approveOrder(order: OrderApproval): ActionOutcome {
         Log.i(TAG, "approveOrder: START orderId=${order.id}, remoteId=${order.remoteApprovalId}, orderNumber=${order.orderNumber}, serverId=${order.serverId}")
 
         val server = serverConfigDao.getById(order.serverId)
         if (server == null) {
             Log.e(TAG, "approveOrder: Server not found for serverId=${order.serverId} — queuing offline")
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
-            return
+            return ActionOutcome.Queued("เซิร์ฟเวอร์ไม่พบ — รอคิวออฟไลน์")
         }
 
         val apiKey = secureStorage.getApiKey(server.id)
         if (apiKey == null) {
             Log.e(TAG, "approveOrder: No API key for server ${server.name} (id=${server.id}) — queuing offline")
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
-            return
+            return ActionOutcome.Queued("ไม่พบ API key — รอคิวออฟไลน์")
         }
 
         val secretKey = secureStorage.getSecretKey(server.id)
         if (secretKey == null) {
             Log.e(TAG, "approveOrder: No secret key for server ${server.name} (id=${server.id}) — queuing offline")
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
-            return
+            return ActionOutcome.Queued("ไม่พบ secret key — รอคิวออฟไลน์")
         }
 
         val deviceId = secureStorage.getDeviceId()
         if (deviceId == null) {
             Log.e(TAG, "approveOrder: No device ID — queuing offline")
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
-            return
+            return ActionOutcome.Queued("ไม่พบ device ID — รอคิวออฟไลน์")
         }
 
         // ใช้ orderNumber (bill_reference) ถ้ามี, fallback เป็น remoteApprovalId
@@ -320,8 +327,9 @@ class OrderRepository @Inject constructor(
         Log.i(TAG, "approveOrder: identifier=$identifier, amount=${order.amount}, bank=${order.bank}, server=${server.name}")
 
         // Retry with exponential backoff for unstable network
-        val success = RetryHelper.withRetryBoolean {
-            sendEncryptedAction(
+        var lastError: String? = null
+        val outcome = RetryHelper.withRetryBoolean {
+            val result = sendEncryptedActionDetailed(
                 server = server,
                 apiKey = apiKey,
                 secretKey = secretKey,
@@ -332,14 +340,24 @@ class OrderRepository @Inject constructor(
                 bank = order.bank,
                 reason = null
             )
+            if (result is ActionOutcome.FailedValidation) {
+                lastError = result.message
+            }
+            result is ActionOutcome.Success
         }
 
-        if (success) {
+        return if (outcome) {
             Log.i(TAG, "approveOrder: ✅ SUCCESS for $identifier")
             orderApprovalDao.updateStatus(order.id, ApprovalStatus.MANUALLY_APPROVED, null)
+            ActionOutcome.Success
+        } else if (lastError != null) {
+            // Server ปฏิเสธอย่างชัดเจน (เช่น "ยังไม่จับคู่จ่าย") — ไม่ต้อง queue เพราะ retry ก็ไม่ผ่าน
+            Log.w(TAG, "approveOrder: ❌ VALIDATION FAILED for $identifier: $lastError")
+            ActionOutcome.FailedValidation(lastError ?: "ไม่สามารถอนุมัติได้")
         } else {
             Log.w(TAG, "approveOrder: ❌ FAILED for $identifier — queuing offline")
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.APPROVE)
+            ActionOutcome.Queued("ส่งไม่สำเร็จ — รอคิวออฟไลน์")
         }
     }
 
@@ -421,39 +439,40 @@ class OrderRepository @Inject constructor(
         }
     }
 
-    suspend fun rejectOrder(order: OrderApproval, reason: String = "") {
+    suspend fun rejectOrder(order: OrderApproval, reason: String = ""): ActionOutcome {
         Log.i(TAG, "rejectOrder: START orderId=${order.id}, orderNumber=${order.orderNumber}")
 
         val server = serverConfigDao.getById(order.serverId)
         if (server == null) {
             Log.e(TAG, "rejectOrder: Server not found — queuing offline")
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.REJECT)
-            return
+            return ActionOutcome.Queued("เซิร์ฟเวอร์ไม่พบ — รอคิวออฟไลน์")
         }
         val apiKey = secureStorage.getApiKey(server.id)
         if (apiKey == null) {
             Log.e(TAG, "rejectOrder: No API key — queuing offline")
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.REJECT)
-            return
+            return ActionOutcome.Queued("ไม่พบ API key — รอคิวออฟไลน์")
         }
         val secretKey = secureStorage.getSecretKey(server.id)
         if (secretKey == null) {
             Log.e(TAG, "rejectOrder: No secret key — queuing offline")
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.REJECT)
-            return
+            return ActionOutcome.Queued("ไม่พบ secret key — รอคิวออฟไลน์")
         }
         val deviceId = secureStorage.getDeviceId()
         if (deviceId == null) {
             Log.e(TAG, "rejectOrder: No device ID — queuing offline")
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.REJECT)
-            return
+            return ActionOutcome.Queued("ไม่พบ device ID — รอคิวออฟไลน์")
         }
 
         val identifier = order.orderNumber ?: order.remoteApprovalId.toString()
         Log.i(TAG, "rejectOrder: identifier=$identifier, server=${server.name}")
 
-        val success = RetryHelper.withRetryBoolean {
-            sendEncryptedAction(
+        var lastError: String? = null
+        val outcome = RetryHelper.withRetryBoolean {
+            val result = sendEncryptedActionDetailed(
                 server = server,
                 apiKey = apiKey,
                 secretKey = secretKey,
@@ -464,14 +483,23 @@ class OrderRepository @Inject constructor(
                 bank = order.bank,
                 reason = reason
             )
+            if (result is ActionOutcome.FailedValidation) {
+                lastError = result.message
+            }
+            result is ActionOutcome.Success
         }
 
-        if (success) {
+        return if (outcome) {
             Log.i(TAG, "rejectOrder: ✅ SUCCESS for $identifier")
             orderApprovalDao.updateStatus(order.id, ApprovalStatus.REJECTED, null)
+            ActionOutcome.Success
+        } else if (lastError != null) {
+            Log.w(TAG, "rejectOrder: ❌ VALIDATION FAILED for $identifier: $lastError")
+            ActionOutcome.FailedValidation(lastError ?: "ไม่สามารถปฏิเสธได้")
         } else {
             Log.w(TAG, "rejectOrder: ❌ FAILED for $identifier — queuing offline")
             orderApprovalDao.updateStatus(order.id, order.approvalStatus, PendingAction.REJECT)
+            ActionOutcome.Queued("ส่งไม่สำเร็จ — รอคิวออฟไลน์")
         }
     }
 
@@ -537,6 +565,130 @@ class OrderRepository @Inject constructor(
                 orderApprovalDao.updateStatus(order.id, newStatus, null)
             }
             // Keep pending if failed, will retry next sync
+        }
+    }
+
+    /**
+     * รายละเอียดผลของการ approve/reject — ใช้ส่งให้ ViewModel แสดง snackbar
+     */
+    sealed class ActionOutcome {
+        data object Success : ActionOutcome()
+        data class Queued(val message: String) : ActionOutcome()
+        data class FailedValidation(val message: String) : ActionOutcome()
+    }
+
+    /**
+     * Variant of sendEncryptedAction ที่คืน ActionOutcome ละเอียดกว่าเดิม
+     * แยกแยะ: success / network failure (queue) / server validation error (don't queue)
+     */
+    private suspend fun sendEncryptedActionDetailed(
+        server: ServerConfig,
+        apiKey: String,
+        secretKey: String,
+        deviceId: String,
+        action: String,
+        orderIdentifier: String,
+        amount: Double,
+        bank: String?,
+        reason: String?
+    ): ActionOutcome {
+        val nonce = cryptoManager.generateNonce()
+        val timestamp = System.currentTimeMillis().toString()
+
+        val payload = ActionPayload(
+            action = action,
+            order_identifier = orderIdentifier,
+            amount = amount,
+            bank = bank,
+            sms_reference = null,
+            device_id = deviceId,
+            reason = reason,
+            nonce = nonce
+        )
+        val payloadJson = gson.toJson(payload)
+
+        val encryptedData = try {
+            cryptoManager.encrypt(payloadJson, secretKey)
+        } catch (e: Exception) {
+            Log.e(TAG, "sendEncryptedActionDetailed: ENCRYPT FAILED: ${e.message}", e)
+            return ActionOutcome.Queued("เข้ารหัสไม่สำเร็จ")
+        }
+
+        val signature = try {
+            cryptoManager.generateHmac("$encryptedData$nonce$timestamp", secretKey)
+        } catch (e: Exception) {
+            Log.e(TAG, "sendEncryptedActionDetailed: HMAC FAILED: ${e.message}", e)
+            return ActionOutcome.Queued("Sign HMAC ไม่สำเร็จ")
+        }
+
+        val client = apiClientFactory.getClient(server.baseUrl)
+        val response = try {
+            client.notifyAction(
+                apiKey = apiKey,
+                signature = signature,
+                nonce = nonce,
+                timestamp = timestamp,
+                deviceId = deviceId,
+                body = EncryptedPayload(data = encryptedData)
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "sendEncryptedActionDetailed: NETWORK ERROR: ${e.javaClass.simpleName}: ${e.message}")
+            return ActionOutcome.Queued("เน็ตเวิร์กล้มเหลว")
+        }
+
+        val body = response.body()
+        Log.i(TAG, "sendEncryptedActionDetailed: HTTP ${response.code()}, success=${body?.success}, msg=${body?.message}")
+
+        return when {
+            response.isSuccessful && body?.success == true -> {
+                // Update local order with server response data if available
+                val serverOrder = body.data?.order
+                if (serverOrder != null) {
+                    try {
+                        val localOrder = serverOrder.toLocalEntity(server.id)
+                        val existing = orderApprovalDao.getByRemoteId(serverOrder.id, server.id)
+                        if (existing != null) {
+                            orderApprovalDao.update(localOrder.copy(id = existing.id))
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to update local order from response", e)
+                    }
+                }
+                ActionOutcome.Success
+            }
+            response.code() == 409 -> {
+                // Duplicate nonce → already processed → success
+                Log.i(TAG, "Duplicate nonce for $orderIdentifier — already processed (409)")
+                ActionOutcome.Success
+            }
+            response.code() == 422 -> {
+                // 422 = Unprocessable Entity. แยกเคส:
+                //   - "already approved/rejected" → success (idempotent)
+                //   - validation อื่น (ยังไม่จับคู่จ่าย, ไม่มีสิทธิ์ ฯลฯ) → fail แบบ "อย่า retry"
+                val errBody = try { response.errorBody()?.string() } catch (_: Exception) { null }
+                val msgFromBody = body?.message ?: errBody ?: ""
+                val alreadyDone = msgFromBody.contains("already", ignoreCase = true) ||
+                                  msgFromBody.contains("already approved", ignoreCase = true) ||
+                                  msgFromBody.contains("already rejected", ignoreCase = true) ||
+                                  msgFromBody.contains("ดำเนินการแล้ว", ignoreCase = true)
+                if (alreadyDone) {
+                    Log.i(TAG, "Order $orderIdentifier already ${action}d on server (422)")
+                    ActionOutcome.Success
+                } else {
+                    Log.w(TAG, "❌ $action validation failed for $orderIdentifier (422): $msgFromBody")
+                    ActionOutcome.FailedValidation(msgFromBody.ifBlank { "เซิร์ฟเวอร์ปฏิเสธ (422)" })
+                }
+            }
+            else -> {
+                val errBody = try { response.errorBody()?.string() } catch (_: Exception) { null }
+                Log.e(TAG, "❌ $action failed for $orderIdentifier: HTTP ${response.code()} - $errBody")
+                // 4xx อื่นๆ → fail แบบ validation (อย่า retry); 5xx → queue
+                if (response.code() in 400..499) {
+                    ActionOutcome.FailedValidation(body?.message ?: errBody ?: "HTTP ${response.code()}")
+                } else {
+                    ActionOutcome.Queued("HTTP ${response.code()} — รอ retry")
+                }
+            }
         }
     }
 
