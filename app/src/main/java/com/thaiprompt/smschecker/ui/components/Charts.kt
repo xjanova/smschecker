@@ -1,5 +1,7 @@
 package com.thaiprompt.smschecker.ui.components
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -7,22 +9,255 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.thaiprompt.smschecker.data.db.DailyIncomeExpense
 import com.thaiprompt.smschecker.data.model.DailyStats
 import com.thaiprompt.smschecker.ui.theme.AppColors
+import kotlin.math.max
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IncomeExpenseLineChart — กราฟเส้นรายได้ (เขียว) vs รายจ่าย (แดง) ในกราฟเดียว
+// ใช้ smooth bezier curve + gradient fill ด้านล่าง + dot ที่จุดข้อมูล
+// ═══════════════════════════════════════════════════════════════════════════
+@Composable
+fun IncomeExpenseLineChart(
+    data: List<DailyIncomeExpense>,
+    modifier: Modifier = Modifier,
+    incomeColor: Color = AppColors.CreditGreen,
+    expenseColor: Color = AppColors.DebitRed,
+    gridColor: Color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f),
+    labelColor: Color = MaterialTheme.colorScheme.onSurfaceVariant
+) {
+    if (data.isEmpty()) return
+
+    // ค่ามากสุดเพื่อ scale แกน Y — เผื่อขั้นต่ำเล็กน้อยกันเส้นเรียบ
+    val maxValue = remember(data) {
+        max(
+            data.maxOf { it.credit },
+            data.maxOf { it.debit }
+        ).let { if (it <= 0.0) 1.0 else it * 1.1 }
+    }
+
+    // อนิเมชั่น expand จาก 0 → 1 ตอนเข้าหน้าครั้งแรก (และตอน data เปลี่ยน)
+    // ใช้ Animatable + LaunchedEffect เพราะ animateFloatAsState ไม่ trigger animation
+    // เมื่อ initial == target (จะเริ่มที่ 1f ทันทีโดยไม่ animate)
+    val animatable = remember { Animatable(0f) }
+    LaunchedEffect(data) {
+        animatable.snapTo(0f)
+        animatable.animateTo(1f, tween(durationMillis = 900))
+    }
+    val animProgress = animatable.value
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        // Y-axis labels (max value) บนซ้าย
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = formatCompact(maxValue),
+                style = MaterialTheme.typography.bodySmall,
+                fontSize = 9.sp,
+                color = labelColor.copy(alpha = 0.6f)
+            )
+            Text(
+                text = "฿",
+                style = MaterialTheme.typography.bodySmall,
+                fontSize = 9.sp,
+                color = labelColor.copy(alpha = 0.5f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(2.dp))
+
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(160.dp)
+                .padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp)
+        ) {
+            val w = size.width
+            val h = size.height
+
+            // === Grid lines แนวนอน 4 เส้น (รวมขอบบน/ล่าง) ===
+            val gridLines = 4
+            for (i in 0..gridLines) {
+                val y = h * (i.toFloat() / gridLines)
+                drawLine(
+                    color = gridColor,
+                    start = Offset(0f, y),
+                    end = Offset(w, y),
+                    strokeWidth = 1f,
+                    pathEffect = if (i in 1 until gridLines) {
+                        PathEffect.dashPathEffect(floatArrayOf(6f, 8f), 0f)
+                    } else null
+                )
+            }
+
+            if (data.size < 2) {
+                // Single data point — แค่วาดจุด
+                val cx = w / 2f
+                val cyIncome = h - (data[0].credit / maxValue * h * animProgress).toFloat()
+                val cyExpense = h - (data[0].debit / maxValue * h * animProgress).toFloat()
+                drawCircle(incomeColor, radius = 6f, center = Offset(cx, cyIncome))
+                drawCircle(expenseColor, radius = 6f, center = Offset(cx, cyExpense))
+                return@Canvas
+            }
+
+            val stepX = w / (data.size - 1).toFloat()
+
+            // คำนวณจุดสำหรับเส้นรายได้ + รายจ่าย
+            val incomePoints = data.mapIndexed { i, d ->
+                Offset(
+                    x = i * stepX,
+                    y = h - (d.credit / maxValue * h * animProgress).toFloat()
+                )
+            }
+            val expensePoints = data.mapIndexed { i, d ->
+                Offset(
+                    x = i * stepX,
+                    y = h - (d.debit / maxValue * h * animProgress).toFloat()
+                )
+            }
+
+            // === วาด gradient fill ใต้เส้น (รายจ่ายก่อน เพราะปกติน้อยกว่า) ===
+            drawSmoothFill(expensePoints, expenseColor, h)
+            drawSmoothFill(incomePoints, incomeColor, h)
+
+            // === วาดเส้น smooth ===
+            drawSmoothLine(expensePoints, expenseColor, strokeWidth = 3.5f)
+            drawSmoothLine(incomePoints, incomeColor, strokeWidth = 3.5f)
+
+            // === วาดจุดข้อมูล (dots) — outer ring + inner solid ===
+            for (p in expensePoints) {
+                drawCircle(Color.White, radius = 5f, center = p)
+                drawCircle(expenseColor, radius = 4f, center = p)
+            }
+            for (p in incomePoints) {
+                drawCircle(Color.White, radius = 5f, center = p)
+                drawCircle(incomeColor, radius = 4f, center = p)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // === X-axis labels (วันที่) ===
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp)
+        ) {
+            data.forEachIndexed { _, d ->
+                Text(
+                    text = formatDayLabel(d.date),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 9.sp,
+                    color = labelColor,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Smooth bezier path ผ่าน points ทั้งหมด — ใช้ control point แบบ midpoint
+ */
+private fun buildSmoothPath(points: List<Offset>): Path {
+    val path = Path()
+    if (points.isEmpty()) return path
+    path.moveTo(points[0].x, points[0].y)
+    for (i in 1 until points.size) {
+        val prev = points[i - 1]
+        val curr = points[i]
+        val midX = (prev.x + curr.x) / 2f
+        // control points: ครึ่งทาง ใช้ y ของจุดต้น/ปลายเพื่อให้โค้งนุ่ม
+        path.cubicTo(
+            midX, prev.y,
+            midX, curr.y,
+            curr.x, curr.y
+        )
+    }
+    return path
+}
+
+private fun DrawScope.drawSmoothLine(points: List<Offset>, color: Color, strokeWidth: Float) {
+    if (points.size < 2) return
+    drawPath(
+        path = buildSmoothPath(points),
+        color = color,
+        style = Stroke(
+            width = strokeWidth,
+            cap = StrokeCap.Round,
+            join = StrokeJoin.Round
+        )
+    )
+}
+
+private fun DrawScope.drawSmoothFill(points: List<Offset>, color: Color, baselineY: Float) {
+    if (points.size < 2) return
+    val fillPath = buildSmoothPath(points).apply {
+        // ปิด path ลงไปแกนล่างเพื่อ fill
+        lineTo(points.last().x, baselineY)
+        lineTo(points.first().x, baselineY)
+        close()
+    }
+    drawPath(
+        path = fillPath,
+        brush = Brush.verticalGradient(
+            colors = listOf(
+                color.copy(alpha = 0.28f),
+                color.copy(alpha = 0.04f)
+            ),
+            startY = 0f,
+            endY = baselineY
+        )
+    )
+}
+
+/**
+ * แปลงตัวเลขให้สั้น: 1234 → 1.2K, 1234567 → 1.2M
+ */
+private fun formatCompact(value: Double): String {
+    val abs = kotlin.math.abs(value)
+    return when {
+        abs >= 1_000_000 -> "${"%.1f".format(value / 1_000_000)}M"
+        abs >= 1_000 -> "${"%.1f".format(value / 1_000)}K"
+        else -> "%.0f".format(value)
+    }
+}
+
+/**
+ * แปลง YYYY-MM-DD → "DD/MM" สำหรับ x-axis
+ */
+private fun formatDayLabel(date: String): String {
+    // YYYY-MM-DD → DD/MM
+    val parts = date.split("-")
+    return if (parts.size == 3) "${parts[2]}/${parts[1]}" else date
+}
 
 @Composable
 fun OrderBarChart(

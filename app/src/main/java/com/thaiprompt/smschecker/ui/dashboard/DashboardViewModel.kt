@@ -3,6 +3,7 @@ package com.thaiprompt.smschecker.ui.dashboard
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.thaiprompt.smschecker.data.db.DailyIncomeExpense
 import com.thaiprompt.smschecker.data.db.TransactionDao
 import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.DashboardStats
@@ -43,6 +44,7 @@ data class DashboardState(
     val syncedCount: Int = 0,
     val yesterdayCredit: Double = 0.0,
     val yesterdayDebit: Double = 0.0,
+    val dailyIncomeExpense: List<DailyIncomeExpense> = emptyList(),
     val showReportDialog: Boolean = false,
     val selectedTransaction: BankTransaction? = null
 )
@@ -122,15 +124,22 @@ class DashboardViewModel @Inject constructor(
             } catch (e: Exception) { }
         }
 
-        // Collect recent transactions + today count
+        // Collect recent transactions + today count + 7-day income/expense
         viewModelScope.launch {
             try {
                 repository.getAllTransactions().collect { transactions ->
                     val todayCount = transactions.count { it.timestamp >= todayStart }
+                    val daily = try {
+                        loadDailyIncomeExpense(days = 7)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "loadDailyIncomeExpense failed", e)
+                        emptyList()
+                    }
                     _state.update {
                         it.copy(
                             recentTransactions = transactions.take(10),
                             todayTransactionCount = todayCount,
+                            dailyIncomeExpense = daily,
                             isLoading = false
                         )
                     }
@@ -277,6 +286,33 @@ class DashboardViewModel @Inject constructor(
         cal.set(java.util.Calendar.SECOND, 0)
         cal.set(java.util.Calendar.MILLISECOND, 0)
         return cal.timeInMillis
+    }
+
+    /**
+     * โหลดยอดรายวัน (เงินเข้า/ออก) ย้อนหลัง N วัน — เติม 0 สำหรับวันที่ไม่มีรายการ
+     * คืนค่าเรียงจากวันเก่า → วันใหม่ ครบจำนวน N วัน
+     */
+    private suspend fun loadDailyIncomeExpense(days: Int = 7): List<DailyIncomeExpense> {
+        val cal = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+            add(java.util.Calendar.DAY_OF_YEAR, -(days - 1))
+        }
+        val since = cal.timeInMillis
+        val raw = transactionDao.getDailyIncomeExpense(since)
+        val byDate = raw.associateBy { it.date }
+
+        // เติมวันที่ไม่มีรายการให้เป็น 0 — ทำให้กราฟต่อเนื่อง
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+        val result = mutableListOf<DailyIncomeExpense>()
+        repeat(days) {
+            val key = sdf.format(cal.time)
+            result.add(byDate[key] ?: DailyIncomeExpense(date = key, credit = 0.0, debit = 0.0))
+            cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+        }
+        return result
     }
 
     // ═══════════════════════════════════════

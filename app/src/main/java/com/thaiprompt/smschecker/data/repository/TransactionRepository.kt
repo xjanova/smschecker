@@ -141,19 +141,27 @@ class TransactionRepository @Inject constructor(
             }
         }
 
-        // FIX: Only mark transaction as globally synced when ALL active servers have it
+        // Mark as synced ทันทีเมื่อ server ใด ๆ confirm — ผู้ใช้จะเห็นไฟเขียวทันที
+        // multi-server retry ทำงานต่อได้ผ่าน sync_logs (getUnsyncedTransactions ใช้ sync_logs เป็นฐาน
+        // ไม่ใช่ isSynced) — รายการที่ partial sync จะถูก retry จนครบทุก server
         val newSyncedIds = alreadySyncedServerIds + results.results.filter { it.success }.map { it.serverId }
         val allServersSynced = activeServers.all { it.id in newSyncedIds }
 
-        if (allServersSynced) {
-            // All servers received the transaction — mark as fully synced
-            transactionDao.markAsSynced(transaction.id, activeServers.first().id, "ALL_SYNCED")
-            Log.i(TAG, "Transaction ${transaction.id} fully synced to ALL ${activeServers.size} servers")
-        } else if (results.anySucceeded) {
-            // Partial success — keep isSynced = false so retry picks it up
-            val syncedNames = results.results.filter { it.success }.joinToString { it.serverName }
-            val failedNames = results.results.filter { !it.success }.joinToString { it.serverName }
-            Log.w(TAG, "Transaction ${transaction.id} partial sync: OK=[$syncedNames] FAILED=[$failedNames]")
+        if (results.anySucceeded) {
+            val firstSuccessfulServerId = results.results.firstOrNull { it.success }?.serverId
+                ?: activeServers.first().id
+            transactionDao.markAsSynced(
+                transaction.id,
+                firstSuccessfulServerId,
+                if (allServersSynced) "ALL_SYNCED" else "PARTIAL_SYNCED"
+            )
+            if (allServersSynced) {
+                Log.i(TAG, "Transaction ${transaction.id} fully synced to ALL ${activeServers.size} servers")
+            } else {
+                val syncedNames = results.results.filter { it.success }.joinToString { it.serverName }
+                val failedNames = results.results.filter { !it.success }.joinToString { it.serverName }
+                Log.w(TAG, "Transaction ${transaction.id} partial sync: OK=[$syncedNames] FAILED=[$failedNames] — retry via sync_logs")
+            }
         }
 
         Log.d(TAG, "Parallel sync: ${results.successCount}/${results.results.size} servers, " +

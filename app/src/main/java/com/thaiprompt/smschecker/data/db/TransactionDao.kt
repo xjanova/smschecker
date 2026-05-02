@@ -5,6 +5,15 @@ import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.TransactionType
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * รวมยอดรายวันแยกตาม CREDIT (เงินเข้า) / DEBIT (เงินออก) — ใช้สำหรับกราฟรายได้
+ */
+data class DailyIncomeExpense(
+    val date: String,   // YYYY-MM-DD (local timezone)
+    val credit: Double,
+    val debit: Double
+)
+
 @Dao
 interface TransactionDao {
 
@@ -23,7 +32,26 @@ interface TransactionDao {
     @Query("SELECT * FROM bank_transactions WHERE bank = :bank ORDER BY timestamp DESC LIMIT 500")
     fun getTransactionsByBank(bank: String): Flow<List<BankTransaction>>
 
-    @Query("SELECT * FROM bank_transactions WHERE isSynced = 0 ORDER BY timestamp ASC LIMIT 200")
+    /**
+     * คืนรายการที่ยังไม่ได้ถูก sync ไป "ทุก" active server (ใช้ sync_logs เป็นฐาน)
+     * รองรับ multi-server retry: ถ้ามี server ใดยังไม่ได้รับ transaction นี้ → คืนกลับมาให้ retry
+     * รวมถึงรายการที่ไม่เคยถูกส่งไปไหนเลย (ไม่มี sync_log)
+     */
+    @Query("""
+        SELECT bt.* FROM bank_transactions bt
+        WHERE EXISTS (
+            SELECT 1 FROM server_configs sc
+            WHERE sc.isActive = 1
+            AND NOT EXISTS (
+                SELECT 1 FROM sync_logs sl
+                WHERE sl.transactionId = bt.id
+                AND sl.serverId = sc.id
+                AND sl.status = 'SUCCESS'
+            )
+        )
+        ORDER BY bt.timestamp ASC
+        LIMIT 200
+    """)
     suspend fun getUnsyncedTransactions(): List<BankTransaction>
 
     @Query("SELECT * FROM bank_transactions WHERE id = :id")
@@ -47,8 +75,36 @@ interface TransactionDao {
     """)
     fun getTotalAmountByType(type: TransactionType, since: Long): Flow<Double>
 
-    @Query("SELECT COUNT(*) FROM bank_transactions WHERE isSynced = 0")
+    @Query("""
+        SELECT COUNT(*) FROM bank_transactions bt
+        WHERE EXISTS (
+            SELECT 1 FROM server_configs sc
+            WHERE sc.isActive = 1
+            AND NOT EXISTS (
+                SELECT 1 FROM sync_logs sl
+                WHERE sl.transactionId = bt.id
+                AND sl.serverId = sc.id
+                AND sl.status = 'SUCCESS'
+            )
+        )
+    """)
     fun getUnsyncedCount(): Flow<Int>
+
+    /**
+     * รวมยอดรายวันแยกตามประเภท (CREDIT/DEBIT) — ใช้สำหรับกราฟรายได้
+     * คืนค่าเป็น YYYY-MM-DD (local time) → credit, debit
+     */
+    @Query("""
+        SELECT
+            strftime('%Y-%m-%d', timestamp/1000, 'unixepoch', 'localtime') as date,
+            COALESCE(SUM(CASE WHEN type = 'CREDIT' THEN CAST(amount AS REAL) ELSE 0 END), 0) as credit,
+            COALESCE(SUM(CASE WHEN type = 'DEBIT' THEN CAST(amount AS REAL) ELSE 0 END), 0) as debit
+        FROM bank_transactions
+        WHERE timestamp >= :since
+        GROUP BY date
+        ORDER BY date ASC
+    """)
+    suspend fun getDailyIncomeExpense(since: Long): List<DailyIncomeExpense>
 
     @Query("UPDATE bank_transactions SET isSynced = 1, syncedServerId = :serverId, syncResponse = :response WHERE id = :transactionId")
     suspend fun markAsSynced(transactionId: Long, serverId: Long, response: String?)
@@ -79,7 +135,24 @@ interface TransactionDao {
     @Query("SELECT COUNT(*) FROM bank_transactions")
     suspend fun getTotalCountOnce(): Int
 
-    @Query("SELECT COUNT(*) FROM bank_transactions WHERE isSynced = 1")
+    @Query("""
+        SELECT COUNT(*) FROM bank_transactions bt
+        WHERE NOT EXISTS (
+            SELECT 1 FROM server_configs sc
+            WHERE sc.isActive = 1
+            AND NOT EXISTS (
+                SELECT 1 FROM sync_logs sl
+                WHERE sl.transactionId = bt.id
+                AND sl.serverId = sc.id
+                AND sl.status = 'SUCCESS'
+            )
+        )
+        AND EXISTS (
+            SELECT 1 FROM sync_logs sl2
+            WHERE sl2.transactionId = bt.id
+            AND sl2.status = 'SUCCESS'
+        )
+    """)
     fun getSyncedCount(): Flow<Int>
 
     @Query("UPDATE bank_transactions SET bank = :bank, type = :type, amount = :amount WHERE id = :id")

@@ -29,16 +29,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.thaiprompt.smschecker.R
+import com.thaiprompt.smschecker.data.db.DailyIncomeExpense
 import com.thaiprompt.smschecker.data.model.BankTransaction
-import com.thaiprompt.smschecker.data.model.DashboardStats
 import com.thaiprompt.smschecker.data.model.TransactionType
-import com.thaiprompt.smschecker.ui.components.ApprovalDonutChart
 import com.thaiprompt.smschecker.ui.components.BankLogoCircle
-import com.thaiprompt.smschecker.ui.components.ChartLegendItem
 import com.thaiprompt.smschecker.ui.components.GlassCard
 import com.thaiprompt.smschecker.ui.components.GradientHeader
+import com.thaiprompt.smschecker.ui.components.IncomeExpenseLineChart
 import com.thaiprompt.smschecker.ui.components.MisclassificationReportDialog
-import com.thaiprompt.smschecker.ui.components.OrderBarChart
 import com.thaiprompt.smschecker.ui.components.SectionTitle
 import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
 import com.thaiprompt.smschecker.ui.theme.AppColors
@@ -466,13 +464,12 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
         }
 
         // ═══════════════════════════════════════
-        // ORDER APPROVALS SUMMARY
+        // REVENUE CHART (เงินเข้า vs เงินออก ย้อนหลัง 7 วัน)
         // ═══════════════════════════════════════
-        item(key = "spacer_order") { Spacer(modifier = Modifier.height(12.dp)) }
-        item(key = "order_approval") {
-            OrderApprovalSummaryCard(
-                stats = state.orderStats,
-                pendingCount = state.pendingApprovalCount,
+        item(key = "spacer_revenue") { Spacer(modifier = Modifier.height(12.dp)) }
+        item(key = "revenue_chart") {
+            RevenueChartCard(
+                data = state.dailyIncomeExpense,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
         }
@@ -647,13 +644,21 @@ private fun StatBox(
     }
 }
 
+/**
+ * RevenueChartCard — กราฟรายได้ย้อนหลัง 7 วัน
+ * เส้นเขียว = เงินเข้า, เส้นแดง = เงินออก, ในกราฟเดียวกัน
+ */
 @Composable
-private fun OrderApprovalSummaryCard(
-    stats: DashboardStats,
-    pendingCount: Int,
+private fun RevenueChartCard(
+    data: List<DailyIncomeExpense>,
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
+
+    val totalIncome = remember(data) { data.sumOf { it.credit } }
+    val totalExpense = remember(data) { data.sumOf { it.debit } }
+    val net = totalIncome - totalExpense
+    val netColor = if (net >= 0) AppColors.CreditGreen else AppColors.DebitRed
 
     GlassCard(modifier = modifier) {
         Row(
@@ -661,70 +666,112 @@ private fun OrderApprovalSummaryCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                strings.orderApproval,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = AppColors.GoldAccent
-            )
-            if (pendingCount > 0) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(AppColors.WarningOrange)
-                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        "$pendingCount ${strings.pending}",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color.White
-                    )
-                }
+            Column {
+                Text(
+                    strings.revenueChartTitle,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = AppColors.GoldAccent
+                )
+                Text(
+                    strings.last7Days,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ApprovalDonutChart(
-                autoApproved = stats.autoApproved,
-                manuallyApproved = stats.manuallyApproved,
-                pending = stats.pendingReview,
-                rejected = stats.rejected,
-                modifier = Modifier.size(100.dp)
-            )
-
-            Column(
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.weight(1f)
+            // Net summary chip
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(netColor.copy(alpha = 0.15f))
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
             ) {
-                ChartLegendItem(label = strings.autoApproved, count = stats.autoApproved, color = AppColors.CreditGreen)
-                ChartLegendItem(label = strings.manuallyApproved, count = stats.manuallyApproved, color = AppColors.GoldAccent)
-                ChartLegendItem(label = strings.pendingReview, count = stats.pendingReview, color = AppColors.WarningOrange)
-                ChartLegendItem(label = strings.rejected, count = stats.rejected, color = AppColors.DebitRed)
+                Text(
+                    text = "${if (net >= 0) "+" else ""}${strings.bahtSymbol}${String.format("%,.0f", net)}",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = netColor
+                )
             }
         }
 
-        if (stats.dailyBreakdown.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                strings.last7Days,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            OrderBarChart(
-                dailyStats = stats.dailyBreakdown,
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // === กราฟเส้น ===
+        if (data.isEmpty() || (totalIncome == 0.0 && totalExpense == 0.0)) {
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(120.dp)
+                    .height(160.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    strings.noTransactions,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                )
+            }
+        } else {
+            IncomeExpenseLineChart(
+                data = data,
+                modifier = Modifier.fillMaxWidth()
             )
         }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // === Legend + ยอดรวม ===
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            LegendStat(
+                color = AppColors.CreditGreen,
+                label = strings.todayIncome,
+                value = "+${strings.bahtSymbol}${String.format("%,.0f", totalIncome)}"
+            )
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(28.dp)
+                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+            )
+            LegendStat(
+                color = AppColors.DebitRed,
+                label = strings.todayExpense,
+                value = "-${strings.bahtSymbol}${String.format("%,.0f", totalExpense)}"
+            )
+        }
+    }
+}
+
+@Composable
+private fun LegendStat(color: Color, label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(color)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.bodySmall,
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            value,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            color = color
+        )
     }
 }
 
