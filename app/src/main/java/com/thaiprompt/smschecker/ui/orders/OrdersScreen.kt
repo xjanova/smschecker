@@ -708,13 +708,42 @@ fun OrderCard(
                     }
                 }
                 if (order.productName != null) {
-                    Text(
-                        text = order.productName + (order.quantity?.let { " x$it" } ?: ""),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(start = 18.dp)
-                    )
+                    // 💎 (2026-05-04) Pay-Later badge — detect Laravel suffix "💎ดูก่อนจ่าย"
+                    //    Server tags it via SmsPaymentController::transformFortuneReadingToOrderApproval
+                    //    → highlight bill with gold badge so admin knows it's "free privilege"
+                    val isPayLater = order.productName.contains("💎ดูก่อนจ่าย")
+                    val cleanProductName = if (isPayLater) {
+                        order.productName.replace(" 💎ดูก่อนจ่าย", "")
+                    } else order.productName
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(start = 18.dp, top = 2.dp)
+                    ) {
+                        Text(
+                            text = cleanProductName + (order.quantity?.let { " x$it" } ?: ""),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp
+                        )
+                        if (isPayLater) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = AppColors.GoldAccent.copy(alpha = 0.15f),
+                                border = BorderStroke(1.dp, AppColors.GoldAccent.copy(alpha = 0.5f))
+                            ) {
+                                Text(
+                                    text = "💎 ดูก่อนจ่าย",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp,
+                                    color = AppColors.GoldAccent,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
