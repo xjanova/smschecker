@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.thaiprompt.smschecker.data.db.DailyIncomeExpense
+import com.thaiprompt.smschecker.data.db.OrderApprovalDao
 import com.thaiprompt.smschecker.data.db.TransactionDao
 import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.DashboardStats
@@ -19,6 +20,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.math.max
 
 data class ServerHealth(
     val serverName: String,
@@ -55,6 +57,7 @@ class DashboardViewModel @Inject constructor(
     private val orderRepository: OrderRepository,
     private val secureStorage: SecureStorage,
     private val transactionDao: TransactionDao,
+    private val orderApprovalDao: OrderApprovalDao,
     private val reportRepository: MisclassificationReportRepository
 ) : ViewModel() {
 
@@ -79,20 +82,21 @@ class DashboardViewModel @Inject constructor(
     private fun loadDashboardData() {
         val todayStart = getTodayStart()
 
-        // Collect today's credit total
+        // รายรับ = บิล approved, รายจ่าย = DEBIT - (CREDIT ที่ไม่ใช่บิล)
+        // เช่น user รับเงินบิล 1000 (CREDIT 1000), แต่มีโอนกลับเข้าตัวเอง 200 (CREDIT 200) + ถอน 500 (DEBIT 500)
+        // → income = 1000, non_bill_credit = max(0, 1200-1000) = 200, expense = max(0, 500-200) = 300
         viewModelScope.launch {
             try {
-                repository.getTotalCredit(todayStart).collect { total ->
-                    _state.update { it.copy(todayCredit = total) }
-                }
-            } catch (e: Exception) { }
-        }
-
-        // Collect today's debit total
-        viewModelScope.launch {
-            try {
-                repository.getTotalDebit(todayStart).collect { total ->
-                    _state.update { it.copy(todayDebit = total) }
+                kotlinx.coroutines.flow.combine(
+                    orderApprovalDao.getApprovedAmountFlow(todayStart),
+                    repository.getTotalCredit(todayStart),
+                    repository.getTotalDebit(todayStart)
+                ) { billIncome, bankCredit, bankDebit ->
+                    val nonBillCredit = max(0.0, bankCredit - billIncome)
+                    val netExpense = max(0.0, bankDebit - nonBillCredit)
+                    billIncome to netExpense
+                }.collect { (income, expense) ->
+                    _state.update { it.copy(todayCredit = income, todayDebit = expense) }
                 }
             } catch (e: Exception) { }
         }
@@ -289,8 +293,10 @@ class DashboardViewModel @Inject constructor(
     }
 
     /**
-     * โหลดยอดรายวัน (เงินเข้า/ออก) ย้อนหลัง N วัน — เติม 0 สำหรับวันที่ไม่มีรายการ
-     * คืนค่าเรียงจากวันเก่า → วันใหม่ ครบจำนวน N วัน
+     * โหลดยอดรายวัน ย้อนหลัง N วัน — เติม 0 สำหรับวันที่ไม่มีรายการ
+     * - credit (เส้นเขียว) = ยอดบิลที่อนุมัติแล้ว (ไม่ใช่ CREDIT จากธนาคาร)
+     * - debit  (เส้นแดง)  = max(0, bankDEBIT - (bankCREDIT - billIncome))
+     *   หัก CREDIT ที่ไม่ใช่บิล (refund/โอนเข้าตัวเอง) ออกจาก DEBIT เพื่อไม่ over-count
      */
     private suspend fun loadDailyIncomeExpense(days: Int = 7): List<DailyIncomeExpense> {
         val cal = java.util.Calendar.getInstance().apply {
@@ -301,15 +307,20 @@ class DashboardViewModel @Inject constructor(
             add(java.util.Calendar.DAY_OF_YEAR, -(days - 1))
         }
         val since = cal.timeInMillis
-        val raw = transactionDao.getDailyIncomeExpense(since)
-        val byDate = raw.associateBy { it.date }
 
-        // เติมวันที่ไม่มีรายการให้เป็น 0 — ทำให้กราฟต่อเนื่อง
+        val billByDate = orderApprovalDao.getDailyApprovedAmount(since).associateBy { it.date }
+        val bankByDate = transactionDao.getDailyIncomeExpense(since).associateBy { it.date }
+
         val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
         val result = mutableListOf<DailyIncomeExpense>()
         repeat(days) {
             val key = sdf.format(cal.time)
-            result.add(byDate[key] ?: DailyIncomeExpense(date = key, credit = 0.0, debit = 0.0))
+            val income = billByDate[key]?.amount ?: 0.0
+            val bankCredit = bankByDate[key]?.credit ?: 0.0
+            val bankDebit = bankByDate[key]?.debit ?: 0.0
+            val nonBillCredit = max(0.0, bankCredit - income)
+            val expense = max(0.0, bankDebit - nonBillCredit)
+            result.add(DailyIncomeExpense(date = key, credit = income, debit = expense))
             cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
         }
         return result

@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.thaiprompt.smschecker.data.db.DailyIncomeExpense
+import com.thaiprompt.smschecker.data.db.OrderApprovalDao
 import com.thaiprompt.smschecker.data.db.TransactionDao
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -16,6 +17,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 import javax.inject.Inject
+import kotlin.math.max
 
 /**
  * ช่วงเวลาสำหรับกราฟรายได้
@@ -43,7 +45,8 @@ data class RevenueDetailState(
 
 @HiltViewModel
 class RevenueDetailViewModel @Inject constructor(
-    private val transactionDao: TransactionDao
+    private val transactionDao: TransactionDao,
+    private val orderApprovalDao: OrderApprovalDao
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(RevenueDetailState())
@@ -95,7 +98,8 @@ class RevenueDetailViewModel @Inject constructor(
     }
 
     /**
-     * ย้อนหลัง N วัน aggregate รายวัน — เติม 0 สำหรับวันที่ไม่มีรายการ
+     * ย้อนหลัง N วัน — credit = บิล approved, debit = max(0, bankDEBIT - nonBillCredit)
+     * เติม 0 สำหรับวันที่ไม่มีรายการ
      */
     private suspend fun loadDailyData(days: Int): List<DailyIncomeExpense> {
         val cal = Calendar.getInstance().apply {
@@ -106,19 +110,20 @@ class RevenueDetailViewModel @Inject constructor(
             add(Calendar.DAY_OF_YEAR, -(days - 1))
         }
         val since = cal.timeInMillis
-        val raw = transactionDao.getDailyIncomeExpense(since).associateBy { it.date }
+        val billByDate = orderApprovalDao.getDailyApprovedAmount(since).associateBy { it.date }
+        val bankByDate = transactionDao.getDailyIncomeExpense(since).associateBy { it.date }
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         val result = mutableListOf<DailyIncomeExpense>()
         repeat(days) {
             val key = sdf.format(cal.time)
-            result.add(raw[key] ?: DailyIncomeExpense(date = key, credit = 0.0, debit = 0.0))
+            result.add(buildBucket(key, billByDate, bankByDate))
             cal.add(Calendar.DAY_OF_YEAR, 1)
         }
         return result
     }
 
     /**
-     * ย้อนหลัง N เดือน aggregate รายเดือน — เติม 0 สำหรับเดือนที่ไม่มีรายการ
+     * ย้อนหลัง N เดือน — สูตรเดียวกับรายวัน aggregate รายเดือน
      */
     private suspend fun loadMonthlyData(months: Int): List<DailyIncomeExpense> {
         val cal = Calendar.getInstance().apply {
@@ -130,15 +135,34 @@ class RevenueDetailViewModel @Inject constructor(
             add(Calendar.MONTH, -(months - 1))
         }
         val since = cal.timeInMillis
-        val raw = transactionDao.getMonthlyIncomeExpense(since).associateBy { it.date }
+        val billByDate = orderApprovalDao.getMonthlyApprovedAmount(since).associateBy { it.date }
+        val bankByDate = transactionDao.getMonthlyIncomeExpense(since).associateBy { it.date }
         val sdf = SimpleDateFormat("yyyy-MM", Locale.getDefault())
         val result = mutableListOf<DailyIncomeExpense>()
         repeat(months) {
             val key = sdf.format(cal.time)
-            result.add(raw[key] ?: DailyIncomeExpense(date = key, credit = 0.0, debit = 0.0))
+            result.add(buildBucket(key, billByDate, bankByDate))
             cal.add(Calendar.MONTH, 1)
         }
         return result
+    }
+
+    /**
+     * รวมรายรับจากบิล + รายจ่ายธนาคารหัก non-bill credit ออก เพื่อไม่ over-count
+     * income  = บิล approved
+     * expense = max(0, bankDEBIT - max(0, bankCREDIT - billIncome))
+     */
+    private fun buildBucket(
+        key: String,
+        billByDate: Map<String, com.thaiprompt.smschecker.data.db.DailyApprovedAmount>,
+        bankByDate: Map<String, DailyIncomeExpense>
+    ): DailyIncomeExpense {
+        val income = billByDate[key]?.amount ?: 0.0
+        val bankCredit = bankByDate[key]?.credit ?: 0.0
+        val bankDebit = bankByDate[key]?.debit ?: 0.0
+        val nonBillCredit = max(0.0, bankCredit - income)
+        val expense = max(0.0, bankDebit - nonBillCredit)
+        return DailyIncomeExpense(date = key, credit = income, debit = expense)
     }
 
     companion object {

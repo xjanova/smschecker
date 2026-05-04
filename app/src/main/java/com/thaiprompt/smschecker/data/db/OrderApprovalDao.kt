@@ -6,6 +6,14 @@ import com.thaiprompt.smschecker.data.model.OrderApproval
 import com.thaiprompt.smschecker.data.model.PendingAction
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * รวมยอดบิลที่อนุมัติแล้วต่อวัน/เดือน — ใช้สำหรับกราฟรายรับ (เส้นเขียว)
+ */
+data class DailyApprovedAmount(
+    val date: String,   // YYYY-MM-DD หรือ YYYY-MM (local timezone)
+    val amount: Double
+)
+
 @Dao
 interface OrderApprovalDao {
 
@@ -134,6 +142,49 @@ interface OrderApprovalDao {
 
     @Query("SELECT COALESCE(SUM(amount), 0.0) FROM order_approvals WHERE approvalStatus IN ('AUTO_APPROVED', 'MANUALLY_APPROVED') AND createdAt >= :since")
     suspend fun getApprovedAmount(since: Long): Double
+
+    /**
+     * รวมยอดบิลที่อนุมัติแล้ว (auto + manual) ตั้งแต่ :since — Flow สำหรับ dashboard "รายรับวันนี้"
+     * ใช้ paymentTimestamp เป็นแกนเวลา ถ้า null fallback createdAt (ตรงกับการเรียงในหน้ารายการ)
+     */
+    @Query("""
+        SELECT COALESCE(SUM(amount), 0.0) FROM order_approvals
+        WHERE approvalStatus IN ('AUTO_APPROVED', 'MANUALLY_APPROVED')
+        AND COALESCE(paymentTimestamp, createdAt) >= :since
+    """)
+    fun getApprovedAmountFlow(since: Long): Flow<Double>
+
+    /**
+     * รายรับรายวันจากบิลที่อนุมัติแล้ว — ใช้สำหรับกราฟรายได้ (เส้นเขียว)
+     * คืนค่าเป็น YYYY-MM-DD (local time) → amount
+     */
+    @Query("""
+        SELECT
+            strftime('%Y-%m-%d', COALESCE(paymentTimestamp, createdAt)/1000, 'unixepoch', 'localtime') as date,
+            COALESCE(SUM(amount), 0.0) as amount
+        FROM order_approvals
+        WHERE approvalStatus IN ('AUTO_APPROVED', 'MANUALLY_APPROVED')
+        AND COALESCE(paymentTimestamp, createdAt) >= :since
+        GROUP BY date
+        ORDER BY date ASC
+    """)
+    suspend fun getDailyApprovedAmount(since: Long): List<DailyApprovedAmount>
+
+    /**
+     * รายรับรายเดือนจากบิลที่อนุมัติแล้ว — สำหรับกราฟรายปี
+     * คืนค่าเป็น YYYY-MM (local time) → amount
+     */
+    @Query("""
+        SELECT
+            strftime('%Y-%m', COALESCE(paymentTimestamp, createdAt)/1000, 'unixepoch', 'localtime') as date,
+            COALESCE(SUM(amount), 0.0) as amount
+        FROM order_approvals
+        WHERE approvalStatus IN ('AUTO_APPROVED', 'MANUALLY_APPROVED')
+        AND COALESCE(paymentTimestamp, createdAt) >= :since
+        GROUP BY date
+        ORDER BY date ASC
+    """)
+    suspend fun getMonthlyApprovedAmount(since: Long): List<DailyApprovedAmount>
 
     @Query("DELETE FROM order_approvals WHERE createdAt < :cutoff")
     suspend fun deleteOlderThan(cutoff: Long)
