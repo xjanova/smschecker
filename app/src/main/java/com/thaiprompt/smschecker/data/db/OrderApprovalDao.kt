@@ -14,6 +14,17 @@ data class DailyApprovedAmount(
     val amount: Double
 )
 
+/**
+ * รวมยอดบิลที่อนุมัติแล้วต่อวัน/เดือน แยกตาม server
+ * ใช้สำหรับกราฟรายรับแบบ multi-line (เส้นเดียวต่อ server)
+ */
+data class DailyApprovedByServer(
+    val date: String,           // YYYY-MM-DD หรือ YYYY-MM
+    val serverId: Long,
+    val serverName: String?,    // อาจ null ถ้ายังไม่ sync server name
+    val amount: Double
+)
+
 @Dao
 interface OrderApprovalDao {
 
@@ -185,6 +196,47 @@ interface OrderApprovalDao {
         ORDER BY date ASC
     """)
     suspend fun getMonthlyApprovedAmount(since: Long): List<DailyApprovedAmount>
+
+    /**
+     * รายรับรายวันแยกตาม server — กราฟ multi-line
+     * ช่วงเวลา [start, end) เพื่อรองรับ custom range
+     */
+    @Query("""
+        SELECT
+            strftime('%Y-%m-%d', COALESCE(paymentTimestamp, createdAt)/1000, 'unixepoch', 'localtime') as date,
+            serverId,
+            serverName,
+            COALESCE(SUM(amount), 0.0) as amount
+        FROM order_approvals
+        WHERE approvalStatus IN ('AUTO_APPROVED', 'MANUALLY_APPROVED')
+        AND COALESCE(paymentTimestamp, createdAt) >= :startTime
+        AND COALESCE(paymentTimestamp, createdAt) < :endTime
+        GROUP BY date, serverId, serverName
+        ORDER BY date ASC
+    """)
+    suspend fun getDailyApprovedAmountByServer(startTime: Long, endTime: Long): List<DailyApprovedByServer>
+
+    /**
+     * รายรับรายเดือนแยกตาม server — กราฟ multi-line รายปี/range ยาว
+     */
+    @Query("""
+        SELECT
+            strftime('%Y-%m', COALESCE(paymentTimestamp, createdAt)/1000, 'unixepoch', 'localtime') as date,
+            serverId,
+            serverName,
+            COALESCE(SUM(amount), 0.0) as amount
+        FROM order_approvals
+        WHERE approvalStatus IN ('AUTO_APPROVED', 'MANUALLY_APPROVED')
+        AND COALESCE(paymentTimestamp, createdAt) >= :startTime
+        AND COALESCE(paymentTimestamp, createdAt) < :endTime
+        GROUP BY date, serverId, serverName
+        ORDER BY date ASC
+    """)
+    suspend fun getMonthlyApprovedAmountByServer(startTime: Long, endTime: Long): List<DailyApprovedByServer>
+
+    // TODO refund: เพิ่ม field refundedAt + refundAmount ใน OrderApproval
+    // แล้วเพิ่ม query getDailyRefundAmount(start, end) ที่กรองด้วย refundedAt
+    // ตอนนี้ ViewModel produce empty series เป็น placeholder
 
     @Query("DELETE FROM order_approvals WHERE createdAt < :cutoff")
     suspend fun deleteOlderThan(cutoff: Long)

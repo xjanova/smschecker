@@ -416,6 +416,303 @@ fun InteractiveIncomeExpenseLineChart(
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MultiLineChart — กราฟเส้นแบบ N เส้น มี legend ใต้กราฟ + tap tooltip
+// ใช้สำหรับกราฟแบบหลาย series (เช่น รายได้แยกตาม server)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * series ของ MultiLineChart — แต่ละ series แทนหนึ่งเส้น
+ * data ต้องมีความยาวเท่ากับ buckets และ index ตรงกัน
+ */
+data class LineSeries(
+    val key: String,        // unique key (e.g. serverId หรือ "refund")
+    val name: String,       // display name สำหรับ legend
+    val color: Color,
+    val data: List<Double>  // value ต่อ bucket — ต้อง align index กับ buckets
+)
+
+@Composable
+fun MultiLineChart(
+    buckets: List<String>,
+    series: List<LineSeries>,
+    modifier: Modifier = Modifier,
+    height: androidx.compose.ui.unit.Dp = 240.dp,
+    bahtSymbol: String = "฿",
+    gridColor: Color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f),
+    labelColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    formatLabel: (String) -> String = { defaultBucketLabel(it) },
+    showLegend: Boolean = true,
+    showFill: Boolean = false   // gradient fill ใต้เส้น — ปิดเป็น default เพราะหลายเส้นจะรก
+) {
+    if (buckets.isEmpty() || series.isEmpty()) return
+
+    val maxValue = remember(buckets, series) {
+        val m = series.flatMap { it.data }.maxOrNull() ?: 0.0
+        if (m <= 0.0) 1.0 else m * 1.15
+    }
+
+    val animatable = remember { Animatable(0f) }
+    LaunchedEffect(buckets, series) {
+        animatable.snapTo(0f)
+        animatable.animateTo(1f, tween(durationMillis = 900))
+    }
+    val animProgress = animatable.value
+
+    var selectedIndex by remember(buckets, series) { mutableIntStateOf(-1) }
+    var canvasSize by remember { mutableIntStateOf(0) }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        // Y-axis label (max value)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = formatCompact(maxValue),
+                fontSize = 10.sp,
+                color = labelColor.copy(alpha = 0.7f)
+            )
+            Text(
+                text = bahtSymbol,
+                fontSize = 10.sp,
+                color = labelColor.copy(alpha = 0.5f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Box(modifier = Modifier.fillMaxWidth().height(height)) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = 4.dp, end = 4.dp, top = 8.dp, bottom = 4.dp)
+                    .onSizeChanged { size: IntSize -> canvasSize = size.width }
+                    .pointerInput(buckets, series) {
+                        detectTapGestures { tap ->
+                            if (buckets.isEmpty() || canvasSize <= 0) return@detectTapGestures
+                            val stepX = canvasSize.toFloat() / (buckets.size - 1).coerceAtLeast(1).toFloat()
+                            val idx = (0 until buckets.size).minByOrNull { i ->
+                                abs(i * stepX - tap.x)
+                            } ?: -1
+                            selectedIndex = if (idx == selectedIndex) -1 else idx
+                        }
+                    }
+            ) {
+                val w = size.width
+                val h = size.height
+
+                // Grid lines แนวนอน
+                val gridLines = 4
+                for (i in 0..gridLines) {
+                    val y = h * (i.toFloat() / gridLines)
+                    drawLine(
+                        color = gridColor,
+                        start = Offset(0f, y),
+                        end = Offset(w, y),
+                        strokeWidth = 1f,
+                        pathEffect = if (i in 1 until gridLines) {
+                            PathEffect.dashPathEffect(floatArrayOf(6f, 8f), 0f)
+                        } else null
+                    )
+                }
+
+                if (buckets.size < 2) {
+                    val cx = w / 2f
+                    series.forEach { s ->
+                        val v = s.data.firstOrNull() ?: 0.0
+                        val cy = h - (v / maxValue * h * animProgress).toFloat()
+                        drawCircle(s.color, radius = 7f, center = Offset(cx, cy))
+                    }
+                    return@Canvas
+                }
+
+                val stepX = w / (buckets.size - 1).toFloat()
+
+                // คำนวณจุดของแต่ละ series
+                val seriesPoints = series.map { s ->
+                    s.data.mapIndexed { i, v ->
+                        Offset(i * stepX, h - (v / maxValue * h * animProgress).toFloat())
+                    }
+                }
+
+                // วาด fill ก่อน (ถ้าเปิด)
+                if (showFill) {
+                    seriesPoints.forEachIndexed { idx, points ->
+                        drawSmoothFill(points, series[idx].color, h)
+                    }
+                }
+
+                // วาดเส้น (ทั้งหมดวาดที่ stroke 3.5f)
+                seriesPoints.forEachIndexed { idx, points ->
+                    drawSmoothLine(points, series[idx].color, strokeWidth = 3.5f)
+                }
+
+                // Selected guide line
+                if (selectedIndex in buckets.indices) {
+                    val gx = selectedIndex * stepX
+                    drawLine(
+                        color = labelColor.copy(alpha = 0.3f),
+                        start = Offset(gx, 0f),
+                        end = Offset(gx, h),
+                        strokeWidth = 1f,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f)
+                    )
+                }
+
+                // Dots
+                seriesPoints.forEachIndexed { sIdx, points ->
+                    val color = series[sIdx].color
+                    points.forEachIndexed { i, p ->
+                        val r = if (i == selectedIndex) 7f else 4.5f
+                        drawCircle(Color.White, radius = r + 1f, center = p)
+                        drawCircle(color, radius = r, center = p)
+                    }
+                }
+            }
+
+            // Tooltip
+            val visible = selectedIndex in buckets.indices
+            val tooltipAlpha by animateFloatAsState(
+                targetValue = if (visible) 1f else 0f,
+                animationSpec = tween(durationMillis = 180),
+                label = "multiTooltipAlpha"
+            )
+            val tooltipScale by animateFloatAsState(
+                targetValue = if (visible) 1f else 0.85f,
+                animationSpec = tween(durationMillis = 180),
+                label = "multiTooltipScale"
+            )
+            if (tooltipAlpha > 0.01f && selectedIndex in buckets.indices) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 4.dp)
+                        .graphicsLayer {
+                            alpha = tooltipAlpha
+                            scaleX = tooltipScale
+                            scaleY = tooltipScale
+                        }
+                ) {
+                    MultiTooltipCard(
+                        date = formatLabel(buckets[selectedIndex]),
+                        rows = series.map { s ->
+                            Triple(s.name, s.data.getOrNull(selectedIndex) ?: 0.0, s.color)
+                        },
+                        bahtSymbol = bahtSymbol
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // X-axis labels
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+        ) {
+            val showEvery = when {
+                buckets.size <= 12 -> 1
+                buckets.size <= 24 -> 2
+                else -> buckets.size / 8
+            }
+            buckets.forEachIndexed { i, b ->
+                Text(
+                    text = if (i % showEvery == 0) formatLabel(b) else "",
+                    fontSize = 9.sp,
+                    color = if (i == selectedIndex) AppColors.GoldAccent else labelColor,
+                    fontWeight = if (i == selectedIndex) FontWeight.Bold else FontWeight.Normal,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        if (showLegend && series.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(10.dp))
+            // Wrap-flow legend — Compose ไม่มี FlowRow ใน foundation เก่า ใช้ Column ของ Row
+            // ใช้ chunk 2 ต่อแถวเพื่อความเรียบ
+            val chunked = series.chunked(2)
+            chunked.forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.Start
+                ) {
+                    row.forEach { s ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(s.color)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = s.name,
+                                fontSize = 11.sp,
+                                color = labelColor,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                    if (row.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Tooltip card สำหรับ multi-line — แสดงทุก series ในจุดที่เลือก
+ */
+@Composable
+private fun MultiTooltipCard(
+    date: String,
+    rows: List<Triple<String, Double, Color>>,  // name, value, color
+    bahtSymbol: String,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Column {
+            Text(
+                text = date,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            rows.forEach { (name, value, color) ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(color)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "$name  $bahtSymbol${"%,.2f".format(value)}",
+                        fontSize = 11.sp,
+                        color = color,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+            }
+        }
+    }
+}
+
 /**
  * Tooltip card สวยๆ แสดงเมื่อแตะที่จุดข้อมูล
  */

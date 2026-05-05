@@ -122,6 +122,36 @@ interface TransactionDao {
     """)
     suspend fun getMonthlyIncomeExpense(since: Long): List<DailyIncomeExpense>
 
+    /**
+     * รายวันแบบช่วง [start, end) — รองรับ custom range
+     */
+    @Query("""
+        SELECT
+            strftime('%Y-%m-%d', timestamp/1000, 'unixepoch', 'localtime') as date,
+            COALESCE(SUM(CASE WHEN type = 'CREDIT' THEN CAST(amount AS REAL) ELSE 0 END), 0) as credit,
+            COALESCE(SUM(CASE WHEN type = 'DEBIT' THEN CAST(amount AS REAL) ELSE 0 END), 0) as debit
+        FROM bank_transactions
+        WHERE timestamp >= :startTime AND timestamp < :endTime
+        GROUP BY date
+        ORDER BY date ASC
+    """)
+    suspend fun getDailyIncomeExpenseRange(startTime: Long, endTime: Long): List<DailyIncomeExpense>
+
+    /**
+     * รายเดือนแบบช่วง [start, end) — สำหรับ range ยาว
+     */
+    @Query("""
+        SELECT
+            strftime('%Y-%m', timestamp/1000, 'unixepoch', 'localtime') as date,
+            COALESCE(SUM(CASE WHEN type = 'CREDIT' THEN CAST(amount AS REAL) ELSE 0 END), 0) as credit,
+            COALESCE(SUM(CASE WHEN type = 'DEBIT' THEN CAST(amount AS REAL) ELSE 0 END), 0) as debit
+        FROM bank_transactions
+        WHERE timestamp >= :startTime AND timestamp < :endTime
+        GROUP BY date
+        ORDER BY date ASC
+    """)
+    suspend fun getMonthlyIncomeExpenseRange(startTime: Long, endTime: Long): List<DailyIncomeExpense>
+
     @Query("UPDATE bank_transactions SET isSynced = 1, syncedServerId = :serverId, syncResponse = :response WHERE id = :transactionId")
     suspend fun markAsSynced(transactionId: Long, serverId: Long, response: String?)
 
