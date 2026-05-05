@@ -389,8 +389,8 @@ private fun BillChartCard(
                             (slideOutHorizontally(tween(220)) { -it / 4 } + fadeOut(tween(220)))
                     },
                     label = "billChartTransition"
-                ) { _ ->
-                    key(state.period, state.buckets.size, state.customStartMs, state.customEndMs) {
+                ) { animKey ->
+                    key(animKey, state.customStartMs, state.customEndMs) {
                         val series = buildList {
                             state.billServerSeries.forEachIndexed { idx, s ->
                                 add(LineSeries(
@@ -463,8 +463,8 @@ private fun BankChartCard(
                             (slideOutHorizontally(tween(220)) { -it / 4 } + fadeOut(tween(220)))
                     },
                     label = "bankChartTransition"
-                ) { _ ->
-                    key(state.period, state.buckets.size, state.customStartMs, state.customEndMs) {
+                ) { animKey ->
+                    key(animKey, state.customStartMs, state.customEndMs) {
                         val series = buildList {
                             state.bankCreditSeries?.let {
                                 add(LineSeries(
