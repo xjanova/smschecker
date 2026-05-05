@@ -82,9 +82,9 @@ class DashboardViewModel @Inject constructor(
     private fun loadDashboardData() {
         val todayStart = getTodayStart()
 
-        // รายรับ = บิล approved, รายจ่าย = DEBIT - (CREDIT ที่ไม่ใช่บิล)
-        // เช่น user รับเงินบิล 1000 (CREDIT 1000), แต่มีโอนกลับเข้าตัวเอง 200 (CREDIT 200) + ถอน 500 (DEBIT 500)
-        // → income = 1000, non_bill_credit = max(0, 1200-1000) = 200, expense = max(0, 500-200) = 300
+        // รายรับ = บิล approved (ไม่เกี่ยว SMS ธนาคาร)
+        // รายจ่าย = net จาก SMS ธนาคารทั้งหมด = max(0, bankDEBIT - bankCREDIT) ไม่ยุ่งกับบิล
+        // เช่น โอนเข้าตัวเอง 200 (CREDIT 200) + ถอน 500 (DEBIT 500) → expense = 300
         viewModelScope.launch {
             try {
                 kotlinx.coroutines.flow.combine(
@@ -92,8 +92,7 @@ class DashboardViewModel @Inject constructor(
                     repository.getTotalCredit(todayStart),
                     repository.getTotalDebit(todayStart)
                 ) { billIncome, bankCredit, bankDebit ->
-                    val nonBillCredit = max(0.0, bankCredit - billIncome)
-                    val netExpense = max(0.0, bankDebit - nonBillCredit)
+                    val netExpense = max(0.0, bankDebit - bankCredit)
                     billIncome to netExpense
                 }.collect { (income, expense) ->
                     _state.update { it.copy(todayCredit = income, todayDebit = expense) }
@@ -295,8 +294,7 @@ class DashboardViewModel @Inject constructor(
     /**
      * โหลดยอดรายวัน ย้อนหลัง N วัน — เติม 0 สำหรับวันที่ไม่มีรายการ
      * - credit (เส้นเขียว) = ยอดบิลที่อนุมัติแล้ว (ไม่ใช่ CREDIT จากธนาคาร)
-     * - debit  (เส้นแดง)  = max(0, bankDEBIT - (bankCREDIT - billIncome))
-     *   หัก CREDIT ที่ไม่ใช่บิล (refund/โอนเข้าตัวเอง) ออกจาก DEBIT เพื่อไม่ over-count
+     * - debit  (เส้นแดง)  = max(0, bankDEBIT - bankCREDIT) net จาก SMS ธนาคาร ไม่ยุ่งกับบิล
      */
     private suspend fun loadDailyIncomeExpense(days: Int = 7): List<DailyIncomeExpense> {
         val cal = java.util.Calendar.getInstance().apply {
@@ -318,8 +316,7 @@ class DashboardViewModel @Inject constructor(
             val income = billByDate[key]?.amount ?: 0.0
             val bankCredit = bankByDate[key]?.credit ?: 0.0
             val bankDebit = bankByDate[key]?.debit ?: 0.0
-            val nonBillCredit = max(0.0, bankCredit - income)
-            val expense = max(0.0, bankDebit - nonBillCredit)
+            val expense = max(0.0, bankDebit - bankCredit)
             result.add(DailyIncomeExpense(date = key, credit = income, debit = expense))
             cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
         }
