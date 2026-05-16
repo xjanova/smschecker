@@ -11,6 +11,7 @@ import com.google.firebase.messaging.FirebaseMessaging
 import com.thaiprompt.smschecker.service.FcmService
 import com.thaiprompt.smschecker.service.OrderSyncWorker
 import com.thaiprompt.smschecker.service.ServiceWatchdogWorker
+import com.thaiprompt.smschecker.service.SmsSweepWorker
 import com.thaiprompt.smschecker.data.license.IntegrityChecker
 import dagger.hilt.android.HiltAndroidApp
 
@@ -51,6 +52,8 @@ class SmsCheckerApp : Application() {
         try {
             ServiceWatchdogWorker.enqueuePeriodic(this)
             OrderSyncWorker.enqueuePeriodicSync(this)
+            // SmsSweepWorker — กู้ SMS ที่ realtime receiver พลาด (Doze / app killed)
+            SmsSweepWorker.enqueuePeriodic(this)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to enqueue background workers in Application.onCreate", e)
         }
