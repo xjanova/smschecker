@@ -378,6 +378,121 @@ class OrderRepository @Inject constructor(
     }
 
     /**
+     * 🔍 (2026-05-21) หา bill candidates สำหรับ orphan SMS (admin-side fuzzy match)
+     *
+     * Use case: ลูกค้าโอนเลขกลม (39, 100) → SMS เป็น orphan → admin หาบิลตรงกัน
+     * Backend จะค้นบิล pending ที่ amount >= base_price + name fuzzy + time window
+     *
+     * Iterate active servers — รวม candidates จากทุก server (มี server_id ติดมา)
+     *
+     * @param amount      ยอดเงินใน SMS
+     * @param senderName  ชื่อผู้โอน (จาก SMS parser) — null = ไม่มี
+     * @param smsTimestamp  เวลา SMS เข้า (ms epoch)
+     * @return list of (candidate + serverId) sorted by name_score DESC
+     */
+    suspend fun findBillCandidatesForOrphan(
+        amount: Double,
+        senderName: String?,
+        smsTimestamp: Long,
+        windowHours: Int = 24
+    ): List<Pair<BillCandidate, Long>> {
+        val servers = serverConfigDao.getActiveConfigs()
+        if (servers.isEmpty()) {
+            Log.w(TAG, "findBillCandidatesForOrphan: no active servers")
+            return emptyList()
+        }
+
+        val isoTs = java.time.Instant.ofEpochMilli(smsTimestamp).toString()
+        val results = mutableListOf<Pair<BillCandidate, Long>>()
+
+        for (server in servers) {
+            val apiKey = secureStorage.getApiKey(server.id)
+            val deviceId = secureStorage.getDeviceId()
+            if (apiKey == null || deviceId == null) {
+                Log.w(TAG, "findBillCandidatesForOrphan: missing creds for server ${server.name}")
+                continue
+            }
+
+            try {
+                val client = apiClientFactory.getClient(server.baseUrl)
+                val response = client.findBillCandidatesForOrphan(
+                    apiKey = apiKey,
+                    deviceId = deviceId,
+                    body = OrphanFindBillBody(
+                        amount = amount,
+                        sender_name = senderName,
+                        sms_timestamp = isoTs,
+                        window_hours = windowHours
+                    )
+                )
+
+                if (response.isSuccessful) {
+                    val candidates = response.body()?.data?.candidates ?: emptyList()
+                    candidates.forEach { c -> results.add(c to server.id) }
+                    Log.i(TAG, "findBillCandidatesForOrphan: ${candidates.size} candidates from ${server.name}")
+                } else {
+                    Log.w(TAG, "findBillCandidatesForOrphan: HTTP ${response.code()} from ${server.name}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "findBillCandidatesForOrphan: error on ${server.name}", e)
+            }
+        }
+
+        // Sort merged results by name_score DESC, time_delta ASC
+        return results.sortedWith(
+            compareByDescending<Pair<BillCandidate, Long>> { it.first.name_score }
+                .thenBy { it.first.time_delta_minutes }
+        )
+    }
+
+    /**
+     * ✅ (2026-05-21) Confirm orphan SMS → bill match (admin verified)
+     *
+     * Backend จะ confirmPayment + dispatch deep/celtic flow ให้ลูกค้า
+     */
+    suspend fun confirmOrphanBillMatch(
+        serverId: Long,
+        billReference: String,
+        smsNotificationId: Long? = null
+    ): Boolean {
+        val server = serverConfigDao.getById(serverId) ?: run {
+            Log.e(TAG, "confirmOrphanBillMatch: server $serverId not found")
+            return false
+        }
+        val apiKey = secureStorage.getApiKey(server.id) ?: run {
+            Log.e(TAG, "confirmOrphanBillMatch: no API key for ${server.name}")
+            return false
+        }
+        val deviceId = secureStorage.getDeviceId() ?: run {
+            Log.e(TAG, "confirmOrphanBillMatch: no device ID")
+            return false
+        }
+
+        return try {
+            val client = apiClientFactory.getClient(server.baseUrl)
+            val response = client.confirmOrphanMatch(
+                apiKey = apiKey,
+                deviceId = deviceId,
+                body = OrphanConfirmMatchBody(
+                    bill_reference = billReference,
+                    sms_notification_id = smsNotificationId
+                )
+            )
+
+            val ok = response.isSuccessful && response.body()?.success == true
+            if (ok) {
+                Log.i(TAG, "💎 confirmOrphanBillMatch: ✅ $billReference on ${server.name}")
+            } else {
+                Log.w(TAG, "confirmOrphanBillMatch: ❌ HTTP ${response.code()} msg=${response.body()?.message}")
+            }
+            ok
+        } catch (e: Exception) {
+            Log.e(TAG, "confirmOrphanBillMatch: network error", e)
+            false
+        }
+    }
+
+    /**
      * Auto-approve order by local ID (used for automatic approval after SMS match)
      * Returns true if successfully approved, false if failed or order not found
      */

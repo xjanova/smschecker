@@ -3,9 +3,11 @@ package com.thaiprompt.smschecker.ui.orphans
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.thaiprompt.smschecker.data.api.BillCandidate
 import com.thaiprompt.smschecker.data.db.OrphanTransactionDao
 import com.thaiprompt.smschecker.data.model.OrphanStatus
 import com.thaiprompt.smschecker.data.model.OrphanTransaction
+import com.thaiprompt.smschecker.data.repository.OrderRepository
 import com.thaiprompt.smschecker.data.repository.OrphanTransactionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -21,13 +23,31 @@ data class OrphanState(
     val totalCount: Int = 0,
     val pendingCount: Int = 0,
     val showPendingOnly: Boolean = true,
-    val error: String? = null
+    val error: String? = null,
+    // 🔍 (2026-05-21) Bill candidates dialog state
+    val candidatesDialog: CandidatesDialogState = CandidatesDialogState.Hidden,
+    val matchResult: String? = null   // success/error message หลัง confirm
 )
+
+/**
+ * 🔍 (2026-05-21) State สำหรับ dialog "หาบิลตรงกัน"
+ */
+sealed class CandidatesDialogState {
+    object Hidden : CandidatesDialogState()
+    data class Loading(val orphan: OrphanTransaction) : CandidatesDialogState()
+    data class Loaded(
+        val orphan: OrphanTransaction,
+        val candidates: List<Pair<BillCandidate, Long>>  // candidate + serverId
+    ) : CandidatesDialogState()
+    data class Error(val orphan: OrphanTransaction, val message: String) : CandidatesDialogState()
+    data class Confirming(val orphan: OrphanTransaction, val billRef: String) : CandidatesDialogState()
+}
 
 @HiltViewModel
 class OrphanViewModel @Inject constructor(
     private val orphanRepository: OrphanTransactionRepository,
-    private val orphanDao: OrphanTransactionDao
+    private val orphanDao: OrphanTransactionDao,
+    private val orderRepository: OrderRepository
 ) : ViewModel() {
 
     companion object {
@@ -145,5 +165,89 @@ class OrphanViewModel @Inject constructor(
 
     fun clearError() {
         _state.update { it.copy(error = null) }
+    }
+
+    // ================================================================
+    // 🔍 (2026-05-21) Bill candidates dialog
+    // ================================================================
+
+    /**
+     * เปิด dialog + เรียก backend หาบิลที่อาจตรงกัน
+     */
+    fun findBillCandidates(orphan: OrphanTransaction) {
+        viewModelScope.launch {
+            _state.update { it.copy(candidatesDialog = CandidatesDialogState.Loading(orphan)) }
+            try {
+                val candidates = orderRepository.findBillCandidatesForOrphan(
+                    amount = orphan.amount,
+                    senderName = orphan.senderOrReceiver,
+                    smsTimestamp = orphan.transactionTimestamp,
+                    windowHours = 24
+                )
+                Log.i(TAG, "findBillCandidates: ${candidates.size} candidates for orphan#${orphan.id}")
+                _state.update {
+                    it.copy(candidatesDialog = CandidatesDialogState.Loaded(orphan, candidates))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "findBillCandidates failed", e)
+                _state.update {
+                    it.copy(candidatesDialog = CandidatesDialogState.Error(orphan, e.message ?: "ไม่ทราบสาเหตุ"))
+                }
+            }
+        }
+    }
+
+    /**
+     * Admin ยืนยัน: ผูก orphan SMS เข้ากับบิลที่เลือก
+     */
+    fun confirmBillMatch(orphan: OrphanTransaction, candidate: BillCandidate, serverId: Long) {
+        viewModelScope.launch {
+            _state.update {
+                it.copy(candidatesDialog = CandidatesDialogState.Confirming(orphan, candidate.bill_reference))
+            }
+            try {
+                val ok = orderRepository.confirmOrphanBillMatch(
+                    serverId = serverId,
+                    billReference = candidate.bill_reference,
+                    smsNotificationId = null  // orphan SMS ยังไม่มี server-side notification id
+                )
+                if (ok) {
+                    // Mark orphan as manually resolved
+                    orphanRepository.markAsManuallyResolved(
+                        orphan.id,
+                        "Matched to bill ${candidate.bill_reference} via admin fuzzy lookup"
+                    )
+                    _state.update {
+                        it.copy(
+                            candidatesDialog = CandidatesDialogState.Hidden,
+                            matchResult = "✅ ผูก SMS เข้าบิล ${candidate.bill_reference} สำเร็จ + ส่งคำทำนายแล้ว"
+                        )
+                    }
+                    loadInitialPage()
+                } else {
+                    _state.update {
+                        it.copy(
+                            candidatesDialog = CandidatesDialogState.Error(
+                                orphan,
+                                "Backend ปฏิเสธ — ตรวจ log ที่ server"
+                            )
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "confirmBillMatch failed", e)
+                _state.update {
+                    it.copy(candidatesDialog = CandidatesDialogState.Error(orphan, e.message ?: "เน็ตเวิร์กล้มเหลว"))
+                }
+            }
+        }
+    }
+
+    fun closeCandidatesDialog() {
+        _state.update { it.copy(candidatesDialog = CandidatesDialogState.Hidden) }
+    }
+
+    fun clearMatchResult() {
+        _state.update { it.copy(matchResult = null) }
     }
 }

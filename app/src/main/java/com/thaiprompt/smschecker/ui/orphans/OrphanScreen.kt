@@ -31,6 +31,28 @@ fun OrphanScreen(viewModel: OrphanViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
     var showDeleteDialog by remember { mutableStateOf<OrphanTransaction?>(null) }
 
+    // 🔍 (2026-05-21) Bill candidates dialog
+    BillCandidatesDialog(
+        state = state.candidatesDialog,
+        onDismiss = { viewModel.closeCandidatesDialog() },
+        onConfirm = { orphan, candidate, serverId ->
+            viewModel.confirmBillMatch(orphan, candidate, serverId)
+        }
+    )
+
+    // Match result snackbar (after confirm success)
+    state.matchResult?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { viewModel.clearMatchResult() },
+            icon = { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = AppColors.SuccessGreen) },
+            title = { Text("สำเร็จ") },
+            text = { Text(msg) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearMatchResult() }) { Text("ตกลง") }
+            }
+        )
+    }
+
     // Delete confirmation dialog
     showDeleteDialog?.let { orphan ->
         AlertDialog(
@@ -167,7 +189,8 @@ fun OrphanScreen(viewModel: OrphanViewModel = hiltViewModel()) {
         items(state.orphans, key = { it.id }) { orphan ->
             OrphanCard(
                 orphan = orphan,
-                onDismiss = { showDeleteDialog = orphan }
+                onDismiss = { showDeleteDialog = orphan },
+                onFindBill = { viewModel.findBillCandidates(orphan) }
             )
         }
     }
@@ -176,7 +199,8 @@ fun OrphanScreen(viewModel: OrphanViewModel = hiltViewModel()) {
 @Composable
 fun OrphanCard(
     orphan: OrphanTransaction,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onFindBill: () -> Unit = {}
 ) {
     val dateFormat = remember { SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()) }
     val statusColor = when (orphan.status) {
@@ -265,21 +289,188 @@ fun OrphanCard(
                 }
             }
 
-            // Dismiss button (only for pending)
+            // Action buttons (only for pending)
             if (orphan.status == OrphanStatus.PENDING) {
-                IconButton(
-                    onClick = onDismiss,
-                    colors = IconButtonDefaults.iconButtonColors(
-                        contentColor = Color.Red.copy(alpha = 0.7f)
-                    )
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(
-                        Icons.Default.Close,
-                        contentDescription = "ยกเลิก",
-                        modifier = Modifier.size(24.dp)
+                    // 🔍 (2026-05-21) Find matching bill (fuzzy name+time+amount>=base)
+                    IconButton(
+                        onClick = onFindBill,
+                        colors = IconButtonDefaults.iconButtonColors(
+                            contentColor = AppColors.InfoBlue
+                        )
+                    ) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = "หาบิลตรงกัน",
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        colors = IconButtonDefaults.iconButtonColors(
+                            contentColor = Color.Red.copy(alpha = 0.7f)
+                        )
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "ยกเลิก",
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ================================================================
+// 🔍 (2026-05-21) Bill Candidates Dialog
+// แสดง list บิลที่อาจตรงกับ orphan SMS (name+time fuzzy + amount >= base)
+// ================================================================
+@Composable
+fun BillCandidatesDialog(
+    state: CandidatesDialogState,
+    onDismiss: () -> Unit,
+    onConfirm: (OrphanTransaction, com.thaiprompt.smschecker.data.api.BillCandidate, Long) -> Unit
+) {
+    if (state is CandidatesDialogState.Hidden) return
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Search, contentDescription = null, tint = AppColors.InfoBlue) },
+        title = {
+            val orphan = when (state) {
+                is CandidatesDialogState.Loading -> state.orphan
+                is CandidatesDialogState.Loaded -> state.orphan
+                is CandidatesDialogState.Error -> state.orphan
+                is CandidatesDialogState.Confirming -> state.orphan
+                CandidatesDialogState.Hidden -> null
+            }
+            Column {
+                Text("🔍 หาบิลที่ตรงกัน", fontWeight = FontWeight.Bold)
+                orphan?.let {
+                    Text(
+                        "SMS ฿${String.format("%,.2f", it.amount)} จาก \"${it.senderOrReceiver}\"",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
+        },
+        text = {
+            when (state) {
+                is CandidatesDialogState.Loading -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("กำลังค้นหาบิล...")
+                    }
+                }
+                is CandidatesDialogState.Confirming -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("กำลังผูก SMS เข้าบิล ${state.billRef}...")
+                    }
+                }
+                is CandidatesDialogState.Error -> {
+                    Text(
+                        "❌ ${state.message}",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                is CandidatesDialogState.Loaded -> {
+                    if (state.candidates.isEmpty()) {
+                        Text(
+                            "ไม่พบบิลที่ตรงกัน — ลูกค้าอาจยังไม่ได้สร้างบิล หรือ ยอดน้อยกว่าราคาบิล",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                "พบ ${state.candidates.size} บิล (เรียงตามความตรงของชื่อ)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            state.candidates.take(5).forEach { (cand, serverId) ->
+                                BillCandidateItem(
+                                    candidate = cand,
+                                    onClick = { onConfirm(state.orphan, cand, serverId) }
+                                )
+                            }
+                        }
+                    }
+                }
+                CandidatesDialogState.Hidden -> {}
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("ปิด") }
+        }
+    )
+}
+
+@Composable
+private fun BillCandidateItem(
+    candidate: com.thaiprompt.smschecker.data.api.BillCandidate,
+    onClick: () -> Unit
+) {
+    val scoreColor = when {
+        candidate.name_score >= 70 -> AppColors.SuccessGreen
+        candidate.name_score >= 40 -> AppColors.WarningOrange
+        else -> Color.Gray
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        border = BorderStroke(1.dp, scoreColor.copy(alpha = 0.4f))
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    candidate.bill_reference,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = scoreColor.copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        "ชื่อตรง ${candidate.name_score}%",
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scoreColor,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "👤 ${candidate.customer_name ?: "-"}",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                "💰 ราคา ฿${String.format("%,.2f", candidate.base_price)} (เกิน ฿${String.format("%,.2f", candidate.amount_delta)})",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "⏰ บิลสร้างก่อน SMS ${candidate.time_delta_minutes} นาที",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

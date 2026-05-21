@@ -125,6 +125,29 @@ interface PaymentApiService {
         @Header("X-Api-Key") apiKey: String,
         @Body body: DebugReportBody
     ): Response<ApiResponse>
+
+    /**
+     * 🔍 (2026-05-21) Find bill candidates for orphan SMS
+     *
+     * Use case: ลูกค้าโอนเลขกลม → SMS เป็น orphan → admin หาบิลตรงกัน
+     * Backend จะค้นบิล pending ที่ amount >= base_price + name fuzzy + time window
+     */
+    @POST("api/v1/sms-payment/orphans/find-bill-candidates")
+    suspend fun findBillCandidatesForOrphan(
+        @Header("X-Api-Key") apiKey: String,
+        @Header("X-Device-Id") deviceId: String,
+        @Body body: OrphanFindBillBody
+    ): Response<OrphanBillCandidatesResponse>
+
+    /**
+     * ✅ (2026-05-21) Admin confirm: ผูก SMS เข้าบิล + approve + dispatch
+     */
+    @POST("api/v1/sms-payment/orphans/confirm-match")
+    suspend fun confirmOrphanMatch(
+        @Header("X-Api-Key") apiKey: String,
+        @Header("X-Device-Id") deviceId: String,
+        @Body body: OrphanConfirmMatchBody
+    ): Response<ApiResponse>
 }
 
 data class EncryptedPayload(
@@ -320,4 +343,45 @@ data class DebugReportBody(
     val build_number: Int,
     val device_model: String?,
     val timestamp: Long
+)
+
+// =================================================================
+// 🔍 (2026-05-21) Orphan SMS → Bill Match (admin-side fuzzy)
+// =================================================================
+
+data class OrphanFindBillBody(
+    val amount: Double,
+    val sender_name: String?,
+    val sms_timestamp: String,   // ISO 8601
+    val window_hours: Int? = 24
+)
+
+data class OrphanBillCandidatesResponse(
+    val success: Boolean,
+    val data: OrphanBillCandidatesData? = null,
+    val message: String? = null
+)
+
+data class OrphanBillCandidatesData(
+    val candidates: List<BillCandidate> = emptyList(),
+    val count: Int = 0
+)
+
+data class BillCandidate(
+    val bill_reference: String,
+    val reading_id: Long,
+    val reading_type: String,         // "deep" / "celtic_cross"
+    val customer_name: String?,
+    val expected_amount: Double,      // ยอดที่บิลต้องจ่าย (unique_amount with decimals)
+    val base_price: Double,           // ราคาเต็ม (39, 99)
+    val name_score: Int,              // 0-100
+    val time_delta_minutes: Int,
+    val amount_delta: Double,         // ลูกค้าโอนเกินกี่บาท
+    val bill_created_at: String?,
+    val platform: String?
+)
+
+data class OrphanConfirmMatchBody(
+    val bill_reference: String,
+    val sms_notification_id: Long? = null
 )
