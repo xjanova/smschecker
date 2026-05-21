@@ -107,10 +107,44 @@ class FcmService : FirebaseMessagingService() {
             "payment_matched" -> handlePaymentMatched(data)
             "settings_changed" -> handleSettingsChanged(data)
             "sync" -> handleSyncRequest()
+            "trigger_sms_rescan" -> handleSmsRescanTrigger(data)
             else -> {
                 Log.w(TAG, "Unknown FCM message type: ${data["type"]}")
                 // Default: trigger sync anyway
                 handleSyncRequest()
+            }
+        }
+    }
+
+    /**
+     * 📡 (2026-05-21) Backend trigger SMS re-scan
+     *
+     * เคส: ลูกค้ากดเช็คสถานะ/ส่งสลิป → backend สงสัยว่า broadcast พลาด SMS
+     *       → ส่ง FCM trigger ให้ app รื้อ SMS inbox + re-process
+     *
+     * Data payload:
+     *   - lookback_hours: ดูย้อนหลังกี่ชั่วโมง (default 6, max 48)
+     *   - reason: 'check_status' | 'slip_uploaded' | 'admin_manual'
+     *   - bill_reference, expected_amount: ข้อมูลเพิ่ม (log only — ไม่ filter)
+     */
+    private fun handleSmsRescanTrigger(data: Map<String, String>) {
+        val lookbackHours = (data["lookback_hours"]?.toIntOrNull() ?: 6).coerceIn(1, 48)
+        val reason = data["reason"] ?: "fcm_trigger"
+        val billRef = data["bill_reference"] ?: "-"
+        val expectedAmount = data["expected_amount"] ?: "-"
+
+        Log.i(TAG, "📡 FCM trigger_sms_rescan: bill=$billRef expected=฿$expectedAmount lookback=${lookbackHours}h reason=$reason")
+
+        activeScope().launch {
+            try {
+                val dispatched = SmsRescanHelper.rescanInbox(
+                    context = applicationContext,
+                    lookbackHours = lookbackHours,
+                    reason = reason
+                )
+                Log.i(TAG, "📡 SMS rescan complete: dispatched=$dispatched (dedup skip handled)")
+            } catch (e: Exception) {
+                Log.e(TAG, "SMS rescan failed", e)
             }
         }
     }
