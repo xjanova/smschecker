@@ -211,22 +211,21 @@ class SmsProcessingService : Service() {
                                 }
                             } else {
                                 // ไม่พบออเดอร์ที่ตรงกัน → เก็บเป็น Orphan Transaction
-                                // เพื่อให้จับคู่ได้ภายหลังเมื่อออเดอร์มาถึง
-                                // แต่ถ้ายอดเป็น .00 ไม่ต้องเก็บ เพราะระบบต้องมีทศนิยมเสมอ
-                                val hasDecimal = (amountDouble % 1.0) != 0.0
-                                if (hasDecimal) {
-                                    Log.d(TAG, "⏳ No matching order for amount $amountDouble, saving as orphan")
-                                    try {
-                                        orphanRepository.saveAsOrphan(
-                                            transaction = savedTransaction,
-                                            source = com.thaiprompt.smschecker.data.model.TransactionSource.SMS
-                                        )
-                                        Log.i(TAG, "💾 Saved orphan transaction: ${savedTransaction.bank} ${savedTransaction.amount}")
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "Failed to save orphan transaction", e)
-                                    }
-                                } else {
-                                    Log.d(TAG, "⚠️ Amount $amountDouble has no decimal (.00), skipping orphan save")
+                                // 🔧 (2026-05-21) เก็บ orphan **ทุกยอด** (รวมเลขกลม .00)
+                                //   เคสบั๊กเดิม: filter hasDecimal ทำให้ SMS เลขกลม (ลูกค้าโอน 39, 100, 500 บาท)
+                                //   ถูก skip → admin ไม่เห็นใน app → ไม่มีโอกาส manual match → ลูกค้าเดือดร้อน
+                                //   user spec (2026-05-21): "ยอดที่ลูกค้าโอน แบบไม่มีเศษสตางค์ ทำไมไม่เห็น"
+                                //   ผลที่ตามมา: amount=.00 จะ match UPA ไม่ได้ (ระบบใช้ทศนิยม) แต่
+                                //   admin เห็นใน Orphans tab + Force Approve ทีละบิลได้
+                                Log.d(TAG, "⏳ No matching order for amount $amountDouble, saving as orphan")
+                                try {
+                                    orphanRepository.saveAsOrphan(
+                                        transaction = savedTransaction,
+                                        source = com.thaiprompt.smschecker.data.model.TransactionSource.SMS
+                                    )
+                                    Log.i(TAG, "💾 Saved orphan transaction: ${savedTransaction.bank} ${savedTransaction.amount}")
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to save orphan transaction", e)
                                 }
                             }
                         }
@@ -362,21 +361,16 @@ class SmsProcessingService : Service() {
                                 }
                             } else {
                                 // ไม่พบออเดอร์ที่ตรงกัน → เก็บเป็น Orphan Transaction
-                                // แต่ถ้ายอดเป็น .00 ไม่ต้องเก็บ เพราะระบบต้องมีทศนิยมเสมอ
-                                val hasDecimal = (amountDouble % 1.0) != 0.0
-                                if (hasDecimal) {
-                                    Log.d(TAG, "⏳ No matching order for notification amount $amountDouble, saving as orphan")
-                                    try {
-                                        orphanRepository.saveAsOrphan(
-                                            transaction = savedTransaction,
-                                            source = com.thaiprompt.smschecker.data.model.TransactionSource.NOTIFICATION
-                                        )
-                                        Log.i(TAG, "💾 Saved orphan transaction from notification: ${savedTransaction.bank} ${savedTransaction.amount}")
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "Failed to save orphan transaction from notification", e)
-                                    }
-                                } else {
-                                    Log.d(TAG, "⚠️ Notification amount $amountDouble has no decimal (.00), skipping orphan save")
+                                // 🔧 (2026-05-21) เก็บ orphan ทุกยอด — ดูเหตุผลใน SMS path ด้านบน
+                                Log.d(TAG, "⏳ No matching order for notification amount $amountDouble, saving as orphan")
+                                try {
+                                    orphanRepository.saveAsOrphan(
+                                        transaction = savedTransaction,
+                                        source = com.thaiprompt.smschecker.data.model.TransactionSource.NOTIFICATION
+                                    )
+                                    Log.i(TAG, "💾 Saved orphan transaction from notification: ${savedTransaction.bank} ${savedTransaction.amount}")
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to save orphan transaction from notification", e)
                                 }
                             }
                         }
