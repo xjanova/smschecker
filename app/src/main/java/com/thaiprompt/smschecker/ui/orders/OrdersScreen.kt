@@ -386,6 +386,7 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
             OrderCard(
                 order = order,
                 onApprove = { viewModel.approveOrder(order) },
+                onForceApprove = { viewModel.forceApproveOrder(order) },
                 onReject = { viewModel.rejectOrder(order) },
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
@@ -549,9 +550,71 @@ private fun getStatusVisuals(status: ApprovalStatus): StatusVisuals {
 fun OrderCard(
     order: OrderApproval,
     onApprove: () -> Unit,
+    onForceApprove: () -> Unit,
     onReject: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // 🚀 (2026-05-21) State สำหรับ Force Approve confirmation dialog
+    var showForceApproveDialog by remember { mutableStateOf(false) }
+
+    if (showForceApproveDialog) {
+        AlertDialog(
+            onDismissRequest = { showForceApproveDialog = false },
+            icon = {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = Color(0xFFFF6F00)
+                )
+            },
+            title = {
+                Text(
+                    "🚀 Force Approve",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        "อนุมัติบิล ${order.orderNumber ?: "#${order.id}"} โดย ${"ไม่ผ่านการจับคู่ SMS"} หรือไม่?",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "ใช้กรณี: ลูกค้าโอนยอดผิด / SMS หาย / UPA mismatch",
+                        fontSize = 13.sp,
+                        color = Color(0xFF666666)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "⚠️ ระบบจะ approve ทันที + log audit ทุกครั้ง — กลับคืนไม่ได้",
+                        fontSize = 12.sp,
+                        color = Color(0xFFC62828),
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showForceApproveDialog = false
+                        onForceApprove()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFFF6F00)
+                    )
+                ) {
+                    Text("🚀 ยืนยัน Force Approve")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showForceApproveDialog = false }) {
+                    Text("ยกเลิก")
+                }
+            }
+        )
+    }
+
     val strings = LocalAppStrings.current
     val visuals = getStatusVisuals(order.approvalStatus)
 
@@ -863,6 +926,30 @@ fun OrderCard(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(strings.approveButton, fontSize = 12.sp)
                         }
+                    }
+
+                    // 🚀 (2026-05-21) Force Approve button (row 2) — bypass SMS matching
+                    //   ใช้กรณี: ลูกค้าโอนยอดผิด / SMS หาย / UPA mismatch
+                    //   แยก row ออกจาก approve/reject เพื่อลด accidental click + ให้เห็นว่าเป็นปุ่มพิเศษ
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { showForceApproveDialog = true },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color(0xFFFF6F00)
+                        ),
+                        border = BorderStroke(1.dp, Color(0xFFFF6F00).copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                    ) {
+                        Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            "🚀 Force Approve (ไม่ผ่านการจับคู่ SMS)",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
             }

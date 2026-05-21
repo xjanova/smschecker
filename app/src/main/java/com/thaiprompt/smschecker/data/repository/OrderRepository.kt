@@ -292,8 +292,8 @@ class OrderRepository @Inject constructor(
      *  - QUEUED: ส่งไม่สำเร็จ (offline/network) → queue ไว้รอ retry
      *  - FAILED_VALIDATION: server ปฏิเสธด้วยเหตุผลเฉพาะ (เช่น ยังไม่จับคู่จ่ายเงิน)
      */
-    suspend fun approveOrder(order: OrderApproval): ActionOutcome {
-        Log.i(TAG, "approveOrder: START orderId=${order.id}, remoteId=${order.remoteApprovalId}, orderNumber=${order.orderNumber}, serverId=${order.serverId}")
+    suspend fun approveOrder(order: OrderApproval, force: Boolean = false): ActionOutcome {
+        Log.i(TAG, "approveOrder: START orderId=${order.id}, remoteId=${order.remoteApprovalId}, orderNumber=${order.orderNumber}, serverId=${order.serverId}, force=$force")
 
         val server = serverConfigDao.getById(order.serverId)
         if (server == null) {
@@ -341,7 +341,8 @@ class OrderRepository @Inject constructor(
                 orderIdentifier = identifier,
                 amount = order.amount,
                 bank = order.bank,
-                reason = null
+                reason = null,
+                force = force
             )
             if (result is ActionOutcome.FailedValidation) {
                 lastError = result.message
@@ -352,7 +353,7 @@ class OrderRepository @Inject constructor(
         }
 
         return if (outcome) {
-            Log.i(TAG, "approveOrder: ✅ SUCCESS for $identifier")
+            Log.i(TAG, "approveOrder: ✅ SUCCESS for $identifier (force=$force)")
             orderApprovalDao.updateStatus(order.id, ApprovalStatus.MANUALLY_APPROVED, null)
             ActionOutcome.Success
         } else if (lastError != null) {
@@ -738,7 +739,8 @@ class OrderRepository @Inject constructor(
         orderIdentifier: String,
         amount: Double,
         bank: String?,
-        reason: String?
+        reason: String?,
+        force: Boolean = false
     ): ActionOutcome {
         val nonce = cryptoManager.generateNonce()
         val timestamp = System.currentTimeMillis().toString()
@@ -751,7 +753,8 @@ class OrderRepository @Inject constructor(
             sms_reference = null,
             device_id = deviceId,
             reason = reason,
-            nonce = nonce
+            nonce = nonce,
+            force = force
         )
         val payloadJson = gson.toJson(payload)
 

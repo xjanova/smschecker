@@ -305,6 +305,33 @@ class OrdersViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 🚀 (2026-05-21) Force Approve — bypass SMS matching
+     *
+     * เคสใช้: ลูกค้าโอนยอดผิด / SMS หาย / UPA mismatch
+     * Backend จะ approve เลย ไม่ require valid SMS notification
+     * (log critical audit ที่ backend ทุกครั้ง)
+     */
+    fun forceApproveOrder(order: OrderApproval) {
+        viewModelScope.launch {
+            try {
+                Log.w("OrdersViewModel", "🚀 FORCE APPROVE: orderId=${order.id}, orderNumber=${order.orderNumber}")
+                val outcome = orderRepository.approveOrder(order, force = true)
+                _state.update { it.copy(actionResult = outcome.toResult("🚀 Force Approve สำเร็จ", order.orderNumber)) }
+                loadOrders()
+            } catch (e: Exception) {
+                Log.e("OrdersViewModel", "Error force approving order ${order.id}", e)
+                _state.update { it.copy(
+                    actionResult = ActionResult(
+                        success = false,
+                        message = e.message ?: "Force Approve failed",
+                        orderNumber = order.orderNumber
+                    )
+                ) }
+            }
+        }
+    }
+
     fun rejectOrder(order: OrderApproval) {
         viewModelScope.launch {
             try {

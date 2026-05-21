@@ -283,7 +283,12 @@ data class ActionPayload(
     val sms_reference: String?,     // SMS reference number (if available)
     val device_id: String,
     val reason: String?,            // rejection reason (for reject)
-    val nonce: String
+    val nonce: String,
+    // 🚀 (2026-05-21) Force approve flag — bypass SMS matching ที่ฝั่ง backend
+    //   เคสใช้: ลูกค้าโอนยอดผิด / SMS หาย / UPA mismatch
+    //   Backend executeFortuneApproveAction:2670 — ถ้า force=true → ไม่ require valid SMS
+    //   Log critical audit ที่ backend ทุกครั้ง (admin_action='force_approve_no_sms')
+    val force: Boolean = false
 )
 
 // --- Match Order Response (for match-only mode) ---
