@@ -140,4 +140,25 @@
         </provider>
 
     </application>
+
+    <!-- 🏦 (2026-05-21) Bank app package visibility (Android 11+) -->
+    <!-- ต้องการเพื่อ pm.getLaunchIntentForPackage() ใน BankAppWaker ทำงานได้ -->
+    <!-- ไม่ใช้ QUERY_ALL_PACKAGES เพราะกระทบ Play Store policy review -->
+    <queries>
+        <package android:name="com.kasikorn.retail.mbanking.wap" /> <!-- KBank K+ -->
+        <package android:name="com.scb.phone" /> <!-- SCB Easy -->
+        <package android:name="com.ktb.netbank" /> <!-- KTB NEXT -->
+        <package android:name="com.bbl.mobilebanking" /> <!-- BBL Bualuang mBanking -->
+        <package android:name="com.gsb.mymo" /> <!-- GSB MyMo -->
+        <package android:name="com.krungsri.kma" /> <!-- Krungsri KMA -->
+        <package android:name="com.ttbbank.touch" /> <!-- ttb touch -->
+        <package android:name="com.cimbthai.mobile" /> <!-- CIMB -->
+        <package android:name="com.kkpfg.app" /> <!-- KKP -->
+        <package android:name="com.lhbank.lhbplus" /> <!-- LH Bank -->
+        <package android:name="com.tisco.mobilebanking" /> <!-- Tisco -->
+        <package android:name="com.uob.tmrw" /> <!-- UOB TMRW -->
+        <package android:name="com.icbc.icbcth" /> <!-- ICBC -->
+        <package android:name="com.baac.app" /> <!-- BAAC A-Mobile -->
+        <package android:name="com.alpha.kplus" /> <!-- K PLUS alternate -->
+    </queries>
 </manifest>

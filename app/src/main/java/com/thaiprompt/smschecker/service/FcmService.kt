@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
@@ -137,6 +138,20 @@ class FcmService : FirebaseMessagingService() {
 
         activeScope().launch {
             try {
+                // 🏦 (2026-05-21) Step 1: Wake bank apps (กรณีแอพธนาคาร sleep)
+                //   ลูกค้าโอน → แอพธนาคารหลับ → ไม่ส่ง notification → smschecker ไม่ได้ receive
+                //   Workaround: launch แอพธนาคารทุกตัวที่ติดตั้ง → OS resume → app sync transactions
+                //   → ส่ง notification ใหม่ → NotificationListener ของ smschecker จับได้
+                try {
+                    val woken = BankAppWaker.wakeAllInstalled(applicationContext)
+                    Log.i(TAG, "🏦 Bank apps woken: $woken")
+                    // รอ 3 วินาที ให้แต่ละแอพมีเวลา resume + sync transactions + ส่ง notification
+                    delay(3000)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Bank wake failed (non-fatal, continue to SMS rescan)", e)
+                }
+
+                // 📡 Step 2: Re-scan SMS inbox ของระบบ
                 val dispatched = SmsRescanHelper.rescanInbox(
                     context = applicationContext,
                     lookbackHours = lookbackHours,
