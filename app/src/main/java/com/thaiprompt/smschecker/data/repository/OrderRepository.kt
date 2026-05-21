@@ -446,14 +446,17 @@ class OrderRepository @Inject constructor(
     }
 
     /**
-     * ✅ (2026-05-21) Confirm orphan SMS → bill match (admin verified)
+     * ✅ (2026-05-21) Confirm orphan SMS → bill match (admin verified or smart auto)
      *
      * Backend จะ confirmPayment + dispatch deep/celtic flow ให้ลูกค้า
+     *
+     * @param autoSmart true = app auto-matched (ไม่ได้รอ admin กด) — audit log แยก
      */
     suspend fun confirmOrphanBillMatch(
         serverId: Long,
         billReference: String,
-        smsNotificationId: Long? = null
+        smsNotificationId: Long? = null,
+        autoSmart: Boolean = false
     ): Boolean {
         val server = serverConfigDao.getById(serverId) ?: run {
             Log.e(TAG, "confirmOrphanBillMatch: server $serverId not found")
@@ -475,21 +478,94 @@ class OrderRepository @Inject constructor(
                 deviceId = deviceId,
                 body = OrphanConfirmMatchBody(
                     bill_reference = billReference,
-                    sms_notification_id = smsNotificationId
+                    sms_notification_id = smsNotificationId,
+                    auto_smart = autoSmart
                 )
             )
 
             val ok = response.isSuccessful && response.body()?.success == true
+            val tag = if (autoSmart) "💎🤖 SMART AUTO" else "💎"
             if (ok) {
-                Log.i(TAG, "💎 confirmOrphanBillMatch: ✅ $billReference on ${server.name}")
+                Log.i(TAG, "$tag confirmOrphanBillMatch: ✅ $billReference on ${server.name}")
             } else {
-                Log.w(TAG, "confirmOrphanBillMatch: ❌ HTTP ${response.code()} msg=${response.body()?.message}")
+                Log.w(TAG, "$tag confirmOrphanBillMatch: ❌ HTTP ${response.code()} msg=${response.body()?.message}")
             }
             ok
         } catch (e: Exception) {
             Log.e(TAG, "confirmOrphanBillMatch: network error", e)
             false
         }
+    }
+
+    /**
+     * 🤖 (2026-05-21) Smart mode auto-match — เรียกหลัง orphan save
+     *
+     * ใช้กรณี: ลูกค้าโอนเลขกลม → SMS เป็น orphan
+     *   ถ้า device approval_mode = SMART + เจอ candidate confidence สูง
+     *   → confirm ทันที ไม่รอ admin กด
+     *
+     * Confidence rule (strict — กัน false positive):
+     *   - มี 1 candidate เดียวใน window (>1 = ambiguous)
+     *   - name_score >= 70 (similar_text + token + substring)
+     *   - time_delta <= 60 นาที (SMS มาภายใน 1 ชม. หลังบิล)
+     *   - (amount >= base_price ตรวจฝั่ง backend แล้ว — built-in)
+     *
+     * @return bill_reference ที่ match (null = ไม่ match auto, ต้อง admin กด)
+     */
+    suspend fun attemptSmartMatchForOrphan(
+        amount: Double,
+        senderName: String?,
+        smsTimestamp: Long
+    ): String? {
+        // เช็คว่ามี server อยู่ใน smart mode ไหม
+        val servers = serverConfigDao.getActiveConfigs()
+        val smartServers = servers.filter { it.approvalMode == "smart" }
+        if (smartServers.isEmpty()) {
+            Log.d(TAG, "attemptSmartMatchForOrphan: no SMART-mode servers — skip")
+            return null
+        }
+
+        val candidates = findBillCandidatesForOrphan(amount, senderName, smsTimestamp, windowHours = 24)
+        if (candidates.isEmpty()) {
+            Log.d(TAG, "attemptSmartMatchForOrphan: no candidates found")
+            return null
+        }
+
+        // กรองเฉพาะ candidates จาก SMART-mode servers (เพื่อกัน auto match เข้า server ที่ admin ปิด smart)
+        val smartServerIds = smartServers.map { it.id }.toSet()
+        val smartCandidates = candidates.filter { (_, serverId) -> serverId in smartServerIds }
+        if (smartCandidates.isEmpty()) {
+            Log.d(TAG, "attemptSmartMatchForOrphan: candidates found but no SMART-mode match")
+            return null
+        }
+
+        // 🛡️ Strict criteria: ต้องมีแค่ 1 candidate ใน smart server (กันแย่งบิลคู่แข่ง)
+        if (smartCandidates.size > 1) {
+            Log.w(TAG, "attemptSmartMatchForOrphan: ${smartCandidates.size} candidates ambiguous — skip auto")
+            return null
+        }
+
+        val (cand, serverId) = smartCandidates.first()
+
+        // 🛡️ Confidence threshold
+        if (cand.name_score < 70) {
+            Log.i(TAG, "attemptSmartMatchForOrphan: name_score=${cand.name_score} < 70 — skip auto, leave for admin")
+            return null
+        }
+        if (cand.time_delta_minutes > 60) {
+            Log.i(TAG, "attemptSmartMatchForOrphan: time_delta=${cand.time_delta_minutes}min > 60 — skip auto, leave for admin")
+            return null
+        }
+
+        // ✅ ผ่านเกณฑ์ — confirm auto
+        Log.w(TAG, "🤖 SMART AUTO MATCH: bill=${cand.bill_reference} name_score=${cand.name_score} time_delta=${cand.time_delta_minutes}min")
+        val ok = confirmOrphanBillMatch(
+            serverId = serverId,
+            billReference = cand.bill_reference,
+            smsNotificationId = null,
+            autoSmart = true
+        )
+        return if (ok) cand.bill_reference else null
     }
 
     /**

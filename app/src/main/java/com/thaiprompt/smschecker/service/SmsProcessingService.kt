@@ -227,6 +227,24 @@ class SmsProcessingService : Service() {
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Failed to save orphan transaction", e)
                                 }
+
+                                // 🤖 (2026-05-21) Smart mode auto-match
+                                //   ถ้า device approval_mode=SMART + เจอ candidate confidence สูง
+                                //   → confirm ทันที (ไม่รอ admin กดที่ orphans tab)
+                                //   Criteria: 1 candidate เดียว + name_score>=70 + time_delta<=60min
+                                try {
+                                    val matchedBill = orderRepository.attemptSmartMatchForOrphan(
+                                        amount = amountDouble,
+                                        senderName = savedTransaction.senderOrReceiver,
+                                        smsTimestamp = savedTransaction.transactionTimestamp
+                                    )
+                                    if (matchedBill != null) {
+                                        Log.w(TAG, "🤖 SMART AUTO: SMS matched to $matchedBill (no admin click needed)")
+                                        updateNotification("กำลังทำงาน | ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.incrementAndGet()} 🤖")
+                                    }
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Smart auto-match failed (non-fatal)", e)
+                                }
                             }
                         }
                     } catch (e: Exception) {
@@ -371,6 +389,21 @@ class SmsProcessingService : Service() {
                                     Log.i(TAG, "💾 Saved orphan transaction from notification: ${savedTransaction.bank} ${savedTransaction.amount}")
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Failed to save orphan transaction from notification", e)
+                                }
+
+                                // 🤖 (2026-05-21) Smart mode auto-match (notification path)
+                                try {
+                                    val matchedBill = orderRepository.attemptSmartMatchForOrphan(
+                                        amount = amountDouble,
+                                        senderName = savedTransaction.senderOrReceiver,
+                                        smsTimestamp = savedTransaction.transactionTimestamp
+                                    )
+                                    if (matchedBill != null) {
+                                        Log.w(TAG, "🤖 SMART AUTO (notif): SMS matched to $matchedBill")
+                                        updateNotification("กำลังทำงาน | ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.incrementAndGet()} 🤖")
+                                    }
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Smart auto-match (notification) failed", e)
                                 }
                             }
                         }

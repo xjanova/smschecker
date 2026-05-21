@@ -383,5 +383,8 @@ data class BillCandidate(
 
 data class OrphanConfirmMatchBody(
     val bill_reference: String,
-    val sms_notification_id: Long? = null
+    val sms_notification_id: Long? = null,
+    // 🤖 (2026-05-21) Smart mode flag — set true เมื่อ app auto-match ไม่รอ admin
+    //   ใช้ใน backend audit log: แยก "admin manual click" vs "smart auto"
+    val auto_smart: Boolean = false
 )
