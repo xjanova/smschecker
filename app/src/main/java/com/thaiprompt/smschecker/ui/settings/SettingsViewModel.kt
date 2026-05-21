@@ -41,6 +41,7 @@ data class SettingsState(
     val ttsSpeakAmount: Boolean = true,
     val ttsSpeakType: Boolean = true,
     val ttsSpeakOrder: Boolean = true,
+    val ttsSpeakCustomer: Boolean = true,
     val ttsSpeakProduct: Boolean = true,
     val isNotificationListening: Boolean = false,
     val isNotificationAccessGranted: Boolean = false,
@@ -99,6 +100,7 @@ class SettingsViewModel @Inject constructor(
                     ttsSpeakAmount = secureStorage.isTtsSpeakAmount(),
                     ttsSpeakType = secureStorage.isTtsSpeakType(),
                     ttsSpeakOrder = secureStorage.isTtsSpeakOrder(),
+                    ttsSpeakCustomer = secureStorage.isTtsSpeakCustomer(),
                     ttsSpeakProduct = secureStorage.isTtsSpeakProduct(),
                     isNotificationListening = secureStorage.isNotificationListeningEnabled(),
                     isSuperModeEnabled = secureStorage.isSuperModeEnabled()
@@ -311,6 +313,11 @@ class SettingsViewModel @Inject constructor(
         _state.update { it.copy(ttsSpeakOrder = enabled) }
     }
 
+    fun setTtsSpeakCustomer(enabled: Boolean) {
+        secureStorage.setTtsSpeakCustomer(enabled)
+        _state.update { it.copy(ttsSpeakCustomer = enabled) }
+    }
+
     fun setTtsSpeakProduct(enabled: Boolean) {
         secureStorage.setTtsSpeakProduct(enabled)
         _state.update { it.copy(ttsSpeakProduct = enabled) }
@@ -324,11 +331,13 @@ class SettingsViewModel @Inject constructor(
             isCredit = true,
             orderNumber = "ORD-12345",
             productName = "Windows 11 Pro",
+            customerName = "คุณสมชาย",
             speakBank = s.ttsSpeakBank,
             speakAmount = s.ttsSpeakAmount,
             speakType = s.ttsSpeakType,
             speakOrder = s.ttsSpeakOrder,
-            speakProduct = s.ttsSpeakProduct
+            speakProduct = s.ttsSpeakProduct,
+            speakCustomer = s.ttsSpeakCustomer
         )
         if (message.isNotBlank()) {
             ttsManager.speakPreview(message)

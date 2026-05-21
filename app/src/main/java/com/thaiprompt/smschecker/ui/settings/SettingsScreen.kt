@@ -831,6 +831,22 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onBackground
                         )
                     }
+                    // Bill owner name
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = state.ttsSpeakCustomer,
+                            onCheckedChange = { viewModel.setTtsSpeakCustomer(it) },
+                            colors = CheckboxDefaults.colors(checkedColor = AppColors.GoldAccent)
+                        )
+                        Text(
+                            strings.ttsSpeakCustomerLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically

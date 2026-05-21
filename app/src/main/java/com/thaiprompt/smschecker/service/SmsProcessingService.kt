@@ -167,6 +167,7 @@ class SmsProcessingService : Service() {
                 // Query servers with SMS amount instead of fetching all orders
                 var matchedOrderNumber: String? = null
                 var matchedProductName: String? = null
+                var matchedCustomerName: String? = null
                 var isServerApproved = false  // ← TTS จะอ่านเฉพาะเมื่อ server approve จริงเท่านั้น
                 if (transaction.type == TransactionType.CREDIT) {
                     try {
@@ -186,6 +187,7 @@ class SmsProcessingService : Service() {
                                 sessionMatchedCount.incrementAndGet()
                                 matchedOrderNumber = matchedOrder.orderNumber
                                 matchedProductName = matchedOrder.productName
+                                matchedCustomerName = matchedOrder.customerName
                                 Log.d(TAG, "✅ Matched transaction with order: ${matchedOrder.orderNumber} on server ${matchResult.serverName}")
                                 updateNotification("กำลังทำงาน | ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.get()}")
 
@@ -273,7 +275,8 @@ class SmsProcessingService : Service() {
                             amount = transaction.amount,
                             isCredit = transaction.type == TransactionType.CREDIT,
                             orderNumber = if (isServerApproved) matchedOrderNumber else null,
-                            productName = if (isServerApproved) matchedProductName else null
+                            productName = if (isServerApproved) matchedProductName else null,
+                            customerName = if (isServerApproved) matchedCustomerName else null
                         )
                     } catch (e: Exception) {
                         Log.w(TAG, "TTS announcement failed", e)
@@ -335,6 +338,7 @@ class SmsProcessingService : Service() {
                 // Query servers with notification amount instead of fetching all orders
                 var matchedOrderNumber: String? = null
                 var matchedProductName: String? = null
+                var matchedCustomerName: String? = null
                 var isServerApproved2 = false  // ← TTS จะอ่านเฉพาะเมื่อ server approve จริงเท่านั้น
                 if (notifTransaction.type == TransactionType.CREDIT) {
                     try {
@@ -354,6 +358,7 @@ class SmsProcessingService : Service() {
                                 sessionMatchedCount.incrementAndGet()
                                 matchedOrderNumber = matchedOrder.orderNumber
                                 matchedProductName = matchedOrder.productName
+                                matchedCustomerName = matchedOrder.customerName
                                 Log.d(TAG, "✅ Matched notification with order: ${matchedOrder.orderNumber} on server ${matchResult.serverName}")
                                 updateNotification("กำลังทำงาน | ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.get()}")
 
@@ -433,7 +438,8 @@ class SmsProcessingService : Service() {
                             amount = notifTransaction.amount,
                             isCredit = notifTransaction.type == TransactionType.CREDIT,
                             orderNumber = if (isServerApproved2) matchedOrderNumber else null,
-                            productName = if (isServerApproved2) matchedProductName else null
+                            productName = if (isServerApproved2) matchedProductName else null,
+                            customerName = if (isServerApproved2) matchedCustomerName else null
                         )
                     } catch (e: Exception) {
                         Log.w(TAG, "TTS announcement failed for notification", e)

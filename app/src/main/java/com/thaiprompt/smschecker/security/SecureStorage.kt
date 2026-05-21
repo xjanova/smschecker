@@ -122,6 +122,9 @@ class SecureStorage @Inject constructor(
     fun isTtsSpeakProduct(): Boolean = prefs.getBoolean("tts_speak_product", true)
     fun setTtsSpeakProduct(enabled: Boolean) { prefs.edit().putBoolean("tts_speak_product", enabled).apply() }
 
+    fun isTtsSpeakCustomer(): Boolean = prefs.getBoolean("tts_speak_customer", true)
+    fun setTtsSpeakCustomer(enabled: Boolean) { prefs.edit().putBoolean("tts_speak_customer", enabled).apply() }
+
     fun isNotificationListeningEnabled(): Boolean {
         return prefs.getBoolean("notification_listening_enabled", false)
     }

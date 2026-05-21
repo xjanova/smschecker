@@ -246,7 +246,8 @@ class TtsManager @Inject constructor(
         amount: String,
         isCredit: Boolean,
         orderNumber: String? = null,
-        productName: String? = null
+        productName: String? = null,
+        customerName: String? = null
     ) {
         if (!isTtsEnabled()) return
 
@@ -255,6 +256,7 @@ class TtsManager @Inject constructor(
         val speakType = secureStorage.isTtsSpeakType()
         val speakOrder = secureStorage.isTtsSpeakOrder()
         val speakProduct = secureStorage.isTtsSpeakProduct()
+        val speakCustomer = secureStorage.isTtsSpeakCustomer()
 
         val message = buildTransactionMessage(
             bankName = bankName,
@@ -262,11 +264,13 @@ class TtsManager @Inject constructor(
             isCredit = isCredit,
             orderNumber = orderNumber,
             productName = productName,
+            customerName = customerName,
             speakBank = speakBank,
             speakAmount = speakAmount,
             speakType = speakType,
             speakOrder = speakOrder,
-            speakProduct = speakProduct
+            speakProduct = speakProduct,
+            speakCustomer = speakCustomer
         )
 
         if (message.isNotBlank()) {
@@ -284,11 +288,13 @@ class TtsManager @Inject constructor(
         isCredit: Boolean,
         orderNumber: String? = null,
         productName: String? = null,
+        customerName: String? = null,
         speakBank: Boolean = true,
         speakAmount: Boolean = true,
         speakType: Boolean = true,
         speakOrder: Boolean = true,
-        speakProduct: Boolean = true
+        speakProduct: Boolean = true,
+        speakCustomer: Boolean = true
     ): String {
         val langKey = getEffectiveLangKey()
 
@@ -305,15 +311,17 @@ class TtsManager @Inject constructor(
                     if (isNotEmpty()) append(", ")
                     append("amount $amount baht")
                 }
+                var inDetail = false
                 if (speakOrder && orderNumber != null) {
                     append(". Matched with order $orderNumber")
+                    inDetail = true
+                }
+                if (speakCustomer && customerName != null) {
+                    append(if (inDetail) ", owner: $customerName" else ". Owner: $customerName")
+                    inDetail = true
                 }
                 if (speakProduct && productName != null) {
-                    if (speakOrder && orderNumber != null) {
-                        append(", product: $productName")
-                    } else {
-                        append(". Product: $productName")
-                    }
+                    append(if (inDetail) ", product: $productName" else ". Product: $productName")
                 }
                 if (isNotEmpty() && !endsWith(".")) append(".")
             } else {
@@ -332,6 +340,10 @@ class TtsManager @Inject constructor(
                 if (speakOrder && orderNumber != null) {
                     if (isNotEmpty()) append(" ")
                     append("ตรงกับออเดอร์ $orderNumber")
+                }
+                if (speakCustomer && customerName != null) {
+                    if (isNotEmpty()) append(" ")
+                    append("เจ้าของบิล $customerName")
                 }
                 if (speakProduct && productName != null) {
                     if (isNotEmpty()) append(" ")
