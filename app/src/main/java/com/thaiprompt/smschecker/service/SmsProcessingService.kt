@@ -236,7 +236,7 @@ class SmsProcessingService : Service() {
                                     val matchedBill = orderRepository.attemptSmartMatchForOrphan(
                                         amount = amountDouble,
                                         senderName = savedTransaction.senderOrReceiver,
-                                        smsTimestamp = savedTransaction.transactionTimestamp
+                                        smsTimestamp = savedTransaction.timestamp
                                     )
                                     if (matchedBill != null) {
                                         Log.w(TAG, "🤖 SMART AUTO: SMS matched to $matchedBill (no admin click needed)")
@@ -396,7 +396,7 @@ class SmsProcessingService : Service() {
                                     val matchedBill = orderRepository.attemptSmartMatchForOrphan(
                                         amount = amountDouble,
                                         senderName = savedTransaction.senderOrReceiver,
-                                        smsTimestamp = savedTransaction.transactionTimestamp
+                                        smsTimestamp = savedTransaction.timestamp
                                     )
                                     if (matchedBill != null) {
                                         Log.w(TAG, "🤖 SMART AUTO (notif): SMS matched to $matchedBill")
