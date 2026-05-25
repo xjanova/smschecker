@@ -307,7 +307,13 @@ class FcmService : FirebaseMessagingService() {
         val isFortune = data["is_fortune_reading"] == "true"
         val paymentStatus = data["payment_status"] ?: ""
         val isCancelled = paymentStatus == "cancelled"
-        Log.i(TAG, "FCM: Order status change - $orderNumber $statusLabel (fortune=$isFortune, cancelled=$isCancelled)")
+        // 🏷️ (2026-05-25) Server-provided Thai label (Thaiprompt-Affiliate commit a4f9ee76a)
+        //   Source: FcmNotificationService::notifyFortuneReadingCancelled (server-side mapping)
+        //   Values: "ยกเลิกโดยระบบ" | "ยกเลิกโดยลูกค้า" | "ยกเลิก (ไม่ทราบสาเหตุ)"
+        //   Fallback: ถ้า server ส่งไม่มา (older builds) → ใช้คำกลางๆ "ถูกยกเลิก"
+        val cancellationLabel = data["cancellation_reason_label"]
+        val cancellationReason = data["cancellation_reason"]
+        Log.i(TAG, "FCM: Order status change - $orderNumber $statusLabel (fortune=$isFortune, cancelled=$isCancelled, reason=$cancellationReason)")
 
         val title = when {
             isFortune && isCancelled -> "🚫 บิลดูดวงถูกยกเลิก"
@@ -316,8 +322,12 @@ class FcmService : FirebaseMessagingService() {
         }
         val amount = data["amount"] ?: ""
         val bank = data["bank"] ?: ""
+        // 🏷️ (2026-05-25) Use server label instead of hardcoded "ถูกยกเลิกโดยลูกค้า"
+        //   เคสจริง: bill ที่ระบบ auto-cancel (auto_expired / auto_expired_grace)
+        //            จะแสดง "ถูกยกเลิกโดยลูกค้า" ทั้งที่ลูกค้าไม่ได้ทำ → ลูกค้า/admin งง
+        val cancelBody = cancellationLabel?.takeIf { it.isNotBlank() } ?: "ถูกยกเลิก"
         val body = when {
-            isFortune && isCancelled -> "บิล #$orderNumber ถูกยกเลิกโดยลูกค้า"
+            isFortune && isCancelled -> "บิล #$orderNumber $cancelBody"
             isFortune && amount.isNotEmpty() -> "บิล #$orderNumber ยอด ฿$amount จับคู่สำเร็จ" + if (bank.isNotEmpty()) " ($bank)" else ""
             else -> "คำสั่งซื้อ #$orderNumber $statusLabel"
         }

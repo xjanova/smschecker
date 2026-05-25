@@ -728,7 +728,9 @@ fun OrderCard(
                         }
                     }
                     // Badge สถานะ
-                    StatusBadge(order.approvalStatus, visuals)
+                    // 🏷️ (2026-05-25) ผ่าน cancellationReasonLabel เพื่อแสดงเหตุผลใน badge
+                    //   เคส CANCELLED: แทน "Cancelled" → "ยกเลิกโดยระบบ" / "ยกเลิกโดยลูกค้า"
+                    StatusBadge(order.approvalStatus, visuals, order.cancellationReasonLabel)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -962,7 +964,21 @@ fun OrderCard(
 // ============================================================================
 
 @Composable
-private fun StatusBadge(status: ApprovalStatus, visuals: StatusVisuals) {
+private fun StatusBadge(
+    status: ApprovalStatus,
+    visuals: StatusVisuals,
+    // 🏷️ (2026-05-25) Server-provided Thai label สำหรับ CANCELLED — ถ้ามี จะแทน "Cancelled"
+    //   Values: "ยกเลิกโดยระบบ" | "ยกเลิกโดยลูกค้า" | "ยกเลิก (ไม่ทราบสาเหตุ)"
+    //   ส่ง null สำหรับสถานะอื่นๆ — fallback เป็น visuals.label ตามเดิม
+    cancellationReasonLabel: String? = null
+) {
+    // ใช้ specific label ถ้าเป็น CANCELLED และมี server label ส่งมา
+    val displayLabel = if (status == ApprovalStatus.CANCELLED && !cancellationReasonLabel.isNullOrBlank()) {
+        cancellationReasonLabel
+    } else {
+        visuals.label
+    }
+
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
@@ -978,7 +994,7 @@ private fun StatusBadge(status: ApprovalStatus, visuals: StatusVisuals) {
         )
         Spacer(modifier = Modifier.width(4.dp))
         Text(
-            visuals.label,
+            displayLabel,
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
             color = visuals.color

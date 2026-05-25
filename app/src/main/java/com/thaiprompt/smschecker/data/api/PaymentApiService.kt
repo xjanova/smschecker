@@ -212,6 +212,13 @@ data class RemoteOrderApproval(
     val matched_transaction_id: Long? = null,
     val device_id: String? = null,
     val approval_status: String,
+    // 🏷️ (2026-05-25) Server now sends cancellation_reason + cancellation_reason_label
+    //   ตั้งแต่ Thaiprompt-Affiliate commit a4f9ee76a (SmsPaymentController.transformFortuneReadingToOrderApproval)
+    //   - cancellation_reason       = enum key (auto_expired / auto_expired_grace / user_cancelled / unknown)
+    //   - cancellation_reason_label = Thai display text ("ยกเลิกโดยระบบ" / "ยกเลิกโดยลูกค้า")
+    //   ทั้งคู่จะเป็น null ถ้า order ไม่ใช่ cancelled
+    val cancellation_reason: String? = null,
+    val cancellation_reason_label: String? = null,
     val confidence: String = "high",
     val approved_by: String? = null,
     val approved_at: String? = null,

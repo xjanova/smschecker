@@ -25,7 +25,7 @@ import com.thaiprompt.smschecker.data.model.SyncLog
         MatchHistory::class,
         MisclassificationReport::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -261,6 +261,18 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE misclassification_reports ADD COLUMN isSynced INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE misclassification_reports ADD COLUMN syncedAt INTEGER")
                 db.execSQL("ALTER TABLE misclassification_reports ADD COLUMN backendReportId INTEGER")
+            }
+        }
+
+        // 🏷️ (2026-05-25) Cancellation reason — sync จาก server (Thaiprompt-Affiliate commit a4f9ee76a)
+        //   เพิ่ม 2 fields ใน order_approvals:
+        //     - cancellationReason       (enum key: auto_expired / user_cancelled / etc.)
+        //     - cancellationReasonLabel  (Thai display text: "ยกเลิกโดยระบบ" / "ยกเลิกโดยลูกค้า")
+        //   แก้บั๊กเดิม: FcmService.kt:320 hardcoded "ถูกยกเลิกโดยลูกค้า" ทุกเคส
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE order_approvals ADD COLUMN cancellationReason TEXT")
+                db.execSQL("ALTER TABLE order_approvals ADD COLUMN cancellationReasonLabel TEXT")
             }
         }
 

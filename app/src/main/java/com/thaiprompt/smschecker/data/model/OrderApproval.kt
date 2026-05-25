@@ -46,6 +46,12 @@ data class OrderApproval(
     val approvedAt: Long? = null,
     val rejectedAt: Long? = null,
     val rejectionReason: String? = null,
+    // 🏷️ (2026-05-25) Cancellation reason — sync จาก server (Thaiprompt-Affiliate commit a4f9ee76a)
+    //   cancellationReason       = enum key (auto_expired / auto_expired_grace / user_cancelled / unknown)
+    //   cancellationReasonLabel  = Thai display text (e.g. "ยกเลิกโดยระบบ" / "ยกเลิกโดยลูกค้า")
+    //   ใช้ใน OrdersScreen badge + FcmService notification body
+    val cancellationReason: String? = null,
+    val cancellationReasonLabel: String? = null,
     val syncedVersion: Long = 0,
     val lastSyncedAt: Long? = null,
     val pendingAction: PendingAction? = null,

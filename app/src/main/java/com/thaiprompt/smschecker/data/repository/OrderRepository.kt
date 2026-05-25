@@ -1698,6 +1698,9 @@ fun RemoteOrderApproval.toLocalEntity(serverId: Long): OrderApproval {
         deviceId = device_id,
         approvedBy = approved_by,
         rejectionReason = rejection_reason,
+        // 🏷️ (2026-05-25) Cancellation reason — sync จาก server
+        cancellationReason = cancellation_reason,
+        cancellationReasonLabel = cancellation_reason_label,
         syncedVersion = synced_version,
         lastSyncedAt = System.currentTimeMillis()
     )
