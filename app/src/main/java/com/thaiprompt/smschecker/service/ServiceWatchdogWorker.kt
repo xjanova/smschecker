@@ -42,21 +42,30 @@ class ServiceWatchdogWorker @AssistedInject constructor(
         }
 
         val alive = isServiceRunning(applicationContext, RealtimeSyncService::class.java.name)
-        return try {
-            if (!alive) {
-                Log.w(TAG, "⚠️ RealtimeSyncService NOT running — restarting")
+
+        // 🔁 (2026-06-03) Re-arm WorkManager safety nets FIRST (idempotent) — เหล่านี้รันได้จริงใน
+        //   background แม้บน Android 14. ทำก่อนพยายาม restart FGS เพื่อว่าถ้า startForegroundService()
+        //   ถูกปฏิเสธ (ForegroundServiceStartNotAllowedException บน A14 เมื่อ start จาก background worker)
+        //   ตัว SmsSweepWorker (กู้ SMS ที่พลาด) ก็ยังถูก schedule อยู่ดี
+        //   หมายเหตุสำคัญ: การ "รับ SMS" ไม่ได้ขึ้นกับ RealtimeSyncService — SmsBroadcastReceiver
+        //   (manifest receiver) + SmsProcessingService (start ภายใต้ FGS exemption ของ SMS_RECEIVED)
+        //   จัดการเอง. RealtimeSyncService มีไว้สำหรับ order sync / WebSocket / orphan reconciliation
+        try { OrderSyncWorker.enqueuePeriodicSync(applicationContext) } catch (e: Exception) { Log.w(TAG, "re-enqueue OrderSyncWorker failed", e) }
+        try { SmsSweepWorker.enqueuePeriodic(applicationContext) } catch (e: Exception) { Log.w(TAG, "re-enqueue SmsSweepWorker failed", e) }
+
+        if (!alive) {
+            Log.w(TAG, "⚠️ RealtimeSyncService NOT running — attempting restart")
+            try {
                 RealtimeSyncService.start(applicationContext, fromBoot = false)
-            } else {
-                Log.d(TAG, "✅ RealtimeSyncService alive")
+            } catch (e: Exception) {
+                // A14: background FGS start อาจถูกปฏิเสธ — ไม่ fatal: FCM push + WorkManager ยังขับ
+                // order sync ต่อได้ และ service จะฟื้นเองตอนผู้ใช้เปิดแอป (foreground). ไม่ retry วนเปล่า.
+                Log.w(TAG, "RealtimeSyncService restart from background rejected (relying on FCM/WorkManager): ${e.message}")
             }
-            // Also make sure OrderSyncWorker periodic is scheduled (idempotent)
-            OrderSyncWorker.enqueuePeriodicSync(applicationContext)
-            Result.success()
-        } catch (e: Exception) {
-            Log.e(TAG, "Watchdog failed", e)
-            // Retry with exponential backoff
-            Result.retry()
+        } else {
+            Log.d(TAG, "✅ RealtimeSyncService alive")
         }
+        return Result.success()
     }
 
     @Suppress("DEPRECATION")

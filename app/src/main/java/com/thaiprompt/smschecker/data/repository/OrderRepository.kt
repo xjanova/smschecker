@@ -531,21 +531,23 @@ class OrderRepository @Inject constructor(
             return null
         }
 
-        // กรองเฉพาะ candidates จาก SMART-mode servers (เพื่อกัน auto match เข้า server ที่ admin ปิด smart)
+        // 🛡️ (2026-06-03) Ambiguity check ต้องนับ candidate "ทุก server" ไม่ใช่เฉพาะ smart server
+        //   บั๊กเดิม: filter เหลือเฉพาะ smartCandidates ก่อนเช็ค size>1 → ถ้ายอดซ้ำข้าม server
+        //   (บิลคนละ server ยอดเท่ากัน เช่น ฿390 สองร้าน) candidate ฝั่ง non-smart ถูกตัดทิ้งก่อนนับ
+        //   → ระบบคิดว่า "ไม่กำกวม" แล้ว auto-confirm บิลผิด
+        //   แก้: ถ้ามี candidate มากกว่า 1 ใบรวมทุก server = กำกวมจริง → ไม่ auto, ปล่อยให้ admin กดเอง
+        if (candidates.size > 1) {
+            Log.w(TAG, "attemptSmartMatchForOrphan: ${candidates.size} candidates across ALL servers — ambiguous, skip auto")
+            return null
+        }
+
+        // เหลือ candidate เดียวจริงๆ — auto-confirm เฉพาะเมื่อมันอยู่บน SMART-mode server
         val smartServerIds = smartServers.map { it.id }.toSet()
-        val smartCandidates = candidates.filter { (_, serverId) -> serverId in smartServerIds }
-        if (smartCandidates.isEmpty()) {
-            Log.d(TAG, "attemptSmartMatchForOrphan: candidates found but no SMART-mode match")
+        val (cand, serverId) = candidates.first()
+        if (serverId !in smartServerIds) {
+            Log.d(TAG, "attemptSmartMatchForOrphan: sole candidate not on a SMART-mode server — skip auto")
             return null
         }
-
-        // 🛡️ Strict criteria: ต้องมีแค่ 1 candidate ใน smart server (กันแย่งบิลคู่แข่ง)
-        if (smartCandidates.size > 1) {
-            Log.w(TAG, "attemptSmartMatchForOrphan: ${smartCandidates.size} candidates ambiguous — skip auto")
-            return null
-        }
-
-        val (cand, serverId) = smartCandidates.first()
 
         // 🛡️ Confidence threshold
         if (cand.name_score < 70) {
@@ -1711,28 +1713,27 @@ fun RemoteOrderApproval.toLocalEntity(serverId: Long): OrderApproval {
  * รองรับ formats: "2025-02-07T15:30:45+07:00", "2025-02-07T08:30:45.000000Z"
  */
 private fun parseIso8601ToMillis(isoString: String): Long? {
+    // 🐞 (2026-06-04) ใช้ java.time (มีบน API 26+ natively — minSdk 26) จัดการ offset + fractional seconds ถูกต้อง
+    //   บั๊กเดิม (ล่องหน): SimpleDateFormat ตีความ pattern "SSSSSS" เป็น "มิลลิวินาที" (ไม่ใช่ไมโครวินาที)
+    //   → Laravel เก็บ created_at ความละเอียด "ไมโครวินาที" (เช่น .123456) ทำให้ paymentTimestamp เพี้ยน
+    //   ไปข้างหน้าเป็นวินาที–นาที (เช่น .500000 = +500 วินาที, worst case ~+16 นาที)
+    //   ผลกระทบเงียบๆ: "รายรับวันนี้" ที่คาบเส้นเที่ยงคืนตกวันผิด + เรียงบิลผิดลำดับ
+    //   (อีกทั้ง val 'cleaned' เดิมคำนวณแล้วทิ้ง ไม่ได้ใช้ parse จริง — ตรงกับ compiler warning)
     return try {
-        val cleaned = isoString.replace("T", " ").replace("Z", "+00:00")
-        // ลอง parse ด้วย SimpleDateFormat หลาย format
-        val formats = listOf(
-            "yyyy-MM-dd'T'HH:mm:ssXXX",
-            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSX",
-            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX",
-            "yyyy-MM-dd'T'HH:mm:ssZ"
-        )
-        for (format in formats) {
-            try {
-                val sdf = java.text.SimpleDateFormat(format, java.util.Locale.US)
-                return sdf.parse(isoString)?.time
-            } catch (_: Exception) { }
-        }
-        // Fallback: ตัด timezone แล้ว parse เป็น local
+        // ครอบคลุม "2025-02-07T08:30:45.123456+07:00" และ "...Z" (Z เป็น offset ที่ valid)
+        java.time.OffsetDateTime.parse(isoString).toInstant().toEpochMilli()
+    } catch (_: Exception) {
         try {
-            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
-            sdf.parse(isoString.take(19))?.time
-        } catch (_: Exception) { null }
-    } catch (e: Exception) {
-        Log.w("OrderRepository", "Failed to parse ISO 8601 timestamp: $isoString", e)
-        null
+            java.time.Instant.parse(isoString).toEpochMilli()
+        } catch (_: Exception) {
+            try {
+                // ไม่มี timezone → ถือเป็น UTC (server เก็บเป็น UTC)
+                java.time.LocalDateTime.parse(isoString.take(19))
+                    .toInstant(java.time.ZoneOffset.UTC).toEpochMilli()
+            } catch (e: Exception) {
+                Log.w("OrderRepository", "Failed to parse ISO 8601 timestamp: $isoString", e)
+                null
+            }
+        }
     }
 }

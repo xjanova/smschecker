@@ -85,7 +85,11 @@ object SmsRescanHelper {
                     }
 
                     try {
-                        context.startService(intent)
+                        // 🔧 (2026-06-03) ใช้ enqueueWork (startForegroundService บน O+) แทน startService
+                        //   บั๊กเดิม: context.startService() จาก FCM background → IllegalStateException
+                        //   ถ้า SmsProcessingService ยังไม่รัน → SMS ที่ตั้งใจ rescan ไม่ถูก dispatch → จับเงินไม่ได้
+                        //   (FCM trigger + bank-wake delay ช่วยให้มี FGS-start window; ถ้าโดน A14 จำกัด จะ throw แล้วถูก catch)
+                        SmsProcessingService.enqueueWork(context, intent)
                         dispatched++
                     } catch (e: Exception) {
                         Log.w(TAG, "rescanInbox: failed to start service for SMS from $sender", e)

@@ -264,25 +264,23 @@ class SmsProcessingService : Service() {
                 }
 
                 // TTS announcement
-                // ถ้า match กับ order/topup → อ่านออกเสียงเฉพาะเมื่อ server approve จริง (เขียว)
-                // ถ้าไม่ match กับ order → อ่านปกติ (เป็น SMS credit ทั่วไป)
-                val hasOrderMatch = matchedOrderNumber != null
-                val shouldSpeak = if (hasOrderMatch) isServerApproved else true
-                if (shouldSpeak) {
-                    try {
-                        ttsManager.speakTransaction(
-                            bankName = transaction.bank,
-                            amount = transaction.amount,
-                            isCredit = transaction.type == TransactionType.CREDIT,
-                            orderNumber = if (isServerApproved) matchedOrderNumber else null,
-                            productName = if (isServerApproved) matchedProductName else null,
-                            customerName = if (isServerApproved) matchedCustomerName else null
-                        )
-                    } catch (e: Exception) {
-                        Log.w(TAG, "TTS announcement failed", e)
-                    }
-                } else {
-                    Log.d(TAG, "⏳ TTS skipped: order matched but server not yet approved (waiting for green status)")
+                // 🔊 (2026-06-03) อ่านออกเสียง "ทุกครั้ง" ที่ตรวจจับเงินเข้า/ออก — ไม่เงียบแม้ approve เน็ตพลาด
+                //   บั๊กเดิม: gating ทั้งก้อนด้วย isServerApproved (shouldSpeak) ทำให้เคส
+                //     "ลูกค้าจ่ายจริง + match บิลได้ แต่ approve round-trip พลาด (เน็ตสะดุด/timeout)" → เงียบสนิท
+                //     ทั้งที่ approveOrder() ได้ queue PendingAction.APPROVE ไว้ retry แล้ว บิลจะเขียวในที่สุด
+                //   แก้: พูดยอดเสมอ; ส่วนรายละเอียดบิล (เลขบิล/สินค้า/เจ้าของ) อ่านเฉพาะเมื่อ server ยืนยันแล้ว (เขียว)
+                //     เพื่อกันการอ่าน "ชื่อเจ้าของผิดบิล" ก่อนยืนยัน (กรณียอดซ้ำหลายบิล)
+                try {
+                    ttsManager.speakTransaction(
+                        bankName = transaction.bank,
+                        amount = transaction.amount,
+                        isCredit = transaction.type == TransactionType.CREDIT,
+                        orderNumber = if (isServerApproved) matchedOrderNumber else null,
+                        productName = if (isServerApproved) matchedProductName else null,
+                        customerName = if (isServerApproved) matchedCustomerName else null
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "TTS announcement failed", e)
                 }
 
             } catch (e: Exception) {
@@ -426,26 +424,18 @@ class SmsProcessingService : Service() {
                     Log.w(TAG, "Notification transaction saved locally but sync failed")
                 }
 
-                // TTS announcement
-                // ถ้า match กับ order/topup → อ่านออกเสียงเฉพาะเมื่อ server approve จริง (เขียว)
-                // ถ้าไม่ match กับ order → อ่านปกติ (เป็น notification credit ทั่วไป)
-                val hasOrderMatch2 = matchedOrderNumber != null
-                val shouldSpeak2 = if (hasOrderMatch2) isServerApproved2 else true
-                if (shouldSpeak2) {
-                    try {
-                        ttsManager.speakTransaction(
-                            bankName = notifTransaction.bank,
-                            amount = notifTransaction.amount,
-                            isCredit = notifTransaction.type == TransactionType.CREDIT,
-                            orderNumber = if (isServerApproved2) matchedOrderNumber else null,
-                            productName = if (isServerApproved2) matchedProductName else null,
-                            customerName = if (isServerApproved2) matchedCustomerName else null
-                        )
-                    } catch (e: Exception) {
-                        Log.w(TAG, "TTS announcement failed for notification", e)
-                    }
-                } else {
-                    Log.d(TAG, "⏳ TTS skipped for notification: order matched but server not yet approved")
+                // TTS announcement — ดูเหตุผลใน processSms() path ด้านบน (พูดยอดเสมอ, รายละเอียดบิลเมื่อเขียว)
+                try {
+                    ttsManager.speakTransaction(
+                        bankName = notifTransaction.bank,
+                        amount = notifTransaction.amount,
+                        isCredit = notifTransaction.type == TransactionType.CREDIT,
+                        orderNumber = if (isServerApproved2) matchedOrderNumber else null,
+                        productName = if (isServerApproved2) matchedProductName else null,
+                        customerName = if (isServerApproved2) matchedCustomerName else null
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "TTS announcement failed for notification", e)
                 }
 
             } catch (e: Exception) {
@@ -515,8 +505,24 @@ class SmsProcessingService : Service() {
         )
     }
 
+    /**
+     * 🛡️ (2026-06-04) Android 14: dataSync foreground service มี cumulative timeout ~6 ชม./24 ชม.
+     *   เมื่อหมดโควต้า ระบบเรียก onTimeout แล้วเราต้อง stop ภายในไม่กี่วินาที ไม่งั้นถูก force-kill
+     *   (และการไม่ handle บน A14 อาจถูกบันทึกเป็น crash). service นี้เป็น on-demand (start ต่อ SMS)
+     *   จึงปิดตัวสะอาดได้ทันที — SMS ถัดไป start ใหม่ผ่าน SmsBroadcastReceiver (ภายใต้ exemption ของ SMS_RECEIVED)
+     */
+    override fun onTimeout(startId: Int) {
+        Log.w(TAG, "dataSync FGS timeout (A14) — stopping cleanly")
+        try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
+        stopSelf(startId)
+    }
+
     override fun onDestroy() {
-        ttsManager.stop()
+        // 🔊 (2026-06-03) ไม่เรียก ttsManager.stop() ที่นี่อีกต่อไป
+        //   TtsManager เป็น @Singleton ใช้ร่วมทั้งแอป — การ stop() ตอน service ถูก destroy จะ
+        //   "ตัดเสียงประกาศที่กำลังพูดค้างอยู่" ทุกครั้งที่ระบบ kill/recreate service นี้
+        //   (เกิดบ่อยมากกับ on-demand foreground service ภายใต้ memory pressure / dataSync timeout)
+        //   = อีกหนึ่งสาเหตุของอาการ "บางครั้งเงียบ". ปล่อยให้ประโยคที่ค้างอยู่พูดจนจบเอง.
         serviceScope.cancel()
         super.onDestroy()
     }

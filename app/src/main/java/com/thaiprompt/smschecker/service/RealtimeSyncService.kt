@@ -254,6 +254,21 @@ class RealtimeSyncService : Service() {
         super.onDestroy()
     }
 
+    /**
+     * 🛡️ (2026-06-04) Android 14: dataSync FGS มี cumulative runtime cap ~6 ชม./24 ชม.
+     *   service นี้รันค้างตลอด (wakelock renewal) จึงชน cap ทุกวัน. ต้อง handle onTimeout
+     *   เพื่อ stop สะอาด ไม่งั้นถูก force-kill/บันทึกเป็น crash บน A14.
+     *   การฟื้นพึ่ง FCM push + ServiceWatchdogWorker + ตอนผู้ใช้เปิดแอป (foreground)
+     *   หมายเหตุ: ทางแก้ระยะยาวคือเลี่ยง always-on dataSync (ใช้ specialUse type หรือ ลดงานให้ event-driven)
+     */
+    override fun onTimeout(startId: Int) {
+        Log.w(TAG, "dataSync FGS timeout (A14 ~6h cap) — stopping cleanly; revival via FCM/watchdog/app-open")
+        try { stopRealTimeSync() } catch (_: Exception) {}
+        try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
+        isRunning = false
+        stopSelf(startId)
+    }
+
     override fun onTaskRemoved(rootIntent: Intent?) {
         Log.d(TAG, "Task removed, scheduling service restart via AlarmManager")
         try {

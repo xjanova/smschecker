@@ -43,6 +43,7 @@ class SmsSweepWorker @AssistedInject constructor(
     @Assisted workerParams: WorkerParameters,
     private val scanner: SmsInboxScanner,
     private val transactionRepository: TransactionRepository,
+    private val ttsManager: TtsManager,
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
@@ -90,6 +91,23 @@ class SmsSweepWorker @AssistedInject constructor(
                     // Sync ไป active servers (parallel internally)
                     val ok = transactionRepository.syncTransaction(tx.copy(id = insertedId))
                     if (ok) syncedOk++ else syncedFail++
+
+                    // 🔊 (2026-06-03) ประกาศด้วยเสียงสำหรับ SMS ที่ realtime receiver พลาด แล้ว sweep เก็บได้
+                    //   บั๊กเดิม: sweep ข้าม SmsProcessingService/TtsManager → เคสเครื่องหลับ/ถูก kill
+                    //   แล้ว sweep มาเก็บแทน = บันทึก+ซิงค์ได้แต่ "เงียบสนิท" (สาเหตุตรงๆ ของ "บางทีเงียบ")
+                    //   guard: อ่านเฉพาะรายการที่เพิ่งเข้ามาไม่เกิน ANNOUNCE_RECENCY_MS (กันการอ่านยอดเก่ารัวๆ ทั้ง window 2 ชม.)
+                    //   หมายเหตุ: sweep ไม่ทำ order matching → อ่านแค่ ประเภท+ธนาคาร+ยอด (ไม่มีรายละเอียดบิล) — ดีกว่าเงียบ
+                    if (tx.timestamp >= startTime - ANNOUNCE_RECENCY_MS) {
+                        try {
+                            ttsManager.speakTransaction(
+                                bankName = tx.bank,
+                                amount = tx.amount,
+                                isCredit = tx.type == com.thaiprompt.smschecker.data.model.TransactionType.CREDIT
+                            )
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Sweep TTS announce failed", e)
+                        }
+                    }
                 } catch (e: Exception) {
                     Log.w(TAG, "Sweep: failed processing SMS from ${sms.sender}", e)
                 }
@@ -122,6 +140,10 @@ class SmsSweepWorker @AssistedInject constructor(
 
         // Dedup window 2 นาที — ใหญ่กว่า realtime path (60s) เพราะ SMS provider timestamp อาจ drift
         private const val DEDUP_WINDOW_MS = 120_000L
+
+        // อ่านออกเสียงเฉพาะ SMS ที่เพิ่งเข้ามาไม่เกิน 30 นาที ณ เวลาที่ sweep ทำงาน
+        // (sweep scan ย้อนหลังได้ถึง 2 ชม. — ไม่อยากให้พ่นเสียงยอดเก่ารัวๆ ตอนเพิ่งเปิดแอป/หลังบูต)
+        private const val ANNOUNCE_RECENCY_MS = 30 * 60 * 1000L
 
         /**
          * Schedule periodic sweep — idempotent, ปลอดภัยที่จะ call ทุกครั้งที่ app start
