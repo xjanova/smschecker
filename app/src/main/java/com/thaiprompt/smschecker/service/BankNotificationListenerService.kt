@@ -1,5 +1,6 @@
 package com.thaiprompt.smschecker.service
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -82,7 +83,10 @@ class BankNotificationListenerService : NotificationListenerService() {
     }
 
     // Simple deduplication cache: notification key -> timestamp
-    private val recentNotifications = LinkedHashMap<String, Long>(50, 0.75f, true)
+    // 🛡️ (2026-06-04) bound ขนาดด้วย removeEldestEntry กัน burst >200 notification ใน 5 วิ โตไม่จำกัด
+    private val recentNotifications = object : LinkedHashMap<String, Long>(50, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?): Boolean = size > 200
+    }
     private val DEDUP_WINDOW_MS = 5_000L // 5 seconds
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -179,5 +183,24 @@ class BankNotificationListenerService : NotificationListenerService() {
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
         // No action needed
+    }
+
+    /**
+     * 🛡️ (2026-06-04) Android ตัดการเชื่อมต่อ NotificationListener เป็นระยะ (low memory, อัปเดตแอป,
+     * MY_PACKAGE_REPLACED, หรือ process ถูก kill) แล้ว "ไม่ rebind อัตโนมัติเสมอไป" → onNotificationPosted
+     * หยุดถูกเรียกเงียบๆ → ธนาคาร/วอลเล็ตที่ส่งเฉพาะ notification (K+, SCB, เป๋าตัง, ถุงเงิน, LINE Pay)
+     * ตรวจไม่เจอเลยจนกว่าจะรีบูตเครื่อง. requestRebind ดึงการเชื่อมต่อกลับมาเอง.
+     */
+    override fun onListenerDisconnected() {
+        Log.w(TAG, "⚠️ NotificationListener disconnected — requesting rebind")
+        try {
+            requestRebind(ComponentName(this, BankNotificationListenerService::class.java))
+        } catch (e: Exception) {
+            Log.e(TAG, "requestRebind failed", e)
+        }
+    }
+
+    override fun onListenerConnected() {
+        Log.i(TAG, "✅ NotificationListener connected")
     }
 }

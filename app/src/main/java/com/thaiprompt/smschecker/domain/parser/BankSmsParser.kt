@@ -343,6 +343,11 @@ class BankSmsParser {
         val channel: String = ""
     )
 
+    // @Volatile (2026-06-04): parser เป็น @Singleton ใช้ร่วมหลาย coroutine (SMS/notification เข้าพร้อมกัน)
+    //   กัน stale/torn read ของ reference. หมายเหตุ: ยังมี logical overwrite race เล็กน้อย (A set→B set→
+    //   A parse ด้วย rules ของ B) แต่ getActiveRules() คืน global set เดียวกันทุกครั้ง impact จึงน้อยมาก
+    //   ทางแก้สมบูรณ์ = ทำ parser ให้ stateless (รับ rules เป็น parameter ของ parse/identifyBank)
+    @Volatile
     private var customRules: List<SmsSenderRule> = emptyList()
 
     fun setCustomRules(rules: List<SmsSenderRule>) {

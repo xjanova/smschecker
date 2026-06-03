@@ -780,7 +780,9 @@ object LicenseManager {
         try {
             val lastVerified = prefs?.getLong(KEY_LAST_VERIFIED_AT, 0L) ?: 0L
             val now = System.currentTimeMillis()
-            if (lastVerified > 0 && now < lastVerified - 60_000) {
+            // 🐞 (2026-06-04) threshold 60s → 10min: การถอยหลัง <10 นาที เกือบทั้งหมดคือ NTP correction ปกติ
+            //   ไม่ใช่การโกงเวลา (คนโกง trial ตั้งย้อนเป็นชั่วโมง/วัน) — ลด false positive ที่ทำให้ล็อกเครื่องเอง
+            if (lastVerified > 0 && now < lastVerified - 600_000) {
                 val tamperCount = (prefs?.getInt(KEY_CLOCK_TAMPER_COUNT, 0) ?: 0) + 1
                 prefs?.edit()?.putInt(KEY_CLOCK_TAMPER_COUNT, tamperCount)?.apply()
                 Log.w(TAG, "Clock tampering detected! Count: $tamperCount")
@@ -816,7 +818,15 @@ object LicenseManager {
 
     private fun recordVerification() {
         try {
-            prefs?.edit()?.putLong(KEY_LAST_VERIFIED_AT, System.currentTimeMillis())?.apply()
+            // 🐞 (2026-06-04) reset clock-tamper count เมื่อ server ยืนยัน license สำเร็จ
+            //   บั๊กเดิม (ล่องหน): count เพิ่มเรื่อยๆ ไม่เคย reset → นาฬิกาเครื่องถอยหลังเกิน threshold
+            //   แค่ MAX_TAMPER_COUNT(3) ครั้งตลอดอายุเครื่อง (NTP correction / RTC drift / เปลี่ยน timezone)
+            //   → isClockTampered()=true ถาวร → useLocalTrialFallback บังคับ EXPIRED → SMS หยุดทำงานเงียบสนิท
+            //   การที่ server verify ผ่าน = หลักฐานว่าเครื่อง "ซื่อสัตย์ ณ ตอนนี้" → ล้าง strike เก่าได้ปลอดภัย
+            prefs?.edit()
+                ?.putLong(KEY_LAST_VERIFIED_AT, System.currentTimeMillis())
+                ?.putInt(KEY_CLOCK_TAMPER_COUNT, 0)
+                ?.apply()
         } catch (_: Exception) {}
     }
 

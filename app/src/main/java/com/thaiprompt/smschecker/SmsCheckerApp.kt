@@ -8,6 +8,7 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import com.google.firebase.messaging.FirebaseMessaging
+import com.thaiprompt.smschecker.service.CrashReportWorker
 import com.thaiprompt.smschecker.service.FcmService
 import com.thaiprompt.smschecker.service.OrderSyncWorker
 import com.thaiprompt.smschecker.service.ServiceWatchdogWorker
@@ -27,10 +28,12 @@ class SmsCheckerApp : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        // Global crash handler to log unhandled exceptions
+        // Global crash handler — log + persist (commit) ก่อน process ตาย แล้วส่งรายงานรอบเปิดถัดไป
+        // (เครื่อง dedicated ไม่มีใครอ่าน logcat; การยิง network ใน process ที่กำลังตายไม่น่าเชื่อถือ)
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             Log.e(TAG, "UNCAUGHT EXCEPTION on ${thread.name}", throwable)
+            try { persistCrash(thread, throwable) } catch (_: Throwable) {}
             defaultHandler?.uncaughtException(thread, throwable)
         }
 
@@ -54,9 +57,26 @@ class SmsCheckerApp : Application() {
             OrderSyncWorker.enqueuePeriodicSync(this)
             // SmsSweepWorker — กู้ SMS ที่ realtime receiver พลาด (Doze / app killed)
             SmsSweepWorker.enqueuePeriodic(this)
+            // ส่ง crash ที่ค้างจากครั้งก่อน (ถ้ามี) ไป backend
+            CrashReportWorker.enqueueIfPending(this)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to enqueue background workers in Application.onCreate", e)
         }
+    }
+
+    /**
+     * 🛡️ (2026-06-04) persist crash ลง prefs ด้วย commit() (synchronous) ให้ข้อมูลรอดก่อน process ตาย
+     * CrashReportWorker จะอ่านแล้วส่งไป backend ในรอบเปิดถัดไป
+     */
+    private fun persistCrash(thread: Thread, throwable: Throwable) {
+        val sw = java.io.StringWriter()
+        throwable.printStackTrace(java.io.PrintWriter(sw))
+        getSharedPreferences(CrashReportWorker.PREFS, MODE_PRIVATE).edit()
+            .putString(CrashReportWorker.KEY_TRACE, sw.toString().take(8000))
+            .putString(CrashReportWorker.KEY_MESSAGE, throwable.message ?: throwable.javaClass.simpleName)
+            .putString(CrashReportWorker.KEY_THREAD, thread.name)
+            .putLong(CrashReportWorker.KEY_AT, System.currentTimeMillis())
+            .commit()
     }
 
     /**

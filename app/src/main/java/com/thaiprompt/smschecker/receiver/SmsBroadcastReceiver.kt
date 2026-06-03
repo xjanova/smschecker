@@ -29,8 +29,14 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
 
         // Acquire wake lock FIRST — before any potentially slow operation.
-        // This guarantees CPU stays awake long enough to start the foreground service.
-        val wakeLock = try {
+        // 🔋 (2026-06-03) Acquire with a 30s timeout and let it AUTO-RELEASE via that timeout.
+        //   We intentionally DO NOT release it synchronously when onReceive returns.
+        //   บั๊กเดิม: enqueueWork() แค่ "schedule" startForegroundService() — service ยังไม่ได้เริ่มจริง
+        //   พอ onReceive return แล้ว finally release lock ทันที → CPU หลับกลับเข้า Doze
+        //   ก่อน SmsProcessingService.onStartCommand() จะได้รัน → SMS หล่นตอนเครื่องหลับกลางคืน
+        //   PARTIAL + setReferenceCounted(false) + acquire(timeout) → ปลอดภัย ไม่ค้างถาวร
+        //   (ตรงกับเจตนาเดิมของ WAKELOCK_TIMEOUT_MS comment: "enough to parse + save + sync")
+        try {
             val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
             pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKELOCK_TAG).apply {
                 setReferenceCounted(false)
@@ -38,7 +44,6 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to acquire wake lock — SMS may be missed", e)
-            null
         }
 
         try {
@@ -76,13 +81,8 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
                     Log.e(TAG, "Failed to forward SMS to SmsProcessingService (sender=$sender)", e)
                 }
             }
-        } finally {
-            // Release wake lock. The service now holds its own foreground guarantee.
-            try {
-                if (wakeLock?.isHeld == true) wakeLock.release()
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to release wake lock", e)
-            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling SMS broadcast", e)
         }
     }
 }

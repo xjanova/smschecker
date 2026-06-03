@@ -36,6 +36,10 @@ class OrphanTransactionRepository @Inject constructor(
         // Time window for matching (±30 minutes)
         const val MATCH_TIME_WINDOW_MS = 30 * 60 * 1000L
 
+        // กรอบเวลาสำหรับ auto-match แบบ batch reconciliation (±24 ชม.) — กว้างกว่า realtime
+        // เพราะ orphan อาจรอบิล sync นานข้ามชั่วโมง แต่ยังกันเคส "ยอดบังเอิญตรงคนละวัน"
+        const val AUTO_MATCH_TIME_WINDOW_MS = 24 * 60 * 60 * 1000L
+
         // Amount tolerance for fuzzy matching (0.01 = 1 satang)
         const val AMOUNT_TOLERANCE = 0.01
     }
@@ -171,28 +175,50 @@ class OrphanTransactionRepository @Inject constructor(
             return result
         }
 
-        // Index orphans by amount for O(1) lookup
-        val orphansByAmount = pendingOrphans.groupBy { it.amount }
+        // 🛡️ (2026-06-03) กันอนุมัติ "ผิดบิล": auto-match เฉพาะเมื่อยอดนั้น unique ทั้งสองฝั่ง
+        //   บั๊กเดิม: จับคู่ด้วย amount อย่างเดียว แล้วเอา orphan ใบแรก (comment เดิมยอมรับเอง
+        //   ว่า "could be refined with bank/time matching") → ถ้ามี 2 บิล/2 ลูกค้ายอดเท่ากัน
+        //   (เช่น ฿500.00) จ่ายมาแค่คนเดียว ระบบอาจ auto-approve บิลของอีกคนที่ยังไม่จ่าย
+        //   เกณฑ์ปลอดภัยใหม่: ยอดนั้นต้องมี pending order "ใบเดียว" AND orphan "ใบเดียว"
+        //   + orphan SMS ต้องอยู่ในกรอบเวลาใกล้บิล ถ้ากำกวมเมื่อไร → ไม่ auto, ให้ admin จับคู่เองที่ Orphans tab
+        // 🐞 (2026-06-04) key ด้วย "สตางค์ (Long)" แทน Double ดิบ — กัน float ULP mismatch ระหว่าง
+        //   amount ที่ parse คนละแหล่ง (orphan = จาก string SMS, order = จาก JSON double ของ server)
+        //   ถ้า bit pattern ต่างกันแม้ ULP เดียว groupBy/lookup จะไม่ตรงกันแล้วบิลไม่ถูกจับคู่เงียบๆ
+        fun satang(a: Double): Long = Math.round(a * 100.0)
+        val pendingOrders = orders.filter { it.approvalStatus == ApprovalStatus.PENDING_REVIEW }
+        val ordersByAmount = pendingOrders.groupBy { satang(it.amount) }
+        val orphansByAmount = pendingOrphans.groupBy { satang(it.amount) }
 
-        for (order in orders) {
-            // Skip already matched/approved orders
-            if (order.approvalStatus != ApprovalStatus.PENDING_REVIEW) {
+        for ((amountKey, ordersForAmount) in ordersByAmount) {
+            val amount = ordersForAmount.first().amount  // for logging (baht)
+            // ฝั่ง order: ยอดนี้ต้องมีบิลเดียว — ถ้าหลายบิลยอดเท่ากัน บอกไม่ได้ว่าจ่ายให้ใบไหน
+            if (ordersForAmount.size != 1) {
+                Log.w(TAG, "findMatchesForOrders: amount=$amount มี ${ordersForAmount.size} pending orders — ambiguous, skip auto")
+                continue
+            }
+            val orphansForAmount = orphansByAmount[amountKey] ?: continue
+            // ฝั่ง orphan: ยอดนี้ต้องมียอดโอนเดียว — ถ้าหลายยอดเท่ากัน บอกไม่ได้ว่าใบไหนคือของบิลนี้
+            if (orphansForAmount.size != 1) {
+                Log.w(TAG, "findMatchesForOrders: amount=$amount มี ${orphansForAmount.size} orphans — ambiguous, skip auto")
                 continue
             }
 
-            val matchingOrphans = orphansByAmount[order.amount]
-            if (!matchingOrphans.isNullOrEmpty()) {
-                // Use first match (could be refined with bank/time matching)
-                val match = matchingOrphans.firstOrNull { orphan ->
-                    // Prefer same bank if available
-                    order.bank == null || orphan.bank == order.bank
-                } ?: matchingOrphans.first()
+            val order = ordersForAmount.first()
+            val orphan = orphansForAmount.first()
 
-                result[order.id] = match
+            // 🕐 Time sanity check: orphan SMS ต้องอยู่ใกล้ช่วงเวลาบิล (ใช้ paymentTimestamp = server created_at
+            //   ถ้ามี ไม่งั้น createdAt local) — กันเคสยอดบังเอิญตรงแต่คนละวัน/คนละรายการ
+            val orderTime = order.paymentTimestamp ?: order.createdAt
+            val delta = kotlin.math.abs(orphan.transactionTimestamp - orderTime)
+            if (delta > AUTO_MATCH_TIME_WINDOW_MS) {
+                Log.w(TAG, "findMatchesForOrders: amount=$amount ห่างกัน ${delta / 60000}min เกิน window — skip auto (manual review)")
+                continue
             }
+
+            result[order.id] = orphan
         }
 
-        Log.d(TAG, "Found ${result.size} orphan matches for ${orders.size} orders")
+        Log.d(TAG, "Found ${result.size} unambiguous orphan matches for ${pendingOrders.size} pending orders")
         return result
     }
 

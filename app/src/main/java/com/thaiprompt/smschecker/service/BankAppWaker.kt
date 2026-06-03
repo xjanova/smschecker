@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.util.Log
+import kotlinx.coroutines.delay
 
 /**
  * 🏦 (2026-05-21) Bank App Waker
@@ -57,8 +58,11 @@ object BankAppWaker {
      * เปิดแอพธนาคารทุกตัวที่ติดตั้งบนเครื่อง — ทีละตัว
      *
      * @return จำนวนแอพที่เปิดสำเร็จ
+     *
+     * suspend: ใช้ delay() ระหว่างแต่ละแอพ (ไม่ block thread) — เดิมใช้ Thread.sleep บล็อก IO dispatcher
+     * และกิน execution budget ~10s ของ FcmService.onMessageReceived จน rescan ตามหลังไม่ทันได้รัน
      */
-    fun wakeAllInstalled(context: Context): Int {
+    suspend fun wakeAllInstalled(context: Context): Int {
         val pm = context.packageManager
         var woken = 0
         var skipped = 0
@@ -83,9 +87,10 @@ object BankAppWaker {
                 woken++
                 Log.i(TAG, "🏦 woke: $name ($pkg)")
 
-                // ให้แต่ละแอพมีเวลา resume ~600ms ก่อนเปิดตัวถัดไป
+                // ให้แต่ละแอพมีเวลา resume ~500ms ก่อนเปิดตัวถัดไป
                 // (กัน Android crush เปิดทีเดียวหลายแอพ + ให้แต่ละแอพมีโอกาส sync)
-                Thread.sleep(600)
+                // delay() = suspend, ไม่ block thread (เดิม Thread.sleep บล็อก + กิน budget FCM)
+                delay(500)
             } catch (e: SecurityException) {
                 // Android 12+ BAL block — เกิดเมื่อ smschecker ไม่ active enough
                 Log.w(TAG, "🏦 BAL blocked for $name: ${e.message}")

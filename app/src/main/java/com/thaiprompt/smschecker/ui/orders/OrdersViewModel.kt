@@ -96,7 +96,7 @@ class OrdersViewModel @Inject constructor(
                 try {
                     Log.d("OrdersViewModel", "Auto-refreshing orders...")
                     orderRepository.fetchOrders()
-                    loadOrders()
+                    loadOrders(showLoading = false)
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -116,10 +116,15 @@ class OrdersViewModel @Inject constructor(
         searchJob?.cancel()
     }
 
-    private fun loadOrders() {
+    /**
+     * @param showLoading true = แสดง full-screen loading (โหลดครั้งแรก / เปลี่ยน filter/search).
+     *   false = อัปเดตเงียบๆ ในที่ (auto-refresh / reload หลัง action) — กันจอกระพริบ + scroll reset
+     *   ทุก 90 วิ ขณะแอดมินกำลังดูรายการ (UX trap: "Loading state flash")
+     */
+    private fun loadOrders(showLoading: Boolean = true) {
         ordersJob?.cancel()
         ordersJob = viewModelScope.launch {
-            _state.update { it.copy(isLoading = true, hasMorePages = true) }
+            if (showLoading) _state.update { it.copy(isLoading = true, hasMorePages = true) }
             try {
                 val search = _searchQuery.value.trim()
                 val s = _state.value
@@ -258,7 +263,7 @@ class OrdersViewModel @Inject constructor(
                 } catch (e: Exception) {
                     Log.w("OrdersViewModel", "Cleanup failed", e)
                 }
-                loadOrders()
+                loadOrders(showLoading = false)
             } finally {
                 _isRefreshing.value = false
             }
@@ -291,7 +296,7 @@ class OrdersViewModel @Inject constructor(
                 val outcome = orderRepository.approveOrder(order)
                 _state.update { it.copy(actionResult = outcome.toResult("อนุมัติแล้ว", order.orderNumber)) }
                 // Refresh list so UI shows new status (suspending DAO is not a Flow → ต้อง reload เอง)
-                loadOrders()
+                loadOrders(showLoading = false)
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error approving order ${order.id}", e)
                 _state.update { it.copy(
@@ -318,7 +323,7 @@ class OrdersViewModel @Inject constructor(
                 Log.w("OrdersViewModel", "🚀 FORCE APPROVE: orderId=${order.id}, orderNumber=${order.orderNumber}")
                 val outcome = orderRepository.approveOrder(order, force = true)
                 _state.update { it.copy(actionResult = outcome.toResult("🚀 Force Approve สำเร็จ", order.orderNumber)) }
-                loadOrders()
+                loadOrders(showLoading = false)
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error force approving order ${order.id}", e)
                 _state.update { it.copy(
@@ -337,7 +342,7 @@ class OrdersViewModel @Inject constructor(
             try {
                 val outcome = orderRepository.rejectOrder(order)
                 _state.update { it.copy(actionResult = outcome.toResult("ปฏิเสธแล้ว", order.orderNumber)) }
-                loadOrders()
+                loadOrders(showLoading = false)
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error rejecting order ${order.id}", e)
                 _state.update { it.copy(
@@ -376,7 +381,11 @@ class OrdersViewModel @Inject constructor(
     fun bulkApproveAll() {
         viewModelScope.launch {
             try {
-                val pending = _state.value.orders.filter { it.approvalStatus == ApprovalStatus.PENDING_REVIEW }
+                // 🛡️ (2026-06-03) ดึง pending "ทั้งหมด" จาก DB ไม่ใช่เฉพาะ snapshot ที่ page/filter อยู่บนจอ
+                //   บั๊กเดิม: filter _state.value.orders (≤30 รายการตาม page + filter ปัจจุบัน) → ถ้ามี pending
+                //   80 บิล หรือผู้ใช้ตั้ง filter เป็นสถานะอื่น จะ approve แค่ที่เห็น แต่ขึ้น "✅ N สำเร็จ" ลวงตา
+                //   (เหลือ pending จริงอีกเพียบโดยไม่รู้ตัว)
+                val pending = orderRepository.getPendingOrdersList()
                 if (pending.isEmpty()) return@launch
                 var ok = 0
                 var queued = 0
@@ -400,7 +409,7 @@ class OrdersViewModel @Inject constructor(
                         orderNumber = null
                     )
                 ) }
-                loadOrders()
+                loadOrders(showLoading = false)
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error bulk approving orders", e)
             }
