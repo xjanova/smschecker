@@ -14,6 +14,7 @@ import com.thaiprompt.smschecker.security.SecureStorage
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,6 +32,7 @@ class TtsManager @Inject constructor(
     @Volatile
     private var isInitialized = false
     private val pendingQueue = CopyOnWriteArrayList<String>()
+    private val utteranceCounter = AtomicLong(0) // unique utterance id (กัน id ชนกันใน ms เดียว)
     private val mainHandler = Handler(Looper.getMainLooper())
     @Volatile
     private var cachedLangKey: String? = null // Cache language to avoid re-applying every speak
@@ -97,10 +99,10 @@ class TtsManager @Inject constructor(
             isInitialized = true
             Log.d(TAG, "TTS initialized successfully")
 
-            // Speak any queued messages
+            // Speak any queued messages (เรากำลังอยู่บน main thread ใน onInit — เรียก speakNowOnMain ได้ตรงๆ)
             val queued = ArrayList(pendingQueue)
             pendingQueue.clear()
-            queued.forEach { speakOnMainThread(it) }
+            queued.forEach { speakNowOnMain(it) }
         } else {
             Log.e(TAG, "TTS initialization failed with status: $status")
         }
@@ -147,16 +149,33 @@ class TtsManager @Inject constructor(
         synchronized(audioFocusLock) {
             activeUtteranceCount = (activeUtteranceCount - 1).coerceAtLeast(0)
             if (activeUtteranceCount > 0) return
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
-                } else {
-                    @Suppress("DEPRECATION")
-                    audioManager.abandonAudioFocus(audioFocusListener)
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to abandon audio focus", e)
+            abandonFocusNow()
+        }
+    }
+
+    /**
+     * 🐞 (2026-06-04) บังคับคืน audio focus + reset refcount — ใช้ตอน stop()/shutdown() ที่ flush
+     * utterance ทำให้ onDone ไม่ถูกเรียกครบคู่กับ onStart → activeUtteranceCount ค้าง > 0 →
+     * focus ไม่เคยถูกคืน → เพลง/วิดีโอของแอปอื่นโดน duck ค้างถาวรจนกว่า process ตาย
+     */
+    private fun forceReleaseAudioFocus() {
+        synchronized(audioFocusLock) {
+            activeUtteranceCount = 0
+            abandonFocusNow()
+        }
+    }
+
+    // ต้องเรียกภายใน synchronized(audioFocusLock) เท่านั้น
+    private fun abandonFocusNow() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.abandonAudioFocus(audioFocusListener)
             }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to abandon audio focus", e)
         }
     }
 
@@ -205,40 +224,45 @@ class TtsManager @Inject constructor(
 
     fun speak(text: String) {
         if (!isTtsEnabled()) return
-
-        if (!isInitialized) {
-            pendingQueue.add(text)
-            return
-        }
-
-        speakOnMainThread(text)
+        enqueueOrSpeak(text)
     }
 
     /**
      * Speak text regardless of TTS enabled state. Used for preview/testing.
      */
     fun speakPreview(text: String) {
+        enqueueOrSpeak(text)
+    }
+
+    /**
+     * 🐞 (2026-06-04) ตัดสินใจ "queue หรือพูดเลย" บน main thread เสมอ — serialized กับ onInit
+     *   (ซึ่งรันบน main thread เช่นกัน) เพื่อปิด race เดิม: speak อ่าน isInitialized=false → ถูก
+     *   deschedule → onInit ตั้ง true + drain queue (ว่าง) → speak ค่อย add → ไม่มีใคร drain อีก
+     *   → "ประกาศแรกหลัง init หาย". ตอนนี้ทั้งเช็ค-แล้ว-enqueue และ drain อยู่บน main thread เดียวกัน
+     */
+    private fun enqueueOrSpeak(text: String) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            enqueueOrSpeakOnMain(text)
+        } else {
+            mainHandler.post { enqueueOrSpeakOnMain(text) }
+        }
+    }
+
+    /** ต้องเรียกบน main thread เท่านั้น */
+    private fun enqueueOrSpeakOnMain(text: String) {
         if (!isInitialized) {
             pendingQueue.add(text)
             return
         }
-        speakOnMainThread(text)
+        speakNowOnMain(text)
     }
 
     /**
-     * Ensures TTS.speak() is called on the Main thread for reliable operation.
-     * Android's TextToSpeech works best when called from the thread that created it.
+     * พูดจริง — ต้องเรียกบน main thread เท่านั้น (TextToSpeech ทำงานดีสุดจาก thread ที่สร้างมัน)
      */
-    private fun speakOnMainThread(text: String) {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            applyTtsLanguage()
-            tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "tts_${System.currentTimeMillis()}")
-        } else {
-            mainHandler.post {
-                applyTtsLanguage()
-                tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "tts_${System.currentTimeMillis()}")
-            }
-        }
+    private fun speakNowOnMain(text: String) {
+        applyTtsLanguage()
+        tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "tts_${utteranceCounter.incrementAndGet()}")
     }
 
     fun speakTransaction(
@@ -354,7 +378,11 @@ class TtsManager @Inject constructor(
     }
 
     fun stop() {
-        mainHandler.post { tts?.stop() }
+        mainHandler.post {
+            tts?.stop()
+            // 🐞 (2026-06-04) tts.stop() flush utterance ที่ค้าง → onDone อาจไม่ถูกเรียก → คืน focus ทันที
+            forceReleaseAudioFocus()
+        }
     }
 
     fun shutdown() {
@@ -363,6 +391,7 @@ class TtsManager @Inject constructor(
             tts?.shutdown()
             tts = null
             isInitialized = false
+            forceReleaseAudioFocus()
         }
     }
 }

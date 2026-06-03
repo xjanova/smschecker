@@ -220,8 +220,9 @@ class SmsProcessingService : Service() {
                                 //   ผลที่ตามมา: amount=.00 จะ match UPA ไม่ได้ (ระบบใช้ทศนิยม) แต่
                                 //   admin เห็นใน Orphans tab + Force Approve ทีละบิลได้
                                 Log.d(TAG, "⏳ No matching order for amount $amountDouble, saving as orphan")
+                                var savedOrphanId: Long = -1
                                 try {
-                                    orphanRepository.saveAsOrphan(
+                                    savedOrphanId = orphanRepository.saveAsOrphan(
                                         transaction = savedTransaction,
                                         source = com.thaiprompt.smschecker.data.model.TransactionSource.SMS
                                     )
@@ -242,6 +243,13 @@ class SmsProcessingService : Service() {
                                     )
                                     if (matchedBill != null) {
                                         Log.w(TAG, "🤖 SMART AUTO: SMS matched to $matchedBill (no admin click needed)")
+                                        // 🛡️ (2026-06-04) mark orphan ว่า resolved ทันที กัน reconciler (RealtimeSyncService/
+                                        //   OrderSyncWorker checkOrphansForNewOrders) มาจับ orphan เดิมแล้ว approve/dispatch ซ้ำ
+                                        //   (บิลดูดวงโดน dispatch 2 รอบ = เสียงาน). orphan ที่ confirm แล้วต้องออกจาก PENDING
+                                        if (savedOrphanId > 0) {
+                                            try { orphanRepository.markAsManuallyResolved(savedOrphanId, "smart-auto:$matchedBill") }
+                                            catch (e: Exception) { Log.w(TAG, "mark orphan resolved failed", e) }
+                                        }
                                         updateNotification("กำลังทำงาน | ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.incrementAndGet()} 🤖")
                                     }
                                 } catch (e: Exception) {
@@ -384,8 +392,9 @@ class SmsProcessingService : Service() {
                                 // ไม่พบออเดอร์ที่ตรงกัน → เก็บเป็น Orphan Transaction
                                 // 🔧 (2026-05-21) เก็บ orphan ทุกยอด — ดูเหตุผลใน SMS path ด้านบน
                                 Log.d(TAG, "⏳ No matching order for notification amount $amountDouble, saving as orphan")
+                                var savedOrphanId: Long = -1
                                 try {
-                                    orphanRepository.saveAsOrphan(
+                                    savedOrphanId = orphanRepository.saveAsOrphan(
                                         transaction = savedTransaction,
                                         source = com.thaiprompt.smschecker.data.model.TransactionSource.NOTIFICATION
                                     )
@@ -403,6 +412,11 @@ class SmsProcessingService : Service() {
                                     )
                                     if (matchedBill != null) {
                                         Log.w(TAG, "🤖 SMART AUTO (notif): SMS matched to $matchedBill")
+                                        // 🛡️ (2026-06-04) mark orphan resolved ทันที — กัน reconciler จับซ้ำ (ดู SMS path ด้านบน)
+                                        if (savedOrphanId > 0) {
+                                            try { orphanRepository.markAsManuallyResolved(savedOrphanId, "smart-auto:$matchedBill") }
+                                            catch (e: Exception) { Log.w(TAG, "mark orphan resolved failed (notif)", e) }
+                                        }
                                         updateNotification("กำลังทำงาน | ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.incrementAndGet()} 🤖")
                                     }
                                 } catch (e: Exception) {

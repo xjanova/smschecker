@@ -12,6 +12,8 @@ import com.thaiprompt.smschecker.security.SecureStorage
 import com.thaiprompt.smschecker.util.ParallelSyncHelper
 import com.thaiprompt.smschecker.util.RetryHelper
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -574,7 +576,15 @@ class OrderRepository @Inject constructor(
      * Auto-approve order by local ID (used for automatic approval after SMS match)
      * Returns true if successfully approved, false if failed or order not found
      */
-    suspend fun approveOrder(orderId: Long): Boolean {
+    // 🛡️ (2026-06-04) serialize auto-approve ทั้งหมด — RealtimeSyncService กับ OrderSyncWorker
+    //   ต่างรัน checkOrphansForNewOrders พร้อมกันได้ → approve order เดียวกัน "ซ้ำ" (ส่ง approve 2 รอบ
+    //   ก่อนตัวแรกจะเขียนสถานะลง DB). mutex ทำให้ check-สถานะ-แล้ว-approve เป็น atomic:
+    //   ตัวที่สองจะเข้า lock หลังตัวแรกเขียน AUTO_APPROVED แล้ว → เห็นว่า approved → skip server call
+    private val approveMutex = Mutex()
+
+    suspend fun approveOrder(orderId: Long): Boolean = approveMutex.withLock { approveOrderLocked(orderId) }
+
+    private suspend fun approveOrderLocked(orderId: Long): Boolean {
         Log.i(TAG, "approveOrder(id): START orderId=$orderId")
 
         val order = orderApprovalDao.getOrderById(orderId)
