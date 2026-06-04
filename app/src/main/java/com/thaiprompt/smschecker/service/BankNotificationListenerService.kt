@@ -34,6 +34,7 @@ class BankNotificationListenerService : NotificationListenerService() {
         val BANK_APP_PACKAGES = mapOf(
             // === Major Banks ===
             "com.kasikorn.retail.mbanking.wap" to "KBANK",  // K PLUS
+            "com.alpha.kplus" to "KBANK",                    // K PLUS (alternate package — มีใน <queries> อยู่แล้ว)
             "com.scb.phone" to "SCB",                        // SCB EASY
             "com.ktb.netbank" to "KTB",                      // Krungthai NEXT
             "com.bbl.mobilebanking" to "BBL",                // Bualuang mBanking

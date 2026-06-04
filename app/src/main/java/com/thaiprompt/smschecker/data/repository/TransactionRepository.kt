@@ -31,6 +31,10 @@ class TransactionRepository @Inject constructor(
 ) {
     companion object {
         private const val TAG = "TransactionRepository"
+        // cross-source (SMS ↔ notification ของแอปธนาคาร) dedup window — กว้างกว่า same-source (60s)
+        // เพราะ 2 ช่องทางของ payment เดียวกันมา timestamp คนละ clock (SMSC time vs app postTime)
+        // 3 นาที ครอบคลุม SMS delay ตอน Doze; เช็คเฉพาะข้าม source จึงไม่กระทบยอดจริงคนละรายการ
+        private const val CROSS_SOURCE_DEDUP_WINDOW_MS = 180_000L // 3 นาที
     }
 
     /**
@@ -52,6 +56,7 @@ class TransactionRepository @Inject constructor(
         transaction: BankTransaction,
         dedupWindowMs: Long = 60_000L
     ): Long? = dedupMutex.withLock {
+        // 1) same-payment re-delivery (any source) ใน window แคบ — กัน SMS resend / rescan / SMS+notif ใกล้กัน
         val dup = transactionDao.findDuplicate(
             bank = transaction.bank,
             amount = transaction.amount,
@@ -59,7 +64,26 @@ class TransactionRepository @Inject constructor(
             timestamp = transaction.timestamp,
             windowMs = dedupWindowMs
         )
-        if (dup != null) null else transactionDao.insert(transaction)
+        if (dup != null) return@withLock null
+
+        // 2) 🔁 (2026-06-04) cross-source dedup: payment เดียวกันที่มาทั้ง SMS และ notification ของแอปธนาคาร
+        //    บนเครื่องเดียวกัน — timestamp มาคนละ clock (SMSC time vs app postTime) อาจห่างกันเกิน window แคบ
+        //    เช็คเฉพาะ "ข้าม source" (sourceType ต่างกัน) ด้วย window กว้างขึ้น → ยอดจริงคนละรายการที่เป็น
+        //    source เดียวกัน (เช่น ลูกค้า 2 คนยอดเท่ากันผ่าน SMS ทั้งคู่) ยังถูกบันทึกครบ ไม่โดนตัดทิ้ง
+        val crossDup = transactionDao.findCrossSourceDuplicate(
+            bank = transaction.bank,
+            amount = transaction.amount,
+            type = transaction.type,
+            currentSource = transaction.sourceType,
+            timestamp = transaction.timestamp,
+            windowMs = CROSS_SOURCE_DEDUP_WINDOW_MS
+        )
+        if (crossDup != null) {
+            Log.d(TAG, "Cross-source dup (SMS↔notification) skipped: ${transaction.bank} ${transaction.amount} (${transaction.sourceType} vs ${crossDup.sourceType})")
+            return@withLock null
+        }
+
+        transactionDao.insert(transaction)
     }
 
     fun getAllTransactions(): Flow<List<BankTransaction>> = transactionDao.getAllTransactions()

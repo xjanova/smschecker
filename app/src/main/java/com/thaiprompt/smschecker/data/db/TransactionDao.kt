@@ -2,6 +2,7 @@ package com.thaiprompt.smschecker.data.db
 
 import androidx.room.*
 import com.thaiprompt.smschecker.data.model.BankTransaction
+import com.thaiprompt.smschecker.data.model.TransactionSource
 import com.thaiprompt.smschecker.data.model.TransactionType
 import kotlinx.coroutines.flow.Flow
 
@@ -165,6 +166,28 @@ interface TransactionDao {
         LIMIT 1
     """)
     suspend fun findDuplicate(bank: String, amount: String, type: TransactionType, timestamp: Long, windowMs: Long): BankTransaction?
+
+    /**
+     * 🔁 (2026-06-04) Cross-source dedup — หา transaction "ยอดเดียวกัน" ที่มาจาก source ต่างกัน
+     * (SMS vs NOTIFICATION ของ payment เดียวกัน) ที่ timestamp มาคนละ clock (SMSC time vs app postTime)
+     * อาจห่างกันเกิน window แคบของ findDuplicate. sourceType != :currentSource → เช็คเฉพาะ "ข้าม source"
+     * เท่านั้น (same-source 2 รายการยอดเท่ากันยังใช้ window แคบ — กันการ dedup ยอดจริงคนละรายการทิ้ง)
+     */
+    @Query("""
+        SELECT * FROM bank_transactions
+        WHERE bank = :bank AND amount = :amount AND type = :type
+        AND sourceType != :currentSource
+        AND ABS(timestamp - :timestamp) < :windowMs
+        LIMIT 1
+    """)
+    suspend fun findCrossSourceDuplicate(
+        bank: String,
+        amount: String,
+        type: TransactionType,
+        currentSource: TransactionSource,
+        timestamp: Long,
+        windowMs: Long
+    ): BankTransaction?
 
     @Query("SELECT * FROM bank_transactions WHERE sourceType = 'NOTIFICATION' ORDER BY timestamp DESC LIMIT 100")
     suspend fun getRecentNotificationTransactions(): List<BankTransaction>
