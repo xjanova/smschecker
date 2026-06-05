@@ -42,6 +42,22 @@ class TtsManager @Inject constructor(
     private val audioManager by lazy {
         context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     }
+
+    // 🐞 (2026-06-05) TTS plays through the MEDIA stream (USAGE_MEDIA → STREAM_MUSIC) so the
+    // announcement is audible even when the phone is on silent / vibrate — media volume is
+    // independent of the ringer mode.
+    //
+    // PREVIOUS BUG: USAGE_ASSISTANCE_SONIFICATION routes to STREAM_SYSTEM, which Android MUTES
+    // in silent/vibrate mode (and when "system sounds" are turned off). A merchant keeping the
+    // phone on silent therefore heard NOTHING — not even the Settings preview button. The whole
+    // job of this app is to announce incoming money out loud, so it MUST use the media stream.
+    // Shared between playback (setAudioAttributes) and the duck focus request so they never diverge.
+    private val ttsAudioAttributes: AudioAttributes by lazy {
+        AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            .build()
+    }
     // Note: no @Volatile needed — all reads/writes happen inside `synchronized(audioFocusLock)`.
     // Adding @Volatile would be dead weight and could confuse readers about the model.
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -66,14 +82,9 @@ class TtsManager @Inject constructor(
             tts?.setPitch(1.0f)
             tts?.setSpeechRate(0.9f)
 
-            // Route TTS through the ASSISTANCE_SONIFICATION stream so it bypasses music/media
-            // volume and plays even when the user has their ringer muted (this is a notification).
+            // Play through the media stream so the announcement is heard even on silent/vibrate.
             try {
-                val attrs = AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build()
-                tts?.setAudioAttributes(attrs)
+                tts?.setAudioAttributes(ttsAudioAttributes)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to set TTS audio attributes", e)
             }
@@ -119,14 +130,10 @@ class TtsManager @Inject constructor(
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     if (audioFocusRequest == null) {
-                        val attrs = AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                            .build()
                         audioFocusRequest = AudioFocusRequest.Builder(
                             AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
                         )
-                            .setAudioAttributes(attrs)
+                            .setAudioAttributes(ttsAudioAttributes)
                             .setOnAudioFocusChangeListener(audioFocusListener)
                             .build()
                     }
@@ -135,7 +142,7 @@ class TtsManager @Inject constructor(
                     @Suppress("DEPRECATION")
                     audioManager.requestAudioFocus(
                         audioFocusListener,
-                        AudioManager.STREAM_NOTIFICATION,
+                        AudioManager.STREAM_MUSIC,
                         AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
                     )
                 }
