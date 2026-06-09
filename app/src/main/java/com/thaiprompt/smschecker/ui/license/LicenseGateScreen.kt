@@ -66,11 +66,11 @@ fun LicenseGateScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF1A1A2E)),
+                .background(Color(0xFF12203A)),
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator(color = Color(0xFF8B5CF6))
+                CircularProgressIndicator(color = Color(0xFF22B34A))
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     "กำลังตรวจสอบสถานะ...",
@@ -87,7 +87,7 @@ fun LicenseGateScreen(
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    listOf(Color(0xFF1A1A2E), Color(0xFF16213E), Color(0xFF0F3460))
+                    listOf(Color(0xFF12203A), Color(0xFF16223F), Color(0xFF0E1626))
                 )
             )
     ) {
@@ -105,7 +105,7 @@ fun LicenseGateScreen(
                     Icon(
                         Icons.Default.Sms,
                         contentDescription = null,
-                        tint = Color(0xFF8B5CF6),
+                        tint = Color(0xFF22B34A),
                         modifier = Modifier.size(64.dp)
                     )
                     Spacer(modifier = Modifier.height(12.dp))
@@ -159,7 +159,7 @@ fun LicenseGateScreen(
                 // Re-check button — always show for expired/connection error
                 // Allows user to re-verify after admin reactivates or network recovers
                 Spacer(modifier = Modifier.height(8.dp))
-                val recheckColor = if (hasConnectionError) Color(0xFFF59E0B) else Color(0xFF8B5CF6)
+                val recheckColor = if (hasConnectionError) Color(0xFFF59E0B) else Color(0xFF22B34A)
                 OutlinedButton(
                     onClick = { scope.launch { LicenseManager.initialize(context) } },
                     modifier = Modifier.fillMaxWidth(),
@@ -186,7 +186,7 @@ fun LicenseGateScreen(
                 PricingCard(
                     title = "รายเดือน", price = "499", period = "/เดือน", duration = "30 วัน",
                     features = listOf("ใช้งานทุกฟีเจอร์", "ตรวจจับ SMS อัตโนมัติ", "ซัพพอร์ตมาตรฐาน"),
-                    isSelected = selectedPlan == "monthly", isPopular = false, accentColor = Color(0xFF3B82F6),
+                    isSelected = selectedPlan == "monthly", isPopular = false, accentColor = Color(0xFF5EC8D6),
                     onSelect = { selectedPlan = "monthly" },
                     onBuy = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LicenseManager.getPurchaseUrl("monthly")))) }
                 )
@@ -198,7 +198,7 @@ fun LicenseGateScreen(
                     title = "รายปี", price = "4,990", period = "/ปี", duration = "365 วัน",
                     features = listOf("ใช้งานทุกฟีเจอร์", "ตรวจจับ SMS อัตโนมัติ", "ซัพพอร์ตพรีเมียม", "อัพเดทก่อนใคร"),
                     isSelected = selectedPlan == "yearly", isPopular = true, savingText = "ประหยัด 17%",
-                    accentColor = Color(0xFF8B5CF6),
+                    accentColor = Color(0xFF22B34A),
                     onSelect = { selectedPlan = "yearly" },
                     onBuy = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LicenseManager.getPurchaseUrl("yearly")))) }
                 )
@@ -275,7 +275,7 @@ fun LicenseGateScreen(
                     },
                     enabled = !isActivating && licenseKeyInput.isNotBlank(),
                     modifier = Modifier.fillMaxWidth().height(50.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6), disabledContainerColor = Color(0xFF8B5CF6).copy(alpha = 0.4f)),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22B34A), disabledContainerColor = Color(0xFF22B34A).copy(alpha = 0.4f)),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     if (isActivating) {

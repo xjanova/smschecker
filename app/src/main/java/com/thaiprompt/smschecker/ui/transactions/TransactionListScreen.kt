@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.thaiprompt.smschecker.data.model.TransactionType
+import com.thaiprompt.smschecker.ui.components.ChromeSegmented
 import com.thaiprompt.smschecker.ui.components.GlassCard
 import com.thaiprompt.smschecker.ui.components.GradientHeader
 import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
@@ -67,52 +68,6 @@ fun TransactionListScreen(viewModel: TransactionListViewModel = hiltViewModel())
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Filter Chips
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            TransactionFilter.entries.forEach { filter ->
-                val filterLabel = when (filter) {
-                    TransactionFilter.ALL -> strings.filterAll
-                    TransactionFilter.CREDIT -> strings.filterCredit
-                    TransactionFilter.DEBIT -> strings.filterDebit
-                }
-                val isSelected = selectedFilter == filter
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { selectedFilter = filter },
-                    label = {
-                        Text(filterLabel, style = MaterialTheme.typography.bodySmall)
-                    },
-                    leadingIcon = if (isSelected) {
-                        {
-                            Icon(
-                                Icons.Default.Check,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
-                    } else null,
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = AppColors.GoldAccent.copy(alpha = 0.25f),
-                        selectedLabelColor = AppColors.GoldAccent,
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    ),
-                    border = BorderStroke(
-                        1.dp,
-                        if (isSelected) AppColors.GoldAccent.copy(alpha = 0.5f)
-                        else MaterialTheme.colorScheme.outline
-                    )
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
         // Stats Row
         GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
             Row(
@@ -148,6 +103,16 @@ fun TransactionListScreen(viewModel: TransactionListViewModel = hiltViewModel())
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Segmented filter (ทั้งหมด / เครดิต / เดบิต)
+        ChromeSegmented(
+            options = listOf(strings.filterAll, strings.filterCredit, strings.filterDebit),
+            selectedIndex = selectedFilter.ordinal,
+            onSelect = { selectedFilter = TransactionFilter.entries[it] },
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
 
         Spacer(modifier = Modifier.height(8.dp))
 

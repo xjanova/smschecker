@@ -20,20 +20,28 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Assignment
-import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.ListAlt
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Textsms
+import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.thaiprompt.smschecker.ui.components.AeroGlass
+import com.thaiprompt.smschecker.ui.components.aeroBackgroundBrush
+import com.thaiprompt.smschecker.ui.theme.AeroPalette
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
@@ -272,88 +280,58 @@ fun MainApp(
         containerColor = Color.Transparent,
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 0.dp
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
-                    bottomScreens.forEach { screen ->
-                        val selected = currentRoute == screen.route
-                        val title = when (screen) {
-                            is Screen.Dashboard -> strings.navDashboard
-                            is Screen.Orders -> strings.navOrders
-                            is Screen.Transactions -> strings.navTransactions
-                            is Screen.SmsHistory -> strings.navSmsHistory
-                            is Screen.Settings -> strings.navSettings
-                            else -> ""
-                        }
-                        NavigationBarItem(
-                            icon = {
-                                val icon = when (screen) {
-                                    is Screen.Dashboard -> Icons.Default.Dashboard
-                                    is Screen.Orders -> Icons.Default.Assignment
-                                    is Screen.Transactions -> Icons.Default.History
-                                    is Screen.SmsHistory -> Icons.Default.Textsms
-                                    is Screen.Settings -> Icons.Default.Settings
-                                    else -> Icons.Default.Dashboard
+                    AeroGlass(
+                        modifier = Modifier.fillMaxWidth(),
+                        cornerRadius = 26.dp,
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            bottomScreens.forEach { screen ->
+                                val selected = currentRoute == screen.route
+                                val title = when (screen) {
+                                    is Screen.Dashboard -> strings.navDashboard
+                                    is Screen.Orders -> strings.navOrders
+                                    is Screen.Transactions -> strings.navTransactions
+                                    is Screen.SmsHistory -> strings.navSmsHistory
+                                    is Screen.Settings -> strings.navSettings
+                                    else -> ""
                                 }
-                                if (screen is Screen.Orders && pendingCount > 0) {
-                                    Box {
-                                        Icon(
-                                            icon,
-                                            contentDescription = title,
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .align(Alignment.TopEnd)
-                                                .offset(x = 6.dp, y = (-4).dp)
-                                                .size(16.dp)
-                                                .background(
-                                                    AppColors.WarningOrange,
-                                                    shape = CircleShape
-                                                ),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                "$pendingCount",
-                                                fontSize = 8.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White
-                                            )
+                                val icon = when (screen) {
+                                    is Screen.Dashboard -> Icons.Default.GridView
+                                    is Screen.Orders -> Icons.Default.ListAlt
+                                    is Screen.Transactions -> Icons.Default.SwapVert
+                                    is Screen.SmsHistory -> Icons.Default.ChatBubbleOutline
+                                    is Screen.Settings -> Icons.Default.Tune
+                                    else -> Icons.Default.GridView
+                                }
+                                AeroTab(
+                                    selected = selected,
+                                    icon = icon,
+                                    label = title,
+                                    badgeCount = if (screen is Screen.Orders) pendingCount else 0,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = {
+                                        if (currentRoute != screen.route) {
+                                            navController.navigate(screen.route) {
+                                                popUpTo(Screen.Dashboard.route) { saveState = true }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
                                         }
                                     }
-                                } else {
-                                    Icon(
-                                        icon,
-                                        contentDescription = title,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                            },
-                            label = {
-                                Text(
-                                    title,
-                                    fontSize = 10.sp
                                 )
-                            },
-                            selected = selected,
-                            onClick = {
-                                if (currentRoute != screen.route) {
-                                    navController.navigate(screen.route) {
-                                        popUpTo(Screen.Dashboard.route) { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                }
-                            },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = Color.White,
-                                selectedTextColor = AppColors.GoldAccent,
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                indicatorColor = AppColors.GoldAccent
-                            )
-                        )
+                            }
+                        }
                     }
                 }
             }
@@ -362,7 +340,7 @@ fun MainApp(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
+                .background(aeroBackgroundBrush())
                 .padding(paddingValues)
         ) {
             NavHost(
@@ -459,6 +437,70 @@ fun MainApp(
                 }
             }
         }
+    }
+}
+
+/**
+ * A single tab in the Millennium 3D glass tab bar. The active tab's icon sits
+ * inside a money-green gloss pill; its label takes the primary colour.
+ */
+@Composable
+private fun AeroTab(
+    selected: Boolean,
+    icon: ImageVector,
+    label: String,
+    badgeCount: Int,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .size(width = 46.dp, height = 32.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .then(
+                        if (selected) Modifier.background(
+                            Brush.verticalGradient(listOf(AeroPalette.GreenHi, AeroPalette.GreenLo))
+                        ) else Modifier
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = label,
+                    tint = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            if (badgeCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 6.dp, y = (-3).dp)
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .background(AeroPalette.Red),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("$badgeCount", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+        }
+        Text(
+            label,
+            fontSize = 10.5.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1
+        )
     }
 }
 

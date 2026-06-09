@@ -33,9 +33,13 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.thaiprompt.smschecker.data.model.ApprovalStatus
 import com.thaiprompt.smschecker.data.model.MatchConfidence
 import com.thaiprompt.smschecker.data.model.OrderApproval
+import com.thaiprompt.smschecker.ui.components.AeroPillChip
 import com.thaiprompt.smschecker.ui.components.BankLogoCircle
 import com.thaiprompt.smschecker.ui.components.DateRangePickerDialog
 import com.thaiprompt.smschecker.ui.components.GlassCard
+import com.thaiprompt.smschecker.ui.components.GlossButton
+import com.thaiprompt.smschecker.ui.components.GlossIconButton
+import com.thaiprompt.smschecker.ui.components.GlossStyle
 import com.thaiprompt.smschecker.ui.components.GradientHeader
 import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
 import com.thaiprompt.smschecker.ui.theme.AppColors
@@ -228,22 +232,10 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                     strings.statusCancelled to ApprovalStatus.CANCELLED
                 )
                 items(filters) { (label, status) ->
-                    val isSelected = state.statusFilter == status
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { viewModel.setStatusFilter(status) },
-                        label = { Text(label, fontSize = 12.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = AppColors.GoldAccent.copy(alpha = 0.25f),
-                            selectedLabelColor = AppColors.GoldAccent,
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        ),
-                        border = BorderStroke(
-                            1.dp,
-                            if (isSelected) AppColors.GoldAccent.copy(alpha = 0.5f)
-                            else MaterialTheme.colorScheme.outline
-                        )
+                    AeroPillChip(
+                        text = label,
+                        selected = state.statusFilter == status,
+                        onClick = { viewModel.setStatusFilter(status) }
                     )
                 }
             }
@@ -266,17 +258,17 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         item {
-                            FilterChip(
+                            AeroPillChip(
+                                text = strings.filterAll,
                                 selected = state.serverFilter == null,
-                                onClick = { viewModel.setServerFilter(null) },
-                                label = { Text(strings.filterAll, fontSize = 12.sp) }
+                                onClick = { viewModel.setServerFilter(null) }
                             )
                         }
                         items(state.servers) { server ->
-                            FilterChip(
+                            AeroPillChip(
+                                text = server.name,
                                 selected = state.serverFilter == server.id,
-                                onClick = { viewModel.setServerFilter(server.id) },
-                                label = { Text(server.name, fontSize = 12.sp) }
+                                onClick = { viewModel.setServerFilter(server.id) }
                             )
                         }
                     }
@@ -899,35 +891,25 @@ fun OrderCard(
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
+                        horizontalArrangement = Arrangement.spacedBy(9.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        OutlinedButton(
-                            onClick = onReject,
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = Color(0xFFC62828)
-                            ),
-                            border = BorderStroke(1.dp, Color(0xFFC62828).copy(alpha = 0.4f)),
-                            modifier = Modifier.height(36.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)
-                        ) {
-                            Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(strings.rejectButton, fontSize = 12.sp)
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Button(
+                        GlossButton(
+                            text = strings.approveButton,
                             onClick = onApprove,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF2E7D32)
-                            ),
-                            modifier = Modifier.height(36.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)
-                        ) {
-                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(strings.approveButton, fontSize = 12.sp)
-                        }
+                            style = GlossStyle.Green,
+                            leadingIcon = Icons.Default.Check,
+                            fontSize = 14,
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 11.dp),
+                            modifier = Modifier.weight(1f)
+                        )
+                        GlossIconButton(
+                            icon = Icons.Default.Close,
+                            onClick = onReject,
+                            style = GlossStyle.Ghost,
+                            size = 46.dp,
+                            contentDescription = strings.rejectButton
+                        )
                     }
 
                     // 🚀 (2026-05-21) Force Approve button (row 2) — bypass SMS matching

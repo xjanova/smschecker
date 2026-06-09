@@ -24,8 +24,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -1025,102 +1023,16 @@ fun ChartLegendItem(
     }
 }
 
+/**
+ * Backwards-compatible bank logo. In the Millennium 3D / Aero redesign this
+ * renders as a glossy brand "coin" (squircle + gloss + white rim + initials).
+ * See [BankCoin] for the implementation and brand-colour map.
+ */
 @Composable
 fun BankLogoCircle(
     bankCode: String,
     size: androidx.compose.ui.unit.Dp = 44.dp,
     grayscale: Boolean = false
 ) {
-    val colorFilter = if (grayscale) {
-        ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
-    } else {
-        null
-    }
-    val drawableRes = when (bankCode.uppercase()) {
-        "KBANK" -> com.thaiprompt.smschecker.R.drawable.bank_kbank
-        "SCB" -> com.thaiprompt.smschecker.R.drawable.bank_scb
-        "KTB" -> com.thaiprompt.smschecker.R.drawable.bank_ktb
-        "BBL" -> com.thaiprompt.smschecker.R.drawable.bank_bbl
-        "GSB" -> com.thaiprompt.smschecker.R.drawable.bank_gsb
-        "BAY" -> com.thaiprompt.smschecker.R.drawable.bank_bay
-        "TTB" -> com.thaiprompt.smschecker.R.drawable.bank_ttb
-        "PROMPTPAY" -> com.thaiprompt.smschecker.R.drawable.bank_promptpay
-        "CIMB" -> com.thaiprompt.smschecker.R.drawable.bank_cimb
-        "KKP" -> com.thaiprompt.smschecker.R.drawable.bank_kkp
-        "LH" -> com.thaiprompt.smschecker.R.drawable.bank_lh
-        "TISCO" -> com.thaiprompt.smschecker.R.drawable.bank_tisco
-        "UOB" -> com.thaiprompt.smschecker.R.drawable.bank_uob
-        "ICBC" -> com.thaiprompt.smschecker.R.drawable.bank_icbc
-        "BAAC" -> com.thaiprompt.smschecker.R.drawable.bank_baac
-        else -> null
-    }
-
-    val initials = when (bankCode.uppercase()) {
-        "KBANK" -> "K"
-        "SCB" -> "SCB"
-        "KTB" -> "KTB"
-        "BBL" -> "BBL"
-        "GSB" -> "GSB"
-        "BAY" -> "BAY"
-        "TTB" -> "ttb"
-        "PROMPTPAY" -> "PP"
-        "CIMB" -> "CIMB"
-        "KKP" -> "KKP"
-        "LH" -> "LH"
-        "TISCO" -> "TISCO"
-        "UOB" -> "UOB"
-        "ICBC" -> "ICBC"
-        "BAAC" -> "ธกส"
-        else -> bankCode.take(3).uppercase()
-    }
-
-    val textColor = when (bankCode.uppercase()) {
-        "BAY" -> Color(0xFF333333) // Dark text on yellow
-        else -> Color.White
-    }
-
-    val fontSize = when {
-        initials.length <= 1 -> (size.value * 0.5f).sp
-        initials.length <= 2 -> (size.value * 0.38f).sp
-        initials.length <= 3 -> (size.value * 0.3f).sp
-        else -> (size.value * 0.22f).sp
-    }
-
-    if (drawableRes != null) {
-        Box(
-            modifier = Modifier.size(size),
-            contentAlignment = Alignment.Center
-        ) {
-            androidx.compose.foundation.Image(
-                painter = androidx.compose.ui.res.painterResource(id = drawableRes),
-                contentDescription = bankCode,
-                modifier = Modifier
-                    .size(size)
-                    .clip(CircleShape),
-                colorFilter = colorFilter
-            )
-            Text(
-                text = initials,
-                color = textColor,
-                fontWeight = FontWeight.Bold,
-                fontSize = fontSize
-            )
-        }
-    } else {
-        // Fallback for unknown banks
-        Box(
-            modifier = Modifier
-                .size(size)
-                .clip(CircleShape)
-                .background(Color.Gray),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = initials,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = fontSize
-            )
-        }
-    }
+    BankCoin(bankCode = bankCode, size = size, grayscale = grayscale)
 }
