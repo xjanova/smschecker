@@ -139,6 +139,15 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    testOptions {
+        unitTests {
+            // ให้ android.util.Log (และ Android API อื่น) คืนค่า default แทนการ throw
+            // ในการรัน JVM unit test — จำเป็นสำหรับเทส BankSmsParser ที่เรียก Log.w
+            // ตอน parse ไม่สำเร็จ (เช่น SMS แจ้งยอดคงเหลือล้วน ๆ → คืน null + log)
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {
