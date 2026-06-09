@@ -102,7 +102,7 @@ fun QrScannerDialog(
                         Icon(
                             Icons.Default.QrCodeScanner,
                             contentDescription = null,
-                            tint = Color(0xFF8B5CF6),
+                            tint = Color(0xFF22B34A),
                             modifier = Modifier.size(24.dp)
                         )
                         Spacer(Modifier.width(8.dp))
@@ -156,7 +156,7 @@ fun QrScannerDialog(
                                 onClick = {
                                     permissionLauncher.launch(Manifest.permission.CAMERA)
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6)),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22B34A)),
                                 shape = RoundedCornerShape(10.dp)
                             ) {
                                 Icon(Icons.Default.CameraAlt, null, modifier = Modifier.size(18.dp))

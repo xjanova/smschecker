@@ -45,6 +45,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.thaiprompt.smschecker.ui.components.GradientHeader
 import com.thaiprompt.smschecker.ui.components.GlassCard
 import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
+import com.thaiprompt.smschecker.ui.theme.AeroPalette
 import com.thaiprompt.smschecker.ui.theme.AppColors
 import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 import org.json.JSONObject
@@ -243,24 +244,47 @@ fun QrScannerScreen(
                         modifier = Modifier.fillMaxSize()
                     )
 
-                    // Scan frame overlay — gold border
+                    // Scan frame overlay — glowing green frame + sweeping laser line
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(40.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Box(
+                        BoxWithConstraints(
                             modifier = Modifier
                                 .fillMaxSize(0.8f)
                                 .border(
                                     width = 2.dp,
                                     brush = Brush.linearGradient(
-                                        colors = listOf(AppColors.GoldAccent, AppColors.GoldDark)
+                                        colors = listOf(AeroPalette.GreenHi, AeroPalette.Green)
                                     ),
-                                    shape = RoundedCornerShape(12.dp)
+                                    shape = RoundedCornerShape(16.dp)
                                 )
-                        )
+                        ) {
+                            val laser = rememberInfiniteTransition(label = "laser")
+                            val frac by laser.animateFloat(
+                                initialValue = 0f,
+                                targetValue = 1f,
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween(2200, easing = FastOutSlowInEasing),
+                                    repeatMode = RepeatMode.Reverse
+                                ),
+                                label = "laserY"
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(2.dp)
+                                    .align(Alignment.TopCenter)
+                                    .offset(y = maxHeight * frac)
+                                    .background(
+                                        Brush.horizontalGradient(
+                                            listOf(Color.Transparent, AeroPalette.GreenHi, Color.Transparent)
+                                        )
+                                    )
+                            )
+                        }
                     }
 
                     // Scanning indicator + bottom instruction

@@ -33,9 +33,11 @@ import com.thaiprompt.smschecker.R
 import com.thaiprompt.smschecker.data.db.DailyIncomeExpense
 import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.TransactionType
+import com.thaiprompt.smschecker.ui.components.AeroGlass
 import com.thaiprompt.smschecker.ui.components.BankLogoCircle
 import com.thaiprompt.smschecker.ui.components.GlassCard
 import com.thaiprompt.smschecker.ui.components.GradientHeader
+import com.thaiprompt.smschecker.ui.components.OrbIcon
 import com.thaiprompt.smschecker.ui.components.IncomeExpenseLineChart
 import com.thaiprompt.smschecker.ui.components.MisclassificationReportDialog
 import com.thaiprompt.smschecker.ui.components.SectionTitle
@@ -139,36 +141,15 @@ fun DashboardScreen(
             val netColor = if (netBalance >= 0) AppColors.CreditGreen else AppColors.DebitRed
             val netPrefix = if (netBalance >= 0) "+" else ""
 
-            Card(
+            AeroGlass(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .border(
-                        1.dp,
-                        Brush.horizontalGradient(
-                            listOf(
-                                netColor.copy(alpha = 0.5f),
-                                AppColors.GoldAccent.copy(alpha = 0.3f),
-                                netColor.copy(alpha = 0.5f)
-                            )
-                        ),
-                        RoundedCornerShape(20.dp)
-                    ),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                    .padding(horizontal = 16.dp),
+                cornerRadius = 26.dp,
+                contentPadding = PaddingValues(20.dp)
             ) {
                 Column(
-                    modifier = Modifier
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(
-                                    netColor.copy(alpha = 0.12f),
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                )
-                            )
-                        )
-                        .padding(20.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
@@ -181,7 +162,7 @@ fun DashboardScreen(
                     Text(
                         "$netPrefix${strings.bahtSymbol}${String.format("%,.2f", kotlin.math.abs(netBalance))}",
                         style = MaterialTheme.typography.headlineLarge,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.Black,
                         color = netColor
                     )
                     Spacer(modifier = Modifier.height(12.dp))
@@ -600,51 +581,39 @@ private fun StatBox(
     value: String,
     color: Color
 ) {
-    Card(
-        modifier = modifier
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp)),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    // Millennium 3D stat tile: glass card with a glossy orb icon in the corner.
+    val orbHi = Color(
+        red = color.red + (1f - color.red) * 0.4f,
+        green = color.green + (1f - color.green) * 0.4f,
+        blue = color.blue + (1f - color.blue) * 0.4f
+    )
+    AeroGlass(
+        modifier = modifier,
+        cornerRadius = 18.dp,
+        contentPadding = PaddingValues(horizontal = 15.dp, vertical = 14.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .background(
-                    Brush.linearGradient(
-                        listOf(
-                            color.copy(alpha = 0.1f),
-                            color.copy(alpha = 0.03f)
-                        )
-                    )
-                )
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(color.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
-            }
-            Column {
-                Text(
-                    value,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Text(
-                    label,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1
-                )
-            }
+        OrbIcon(
+            icon = icon,
+            gradient = listOf(orbHi, color),
+            size = 30.dp,
+            modifier = Modifier.align(Alignment.TopEnd)
+        )
+        Column {
+            Text(
+                label,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                value,
+                fontWeight = FontWeight.Black,
+                fontSize = 26.sp,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1
+            )
         }
     }
 }

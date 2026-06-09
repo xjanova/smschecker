@@ -68,7 +68,7 @@ fun LicenseKeyField(
                         Icon(
                             Icons.Default.QrCodeScanner,
                             contentDescription = "สแกน QR",
-                            tint = Color(0xFF8B5CF6),
+                            tint = Color(0xFF22B34A),
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -100,23 +100,23 @@ fun LicenseKeyField(
             colors = OutlinedTextFieldDefaults.colors(
                 focusedTextColor = Color.White,
                 unfocusedTextColor = Color.White,
-                focusedBorderColor = Color(0xFF8B5CF6),
+                focusedBorderColor = Color(0xFF22B34A),
                 unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
-                cursorColor = Color(0xFF8B5CF6)
+                cursorColor = Color(0xFF22B34A)
             ),
             shape = RoundedCornerShape(12.dp),
             keyboardOptions = KeyboardOptions(
                 capitalization = KeyboardCapitalization.Characters
             ),
             leadingIcon = {
-                Icon(Icons.Default.Key, null, tint = Color(0xFF8B5CF6))
+                Icon(Icons.Default.Key, null, tint = Color(0xFF22B34A))
             },
             trailingIcon = {
                 IconButton(onClick = onScanQr) {
                     Icon(
                         Icons.Default.QrCodeScanner,
                         contentDescription = "สแกน QR Code",
-                        tint = Color(0xFF8B5CF6)
+                        tint = Color(0xFF22B34A)
                     )
                 }
             }

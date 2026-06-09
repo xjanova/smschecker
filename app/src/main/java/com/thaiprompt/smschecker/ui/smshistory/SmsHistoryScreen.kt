@@ -21,10 +21,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.thaiprompt.smschecker.ui.components.AeroChip
+import com.thaiprompt.smschecker.ui.components.AeroGlass
+import com.thaiprompt.smschecker.ui.components.BankCoin
+import com.thaiprompt.smschecker.ui.components.ChipStyle
+import com.thaiprompt.smschecker.ui.components.ChromeSegmented
 import com.thaiprompt.smschecker.ui.components.GlassCard
 import com.thaiprompt.smschecker.ui.components.GradientHeader
 import com.thaiprompt.smschecker.ui.components.MisclassificationReportDialog
 import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
+import com.thaiprompt.smschecker.ui.theme.AeroPalette
 import com.thaiprompt.smschecker.ui.theme.AppColors
 import com.thaiprompt.smschecker.ui.theme.AppStrings
 import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
@@ -131,28 +137,12 @@ fun SmsHistoryScreen(
         // Filter tabs
         if (state.transactions.isNotEmpty() || state.isLoading) {
             item(key = "filter_tabs") {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = state.filter == HistoryFilter.ALL,
-                        onClick = { viewModel.setFilter(HistoryFilter.ALL) },
-                        label = { Text(strings.allTypes) }
-                    )
-                    FilterChip(
-                        selected = state.filter == HistoryFilter.CREDIT,
-                        onClick = { viewModel.setFilter(HistoryFilter.CREDIT) },
-                        label = { Text(strings.creditOnly) }
-                    )
-                    FilterChip(
-                        selected = state.filter == HistoryFilter.DEBIT,
-                        onClick = { viewModel.setFilter(HistoryFilter.DEBIT) },
-                        label = { Text(strings.debitOnly) }
-                    )
-                }
+                ChromeSegmented(
+                    options = listOf(strings.allTypes, strings.creditOnly, strings.debitOnly),
+                    selectedIndex = state.filter.ordinal,
+                    onSelect = { viewModel.setFilter(HistoryFilter.entries[it]) },
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
             }
             item(key = "spacer_filter") { Spacer(modifier = Modifier.height(12.dp)) }
         }
@@ -254,67 +244,78 @@ private fun TransactionItem(
     onEdit: () -> Unit,
     onLongPress: (() -> Unit)? = null
 ) {
-    GlassCard(
-        modifier = Modifier.padding(horizontal = 16.dp)
+    val isCredit = transaction.type == com.thaiprompt.smschecker.data.model.TransactionType.CREDIT
+    val typeColor = if (isCredit) AppColors.CreditGreen else AppColors.DebitRed
+    val stripeColor = if (isCredit) AeroPalette.GreenLo else AeroPalette.Chrome3
+    val subLine = listOf(
+        transaction.getFormattedTimestamp(),
+        transaction.senderAddress.takeIf { it.isNotBlank() } ?: transaction.accountNumber
+    ).filter { it.isNotBlank() }.joinToString("  ·  ")
+
+    AeroGlass(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .combinedClickable(onClick = onEdit, onLongClick = { onLongPress?.invoke() }),
+        cornerRadius = 16.dp
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(
-                    if (onLongPress != null) {
-                        Modifier.combinedClickable(
-                            onClick = {},
-                            onLongClick = onLongPress
-                        )
-                    } else Modifier
-                ),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    transaction.bank,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    transaction.getFormattedTimestamp(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (transaction.isSynced) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.CloudDone,
-                            contentDescription = null,
-                            modifier = Modifier.size(12.dp),
-                            tint = AppColors.CreditGreen
+        Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+            // status stripe (green = credit/matched, gray = debit/other)
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .fillMaxHeight()
+                    .background(stripeColor)
+            )
+            Column(modifier = Modifier.padding(start = 13.dp, top = 12.dp, end = 14.dp, bottom = 13.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BankCoin(bankCode = transaction.bank, size = 34.dp)
+                    Spacer(modifier = Modifier.width(9.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            transaction.bank,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(
-                            strings.syncedLabel,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontSize = 10.sp,
-                            color = AppColors.CreditGreen
+                            subLine,
+                            fontSize = 10.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        when {
+                            isCredit && transaction.isSynced ->
+                                AeroChip(strings.syncedLabel, style = ChipStyle.Green, leadingIcon = Icons.Default.Check)
+                            isCredit ->
+                                AeroChip(strings.creditOnly, style = ChipStyle.Green, leadingIcon = Icons.Default.ArrowDownward)
+                            else ->
+                                AeroChip(strings.debitOnly, style = ChipStyle.Red, leadingIcon = Icons.Default.ArrowUpward)
+                        }
+                        Spacer(modifier = Modifier.height(5.dp))
+                        Text(
+                            transaction.getFormattedAmount(),
+                            fontWeight = FontWeight.Black,
+                            fontSize = 15.sp,
+                            color = typeColor
                         )
                     }
                 }
+                if (transaction.rawMessage.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        transaction.rawMessage,
+                        fontSize = 12.5.sp,
+                        lineHeight = 18.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-
-            val typeColor = if (transaction.type == com.thaiprompt.smschecker.data.model.TransactionType.CREDIT) {
-                AppColors.CreditGreen
-            } else {
-                AppColors.DebitRed
-            }
-
-            Text(
-                transaction.getFormattedAmount(),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = typeColor
-            )
         }
     }
 }
