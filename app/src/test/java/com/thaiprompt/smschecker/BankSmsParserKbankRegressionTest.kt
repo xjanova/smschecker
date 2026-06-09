@@ -27,6 +27,28 @@ class BankSmsParserKbankRegressionTest {
     }
 
     /**
+     * SMS จริงจาก prod (transaction id 38) — รูปแบบเต็มพร้อมวันเวลา + "บช" นำหน้า
+     * "09/06/69 12:59 บช X-5349 รับโอนจาก X-9409 39.00 คงเหลือ 945.36 บ."
+     * ต้องได้ยอด 39.00 (ไม่ใช่ 5349 = บัญชีร้าน) + แยกผู้โอน = X-9409 + ทิศทาง CREDIT
+     */
+    @Test
+    fun `KBANK real prod SMS with date prefix parses 39 not account`() {
+        val result = parser.parse(
+            "KBank",
+            "09/06/69 12:59 บช X-5349 รับโอนจาก X-9409 39.00 คงเหลือ 945.36 บ.",
+            System.currentTimeMillis()
+        )
+
+        assertNotNull(result)
+        assertEquals("KBANK", result?.bank)
+        assertEquals(TransactionType.CREDIT, result?.type)
+        assertEquals("39.00", result?.amount)
+        assertNotEquals("5349.00", result?.amount)
+        // แยก field: ผู้โอน = X-9409 (ไม่ปนยอด/คงเหลือ)
+        assertEquals("X-9409", result?.senderOrReceiver)
+    }
+
+    /**
      * เคสบั๊กหลัก: ยอด 99.00 ต้องถูกจับ ไม่ใช่เลขบัญชี 5349
      */
     @Test

@@ -118,24 +118,12 @@ class BankSmsParser {
             // === KBANK format: "เงิน11,111.00บ.เข้าบช.X7868 ส่งจาก..." ===
             Regex("""เงิน\s*$AMT\s*(?:บ\.?|บาท)?\s*เข้า""", RegexOption.IGNORE_CASE),
 
-            // === KBANK รูปแบบใหม่ (2026-06): "X5349 รับโอนจาก X-3516 99.00 คงเหลือ 2,390.30 บ." ===
-            // ปัญหา: เลขบัญชีปลายทาง (X5349 = บัญชีร้าน) อยู่ติดหน้าคำว่า "รับโอน"
-            //   ทำให้ pattern "amount + รับ" ด้านล่างเผลอจับ "5349" (เลขบัญชี) เป็นยอดเงิน
-            //   ส่วนยอดจริง (99.00) ที่อยู่หลัง "จาก X-XXXX" ถูกมองข้าม → บิลไม่ตัด
-            // แก้: จับยอดจริงที่ขนาบอยู่ระหว่าง "เลขบัญชีผู้โอน (X-XXXX)" กับ "คงเหลือ"
-            //   ต้องมี credit keyword นำหน้า + เลขบัญชี masked (X-XXXX) ติดหน้ายอด เพื่อกันไป
-            //   จับเลขบัญชี/ยอดคงเหลือของธนาคารอื่นโดยไม่ตั้งใจ
-            // ⚠️ ต้องอยู่ก่อน pattern "amount + เข้า/รับ" ด้านล่าง เพื่อให้ชนะการจับเลขบัญชี
-            Regex("""(?:รับโอน|โอนเข้า|เงินเข้า|รับเงิน)[\s\S]{0,40}?[Xx]-?\d{2,}\s+$AMT\s*(?:บ\.?|บาท)?\s*(?:ยอด(?:เงิน)?)?คงเหลือ""", RegexOption.IGNORE_CASE),
-
             // === Generic Thai credit keywords ===
             // "รับโอน 5,000.00 บาท" / "เงินเข้า ฿5,000" / "โอนเข้า THB 5,000.00"
             Regex("""(?:รับโอน|เงินเข้า|โอนเข้า|ยอดเงินเข้า|รับเงิน|เข้าบัญชี|เข้าบ/ช|ฝากเงิน|PromptPay\s*รับ)[\s:]*$CUR_PRE$AMT""", RegexOption.IGNORE_CASE),
 
             // "5,000.00 บ. เข้าบช" / "5,000.00บาท เข้า" / "5,000 เข้า"
-            // 🔒 (2026-06) "รับ" ต้องไม่ใช่จุดเริ่มของ "รับโอน"/"รับเงิน" (เป็น credit keyword นำหน้า ไม่ใช่หน่วยท้ายยอด)
-            //   กันเคส "X5349 รับโอน..." ที่เผลอจับเลขบัญชี 5349 เป็นยอดเงิน
-            Regex("""$CUR_PRE$AMT\s*$CUR_SUF\s*(?:เข้า(?:บ[/.]?ช|บัญชี)?|รับ(?!โอน|เงิน))""", RegexOption.IGNORE_CASE),
+            Regex("""$CUR_PRE$AMT\s*$CUR_SUF\s*(?:เข้า(?:บ[/.]?ช|บัญชี)?|รับ)""", RegexOption.IGNORE_CASE),
 
             // === English patterns ===
             // "Received THB 5,000.00" / "Transfer In Bt 5,000.00" / "Deposit 5,000.00"
@@ -447,6 +435,13 @@ class BankSmsParser {
     // =====================================================================
 
     private fun parseMessage(bank: String, message: String): ParseResult? {
+        // === KBANK: ใช้ parser เฉพาะธนาคาร (แยกออกจาก generic เพื่อไม่ให้กระทบธนาคารอื่น) ===
+        // กสิกรมีรูปแบบ SMS ที่ generic จับยอดผิด (เลขบัญชีร้านติดหน้า "รับโอน")
+        // → จัดการใน parseKbank() ให้จบในตัว ถ้าไม่ใช่รูปแบบนั้นคืน null แล้วตกไป generic เดิม
+        if (bank == "KBANK") {
+            parseKbank(message)?.let { return it }
+        }
+
         // === Pre-check: Loan repayment context ===
         // ข้อความที่มีบริบทชำระคืนเงินกู้/สินเชื่อ เช่น
         // "จ่ายเงินคืน UP เงินทันใจสำเร็จ | เราได้รับเงิน 10.22 แล้ว"
@@ -528,6 +523,61 @@ class BankSmsParser {
             amount = normalizedAmount,
             accountNumber = extractAccountNumber(message),
             senderOrReceiver = extractName(message),
+            referenceNumber = extractReference(message),
+            balance = extractBalance(message),
+            channel = extractChannel(message)
+        )
+    }
+
+    /**
+     * Parser เฉพาะธนาคารกสิกรไทย (KBANK) — แยกออกจาก generic เพื่อไม่ให้กระทบธนาคารอื่น
+     *
+     * รองรับรูปแบบใหม่ (พบ 2026-06) ที่ generic จับยอดผิด เช่น:
+     *   "09/06/69 12:59 บช X-5349 รับโอนจาก X-9409 39.00 คงเหลือ 945.36 บ."
+     *   โครงสร้าง: [วันเวลา] บช {บัญชีเรา} {รับโอน/ไปยัง} {บัญชีคู่โอน} {ยอด} คงเหลือ {ยอดคงเหลือ}
+     *   ปัญหาเดิม: บัญชีร้าน (X-5349) ติดหน้า "รับโอน" → generic เผลอจับ 5349 เป็นยอด
+     *   หลักการ: ยอดจริงขนาบอยู่ระหว่าง "เลขบัญชีคู่โอน (X-XXXX)" กับ "คงเหลือ"
+     *
+     * แยก field ตามที่ต้องการ: ยอดเงิน / บัญชีคู่โอน (ธนาคารใคร) / ยอดคงเหลือ (ธนาคารเรา)
+     *
+     * คืน null ถ้าไม่ใช่รูปแบบนี้ (เช่นรูปแบบเก่า "เงิน99บ.เข้า" หรือ SMS แจ้งยอดคงเหลือล้วน)
+     * → ให้ generic เดิมจัดการต่อ (ธนาคารอื่นและรูปแบบเก่าไม่กระทบ)
+     */
+    private fun parseKbank(message: String): ParseResult? {
+        // ต้องเป็นข้อความธุรกรรมจริง (กัน SMS แจ้งยอดคงเหลือล้วน/โปรโมชัน)
+        val isCredit = listOf("รับโอน", "รับเข้า", "เงินเข้า", "รับเงิน", "เข้าบัญชี")
+            .any { message.contains(it, ignoreCase = true) }
+        val isDebit = listOf("โอนออก", "โอนเงินออก", "ถอน", "จ่าย", "ชำระ", "หักบัญชี", "ไปยัง")
+            .any { message.contains(it, ignoreCase = true) }
+        if (!isCredit && !isDebit) return null
+
+        // จับยอดจริง: เลขบัญชี masked (X-XXXX) ตามด้วย "ตัวเลขทันที" แล้วตามด้วย "คงเหลือ"
+        //   → ข้ามบัญชีร้าน (X-5349) ที่ตามด้วยคำ "รับโอน" (ไม่ใช่ตัวเลข)
+        //   → จับเฉพาะ "X-9409 39.00 คงเหลือ" = ยอด 39.00
+        // ถ้าไม่เจอโครงสร้างนี้ = ไม่ใช่รูปแบบใหม่ → คืน null ให้ generic จัดการ
+        val amountMatch = Regex(
+            """[Xx]-?\d{2,}\s+$AMT\s*(?:บ\.?|บาท)?\s*(?:ยอด(?:เงิน)?)?คงเหลือ""",
+            RegexOption.IGNORE_CASE
+        ).find(message) ?: return null
+
+        val normalizedAmount = normalizeAmount(amountMatch.groupValues[1])
+        val amountDouble = normalizedAmount.toDoubleOrNull() ?: return null
+        if (amountDouble <= 0.0 || amountDouble > 999_999_999.99) return null
+
+        // ทิศทาง: debit ชัดเจน (มีคำออก/ไม่มีคำเข้า) → DEBIT, ที่เหลือ → CREDIT
+        val type = if (isDebit && !isCredit) TransactionType.DEBIT else TransactionType.CREDIT
+
+        // บัญชีคู่โอน (ผู้โอนเข้า/ผู้รับโอน) — หลัง "จาก" หรือ "ไปยัง"
+        val counterparty = Regex("""(?:จาก|ไปยัง)\s*([Xx]-?\d{2,})""", RegexOption.IGNORE_CASE)
+            .find(message)?.groupValues?.get(1)?.trim().orEmpty()
+
+        Log.d(TAG, "KBANK-specific parse: type=$type amount=$normalizedAmount counterparty=$counterparty")
+        return ParseResult(
+            bank = "KBANK",
+            type = type,
+            amount = normalizedAmount,
+            accountNumber = extractAccountNumber(message),
+            senderOrReceiver = counterparty.ifBlank { extractName(message) },
             referenceNumber = extractReference(message),
             balance = extractBalance(message),
             channel = extractChannel(message)
