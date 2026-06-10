@@ -10,43 +10,62 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.thaiprompt.smschecker.R
-import com.thaiprompt.smschecker.data.db.DailyIncomeExpense
 import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.TransactionType
+import com.thaiprompt.smschecker.ui.components.AeroChip
 import com.thaiprompt.smschecker.ui.components.AeroGlass
-import com.thaiprompt.smschecker.ui.components.BankLogoCircle
-import com.thaiprompt.smschecker.ui.components.GlassCard
-import com.thaiprompt.smschecker.ui.components.GradientHeader
-import com.thaiprompt.smschecker.ui.components.OrbIcon
-import com.thaiprompt.smschecker.ui.components.IncomeExpenseLineChart
+import com.thaiprompt.smschecker.ui.components.AeroHeader
+import com.thaiprompt.smschecker.ui.components.AeroSectionHeader
+import com.thaiprompt.smschecker.ui.components.AeroSparkline
+import com.thaiprompt.smschecker.ui.components.AeroStatTile
+import com.thaiprompt.smschecker.ui.components.BankBar
+import com.thaiprompt.smschecker.ui.components.BankCoin
+import com.thaiprompt.smschecker.ui.components.ChipStyle
+import com.thaiprompt.smschecker.ui.components.HeaderTone
 import com.thaiprompt.smschecker.ui.components.MisclassificationReportDialog
-import com.thaiprompt.smschecker.ui.components.SectionTitle
-import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
-import com.thaiprompt.smschecker.ui.theme.AppColors
+import com.thaiprompt.smschecker.ui.components.OrbGradients
+import com.thaiprompt.smschecker.ui.components.StatusBarTone
+import com.thaiprompt.smschecker.ui.components.aeroHeaderBleed
+import com.thaiprompt.smschecker.ui.theme.AeroPalette
+import com.thaiprompt.smschecker.ui.theme.AppStrings
 import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 
+/**
+ * Dashboard — Millennium 3D / Frutiger Aero (design 01).
+ * Green header bleed, "เงินเข้าวันนี้" hero with sparkline, 2x2 stat grid with
+ * corner orbs, popular-bank bars and a recent-transactions glass card.
+ */
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel(),
@@ -54,6 +73,8 @@ fun DashboardScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val strings = LocalAppStrings.current
+
+    StatusBarTone(HeaderTone.Green)
 
     // Show Report Dialog
     if (state.showReportDialog && state.selectedTransaction != null) {
@@ -68,480 +89,285 @@ fun DashboardScreen(
         )
     }
 
-    LazyColumn(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(premiumBackgroundBrush()),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
+            .aeroHeaderBleed(HeaderTone.Green)
     ) {
-        // ═══════════════════════════════════════
-        // GRADIENT HEADER with logo & controls
-        // ═══════════════════════════════════════
-        item(key = "header") {
-            GradientHeader(isMonitoring = state.isMonitoring) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.logo),
-                            contentDescription = "Logo",
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                        )
-                        Column {
-                            Text(
-                                "SMS Payment",
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            Text(
-                                "Checker",
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF66BB6A)
-                            )
-                        }
-                    }
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            if (state.isMonitoring) strings.running else strings.stopped,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (state.isMonitoring) AppColors.CreditGreen else AppColors.DebitRed
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Switch(
-                            checked = state.isMonitoring,
-                            onCheckedChange = { viewModel.toggleMonitoring() },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = AppColors.CreditGreen,
-                                checkedTrackColor = AppColors.CreditGreen.copy(alpha = 0.3f)
-                            )
-                        )
-                    }
-                }
-            }
-        }
-
-        item(key = "spacer_1") { Spacer(modifier = Modifier.height(16.dp)) }
-
-        // ═══════════════════════════════════════
-        // NET BALANCE CARD (big prominent card)
-        // ═══════════════════════════════════════
-        item(key = "net_balance") {
-            val netBalance = state.todayCredit - state.todayDebit
-            val netColor = if (netBalance >= 0) AppColors.CreditGreen else AppColors.DebitRed
-            val netPrefix = if (netBalance >= 0) "+" else ""
-
-            AeroGlass(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                cornerRadius = 26.dp,
-                contentPadding = PaddingValues(20.dp)
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        strings.netBalance,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        letterSpacing = 1.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "$netPrefix${strings.bahtSymbol}${String.format("%,.2f", kotlin.math.abs(netBalance))}",
-                        style = MaterialTheme.typography.headlineLarge,
-                        fontWeight = FontWeight.Black,
-                        color = netColor
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        MiniStat(
-                            label = strings.todayIncome,
-                            value = "+${strings.bahtSymbol}${String.format("%,.0f", state.todayCredit)}",
-                            color = AppColors.CreditGreen
-                        )
-                        Box(
-                            modifier = Modifier
-                                .width(1.dp)
-                                .height(32.dp)
-                                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-                        )
-                        MiniStat(
-                            label = strings.todayExpense,
-                            value = "-${strings.bahtSymbol}${String.format("%,.0f", state.todayDebit)}",
-                            color = AppColors.DebitRed
-                        )
-                        Box(
-                            modifier = Modifier
-                                .width(1.dp)
-                                .height(32.dp)
-                                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-                        )
-                        MiniStat(
-                            label = strings.todayCount,
-                            value = "${state.todayTransactionCount}",
-                            color = AppColors.InfoBlue
-                        )
-                    }
-                }
-            }
-        }
-
-        item(key = "spacer_2") { Spacer(modifier = Modifier.height(12.dp)) }
-
-        // ═══════════════════════════════════════
-        // SYSTEM OVERVIEW - 4 stat boxes in grid
-        // ═══════════════════════════════════════
-        item(key = "system_overview") {
-            SectionTitle(
-                strings.systemOverview,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-        }
-        item(key = "spacer_overview") { Spacer(modifier = Modifier.height(8.dp)) }
-
-        item(key = "stat_grid") {
-            val syncRate = if (state.totalTransactionCount > 0) {
-                (state.syncedCount * 100) / state.totalTransactionCount
-            } else 0
-
-            Column(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    StatBox(
-                        modifier = Modifier.weight(1f),
-                        icon = Icons.Default.Sms,
-                        label = strings.totalMessages,
-                        value = "${state.totalTransactionCount}",
-                        color = AppColors.InfoBlue
-                    )
-                    StatBox(
-                        modifier = Modifier.weight(1f),
-                        icon = Icons.Default.CloudDone,
-                        label = strings.syncRate,
-                        value = "$syncRate%",
-                        color = AppColors.CreditGreen
-                    )
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    StatBox(
-                        modifier = Modifier.weight(1f),
-                        icon = Icons.Default.Dns,
-                        label = strings.connectedServers,
-                        value = "${state.serverHealthList.size}",
-                        color = AppColors.GoldAccent
-                    )
-                    StatBox(
-                        modifier = Modifier.weight(1f),
-                        icon = Icons.Default.PendingActions,
-                        label = strings.offlineQueueLabel,
-                        value = "${state.offlineQueueCount}",
-                        color = if (state.offlineQueueCount > 0) AppColors.WarningOrange else AppColors.CreditGreen
-                    )
-                }
-            }
-        }
-
-        item(key = "spacer_3") { Spacer(modifier = Modifier.height(12.dp)) }
-
-        // ═══════════════════════════════════════
-        // SYNC STATUS CARD
-        // ═══════════════════════════════════════
-        item(key = "sync_status") {
-            GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (state.unsyncedCount > 0)
-                                        AppColors.WarningOrange.copy(alpha = 0.15f)
-                                    else
-                                        AppColors.CreditGreen.copy(alpha = 0.15f)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Sync,
-                                contentDescription = null,
-                                tint = if (state.unsyncedCount > 0) AppColors.WarningOrange else AppColors.CreditGreen,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                strings.syncStatus,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                            Text(
-                                if (state.unsyncedCount > 0) "${state.unsyncedCount} ${strings.syncPending}"
-                                else strings.syncComplete,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    if (state.unsyncedCount > 0) {
-                        FilledTonalButton(
-                            onClick = { viewModel.syncAll() },
-                            colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = AppColors.GoldAccent.copy(alpha = 0.2f),
-                                contentColor = AppColors.GoldAccent
-                            )
-                        ) {
-                            Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(strings.syncButton)
-                        }
-                    }
-                }
-
-                // Sync progress bar
-                if (state.totalTransactionCount > 0) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    val progress = if (state.totalTransactionCount > 0) {
-                        state.syncedCount.toFloat() / state.totalTransactionCount.toFloat()
-                    } else 0f
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        LinearProgressIndicator(
-                            progress = progress.coerceIn(0f, 1f),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp)),
-                            color = AppColors.CreditGreen,
-                            trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                        )
-                        Text(
-                            "${state.syncedCount}/${state.totalTransactionCount}",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
-
-        // ═══════════════════════════════════════
-        // SERVER HEALTH
-        // ═══════════════════════════════════════
-        if (state.serverHealthList.isNotEmpty()) {
-            item(key = "spacer_server") { Spacer(modifier = Modifier.height(12.dp)) }
-            item(key = "server_health") {
-                GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            // ── header: logo coin + title + connection chip ──
+            item(key = "header") {
+                AeroHeader {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            strings.serverStatus,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Medium,
-                            color = AppColors.GoldAccent
-                        )
-                        // Server count badge
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(AppColors.GoldAccent.copy(alpha = 0.15f))
-                                .padding(horizontal = 8.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                "${state.serverHealthList.size}",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = AppColors.GoldAccent
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    state.serverHealthList.forEach { health ->
-                        val statusColor = when {
-                            health.isDeviceInactive -> AppColors.WarningOrange
-                            health.neverSynced -> AppColors.GoldAccent
-                            health.isReachable -> AppColors.CreditGreen
-                            else -> AppColors.DebitRed
-                        }
-                        val statusText = when {
-                            health.isDeviceInactive -> "ปิดการใช้งาน"
-                            health.neverSynced -> strings.serverWaiting
-                            health.isReachable -> {
-                                val elapsed = health.lastSyncAt?.let {
-                                    val mins = (System.currentTimeMillis() - it) / 60000
-                                    if (mins < 1) strings.serverJustNow
-                                    else if (mins < 60) "${mins}m ago"
-                                    else "${mins / 60}h ago"
-                                } ?: strings.serverConnected
-                                elapsed
-                            }
-                            else -> strings.serverOffline
-                        }
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .clip(CircleShape)
-                                        .background(statusColor)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    health.serverName,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onBackground
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .shadow(6.dp, RoundedCornerShape(30), spotColor = AeroPalette.NavyDeep)
+                                    .clip(RoundedCornerShape(30))
+                                    .background(Color.White)
+                                    .border(1.5.dp, Color(0xE6FFFFFF), RoundedCornerShape(30)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Image(
+                                    painter = painterResource(id = R.drawable.logo),
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(0.86f)
                                 )
                             }
-                            Text(
-                                statusText,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = statusColor,
-                                fontSize = 11.sp
-                            )
+                            Column {
+                                Text(
+                                    strings.aeroDashboardTitle,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    if (state.isMonitoring) strings.monitoringActive else strings.monitoringPaused,
+                                    fontSize = 12.5.sp,
+                                    color = Color.White.copy(alpha = 0.92f),
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                        // connection chip — tap toggles SMS monitoring (replaces the old Switch)
+                        Box(modifier = Modifier.clickable { viewModel.toggleMonitoring() }) {
+                            if (state.isMonitoring) {
+                                AeroChip(
+                                    strings.aeroConnected,
+                                    style = ChipStyle.Green,
+                                    leadingIcon = Icons.Default.Bolt
+                                )
+                            } else {
+                                AeroChip(strings.stopped, style = ChipStyle.Glass)
+                            }
                         }
                     }
                 }
             }
-        }
 
-        // ═══════════════════════════════════════
-        // REVENUE CHART (เงินเข้า vs เงินออก ย้อนหลัง 7 วัน)
-        // ═══════════════════════════════════════
-        item(key = "spacer_revenue") { Spacer(modifier = Modifier.height(12.dp)) }
-        item(key = "revenue_chart") {
-            RevenueChartCard(
-                data = state.dailyIncomeExpense,
-                onTap = onChartTap,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-        }
-
-        // ═══════════════════════════════════════
-        // RECENT TRANSACTIONS
-        // ═══════════════════════════════════════
-        item(key = "spacer_tx_header") { Spacer(modifier = Modifier.height(16.dp)) }
-        item(key = "tx_header") {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SectionTitle(
-                    strings.recentTransactions,
-                    modifier = Modifier.weight(1f)
-                )
-                if (state.recentTransactions.isNotEmpty()) {
-                    Text(
-                        "${state.recentTransactions.size} ${strings.totalLabel}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp
-                    )
+            // ── hero: เงินเข้าวันนี้ + sparkline (tap → revenue detail) ──
+            item(key = "hero") {
+                val incomeSeries = state.dailyIncomeExpense.map { it.credit.toFloat() }
+                val dayLabels = remember(state.dailyIncomeExpense) {
+                    state.dailyIncomeExpense.map { thaiDayAbbrev(it.date) }
                 }
-            }
-        }
-        item(key = "spacer_tx") { Spacer(modifier = Modifier.height(8.dp)) }
-
-        // Transaction List
-        if (state.recentTransactions.isEmpty() && !state.isLoading) {
-            item(key = "empty_tx") {
-                Box(
+                AeroGlass(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center
+                        .padding(horizontal = 16.dp)
+                        .clickable(onClick = onChartTap),
+                    cornerRadius = 26.dp,
+                    contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 16.dp)
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(
-                            modifier = Modifier
-                                .size(80.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Inbox,
-                                contentDescription = null,
-                                modifier = Modifier.size(40.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
+                    Column(modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            strings.noTransactions,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onBackground
+                            strings.aeroIncomeToday,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = AeroPalette.InkSoft
                         )
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            strings.smsAutoDisplay,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        HeroAmount(amount = state.todayCredit, strings = strings)
+                        if (incomeSeries.size >= 2) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            AeroSparkline(
+                                points = incomeSeries,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                dayLabels.forEach {
+                                    Text(it, fontSize = 11.sp, color = AeroPalette.InkFaint)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            item(key = "spacer_hero") { Spacer(modifier = Modifier.height(13.dp)) }
+
+            // ── 2×2 stat grid ──
+            item(key = "stat_grid") {
+                val successRate = if (state.totalTransactionCount > 0) {
+                    (state.syncedCount * 100) / state.totalTransactionCount
+                } else 0
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(11.dp)
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+                        AeroStatTile(
+                            label = strings.todayCount,
+                            value = "${state.todayTransactionCount}",
+                            orbIcon = Icons.Default.ChatBubbleOutline,
+                            orbGradient = OrbGradients.Aqua,
+                            valueColor = AeroPalette.NavyDeep,
+                            modifier = Modifier.weight(1f)
+                        )
+                        AeroStatTile(
+                            label = strings.synced,
+                            value = "${state.syncedCount}",
+                            orbIcon = Icons.Default.Check,
+                            orbGradient = OrbGradients.Green,
+                            valueColor = AeroPalette.GreenDeep,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+                        AeroStatTile(
+                            label = strings.pendingReview,
+                            value = "${state.pendingApprovalCount}",
+                            orbIcon = Icons.Default.Schedule,
+                            orbGradient = OrbGradients.Gold,
+                            valueColor = AeroPalette.GoldText,
+                            modifier = Modifier.weight(1f)
+                        )
+                        AeroStatTile(
+                            label = strings.successRate,
+                            value = "$successRate%",
+                            orbIcon = Icons.Default.Shield,
+                            orbGradient = OrbGradients.Navy,
+                            valueColor = AeroPalette.NavyDeep,
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
             }
-        }
 
-        items(
-            items = state.recentTransactions,
-            key = { "dash_${it.id}" }
-        ) { transaction ->
-            TransactionItem(
-                transaction = transaction,
-                modifier = Modifier.padding(horizontal = 16.dp),
-                onLongPress = { viewModel.showReportDialog(transaction) }
-            )
-        }
+            // ── popular banks ──
+            val bankStats = topBanks(state.recentTransactions)
+            if (bankStats.isNotEmpty()) {
+                item(key = "banks_header") {
+                    Spacer(modifier = Modifier.height(18.dp))
+                    AeroSectionHeader(
+                        title = strings.aeroPopularBanks,
+                        leadingIcon = Icons.Default.GridView,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    Spacer(modifier = Modifier.height(9.dp))
+                }
+                item(key = "banks_card") {
+                    val topCount = bankStats.first().second
+                    AeroGlass(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        cornerRadius = 18.dp,
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 15.dp)
+                    ) {
+                        Column {
+                            bankStats.forEachIndexed { index, (bank, count) ->
+                                BankBar(
+                                    bankCode = bank,
+                                    bankLabel = thaiBankLabel(bank, strings),
+                                    fraction = if (topCount > 0) count.toFloat() / topCount else 0f,
+                                    valueText = "$count",
+                                    showDivider = index > 0
+                                )
+                            }
+                        }
+                    }
+                }
+            }
 
-        // Bottom spacing for nav bar
-        item(key = "bottom_space") { Spacer(modifier = Modifier.height(16.dp)) }
+            // ── recent transactions ──
+            item(key = "tx_header") {
+                Spacer(modifier = Modifier.height(18.dp))
+                AeroSectionHeader(
+                    title = strings.recentTransactions,
+                    leadingIcon = Icons.Default.Schedule,
+                    actionText = if (state.unsyncedCount > 0) "${strings.syncButton} (${state.unsyncedCount})" else null,
+                    onAction = if (state.unsyncedCount > 0) ({ viewModel.syncAll() }) else null,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                Spacer(modifier = Modifier.height(9.dp))
+            }
+
+            if (state.recentTransactions.isEmpty() && !state.isLoading) {
+                item(key = "empty_tx") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(
+                                modifier = Modifier
+                                    .size(80.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Inbox,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(40.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                strings.noTransactions,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                strings.smsAutoDisplay,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
+            } else if (state.recentTransactions.isNotEmpty()) {
+                item(key = "tx_card") {
+                    AeroGlass(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        cornerRadius = 18.dp,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Column {
+                            state.recentTransactions.forEachIndexed { index, transaction ->
+                                if (index > 0) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(1.dp)
+                                            .background(Color(0x4D9FB8C8))
+                                    )
+                                }
+                                RecentTxnRow(
+                                    transaction = transaction,
+                                    strings = strings,
+                                    onLongPress = { viewModel.showReportDialog(transaction) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Bottom spacing for nav bar
+            item(key = "bottom_space") { Spacer(modifier = Modifier.height(16.dp)) }
+        }
     }
 }
 
@@ -549,349 +375,153 @@ fun DashboardScreen(
 // HELPER COMPOSABLES
 // ═══════════════════════════════════════
 
+/** ฿48,250 (40sp Black navy) + .37 (24sp faint) — reference hero amount. */
 @Composable
-private fun MiniStat(
-    label: String,
-    value: String,
-    color: Color
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+private fun HeroAmount(amount: Double, strings: AppStrings) {
+    val whole = String.format(Locale.US, "%,d", amount.toLong())
+    val decimals = String.format(Locale.US, "%02d", ((amount - amount.toLong()) * 100).toInt().coerceIn(0, 99))
+    Row(verticalAlignment = Alignment.Bottom) {
         Text(
-            value,
-            style = MaterialTheme.typography.titleSmall,
+            "${strings.bahtSymbol}$whole",
+            fontSize = 40.sp,
+            fontWeight = FontWeight.Black,
+            color = AeroPalette.NavyDeep,
+            letterSpacing = (-1).sp,
+            lineHeight = 44.sp
+        )
+        Text(
+            ".$decimals",
+            fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
-            color = color
-        )
-        Text(
-            label,
-            style = MaterialTheme.typography.bodySmall,
-            fontSize = 10.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            maxLines = 1
+            color = AeroPalette.InkFaint,
+            modifier = Modifier.padding(bottom = 2.dp)
         )
     }
 }
 
-@Composable
-private fun StatBox(
-    modifier: Modifier = Modifier,
-    icon: ImageVector,
-    label: String,
-    value: String,
-    color: Color
-) {
-    // Millennium 3D stat tile: glass card with a glossy orb icon in the corner.
-    val orbHi = Color(
-        red = color.red + (1f - color.red) * 0.4f,
-        green = color.green + (1f - color.green) * 0.4f,
-        blue = color.blue + (1f - color.blue) * 0.4f
-    )
-    AeroGlass(
-        modifier = modifier,
-        cornerRadius = 18.dp,
-        contentPadding = PaddingValues(horizontal = 15.dp, vertical = 14.dp)
-    ) {
-        OrbIcon(
-            icon = icon,
-            gradient = listOf(orbHi, color),
-            size = 30.dp,
-            modifier = Modifier.align(Alignment.TopEnd)
-        )
-        Column {
-            Text(
-                label,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                value,
-                fontWeight = FontWeight.Black,
-                fontSize = 26.sp,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1
-            )
-        }
-    }
-}
-
-/**
- * RevenueChartCard — กราฟรายได้ย้อนหลัง 7 วัน
- * เส้นเขียว = เงินเข้า, เส้นแดง = เงินออก, ในกราฟเดียวกัน
- * แตะที่การ์ด → ไปหน้า detail
- */
-@Composable
-private fun RevenueChartCard(
-    data: List<DailyIncomeExpense>,
-    onTap: () -> Unit = {},
-    modifier: Modifier = Modifier
-) {
-    val strings = LocalAppStrings.current
-
-    val totalIncome = remember(data) { data.sumOf { it.credit } }
-    val totalExpense = remember(data) { data.sumOf { it.debit } }
-    val net = totalIncome - totalExpense
-    val netColor = if (net >= 0) AppColors.CreditGreen else AppColors.DebitRed
-
-    GlassCard(modifier = modifier.clickable(onClick = onTap)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    strings.revenueChartTitle,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = AppColors.GoldAccent
-                )
-                Text(
-                    strings.last7Days,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            // Net summary chip
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(netColor.copy(alpha = 0.15f))
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = "${if (net >= 0) "+" else ""}${strings.bahtSymbol}${String.format("%,.0f", net)}",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = netColor
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // === กราฟเส้น ===
-        if (data.isEmpty() || (totalIncome == 0.0 && totalExpense == 0.0)) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(160.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    strings.noTransactions,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
-            }
-        } else {
-            IncomeExpenseLineChart(
-                data = data,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // === Legend + ยอดรวม ===
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            LegendStat(
-                color = AppColors.CreditGreen,
-                label = strings.todayIncome,
-                value = "+${strings.bahtSymbol}${String.format("%,.0f", totalIncome)}"
-            )
-            Box(
-                modifier = Modifier
-                    .width(1.dp)
-                    .height(28.dp)
-                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-            )
-            LegendStat(
-                color = AppColors.DebitRed,
-                label = strings.todayExpense,
-                value = "-${strings.bahtSymbol}${String.format("%,.0f", totalExpense)}"
-            )
-        }
-    }
-}
-
-@Composable
-private fun LegendStat(color: Color, label: String, value: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(color)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                label,
-                style = MaterialTheme.typography.bodySmall,
-                fontSize = 10.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            value,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            fontSize = 13.sp,
-            color = color
-        )
-    }
-}
-
-@Composable
-fun SummaryCard(
-    modifier: Modifier = Modifier,
-    title: String,
-    amount: Double,
-    icon: ImageVector,
-    color: Color,
-    gradientBrush: Brush = Brush.linearGradient(
-        colors = listOf(color.copy(alpha = 0.15f), color.copy(alpha = 0.05f))
-    )
-) {
-    val strings = LocalAppStrings.current
-
-    Card(
-        modifier = modifier
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp)),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .background(gradientBrush)
-                .padding(16.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(color.copy(alpha = 0.2f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
-                }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                title,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                "${strings.bahtSymbol}${String.format("%,.2f", amount)}",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = color
-            )
-        }
-    }
-}
-
+/** One recent-transaction glass row (.txn): coin + meta + arrow-coded amount. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun TransactionItem(
+private fun RecentTxnRow(
     transaction: BankTransaction,
-    modifier: Modifier = Modifier,
+    strings: AppStrings,
     onLongPress: (() -> Unit)? = null
 ) {
-    val strings = LocalAppStrings.current
     val isCredit = transaction.type == TransactionType.CREDIT
-    val amountColor = if (isCredit) AppColors.CreditGreen else AppColors.DebitRed
-    val dateFormat = SimpleDateFormat("HH:mm dd/MM", Locale.getDefault())
+    val amountColor = if (isCredit) AeroPalette.GreenDeep else AeroPalette.Red
+    val timeFormat = remember { SimpleDateFormat("H:mm", Locale.getDefault()) }
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = {}, onLongClick = { onLongPress?.invoke() })
+            .padding(horizontal = 8.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(11.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(
-                    if (onLongPress != null) {
-                        Modifier.combinedClickable(
-                            onClick = {},
-                            onLongClick = onLongPress
-                        )
-                    } else Modifier
+        BankCoin(bankCode = transaction.bank, size = 40.dp)
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    transaction.bank,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1
                 )
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+                if (transaction.isSynced) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = null,
+                        tint = AeroPalette.GreenDeep,
+                        modifier = Modifier
+                            .padding(start = 4.dp)
+                            .size(13.dp)
+                    )
+                }
+            }
+            Text(
+                "${strings.aeroAccountPrefix} ${transaction.getMaskedAccount()} · " +
+                    if (isCredit) strings.aeroIncomingLabel else strings.aeroOutgoingLabel,
+                fontSize = 11.sp,
+                color = AeroPalette.InkFaint,
+                maxLines = 1
+            )
+        }
+        Column(horizontalAlignment = Alignment.End) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                BankLogoCircle(bankCode = transaction.bank, size = 44.dp)
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text(
-                        transaction.bank,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Text(
-                        dateFormat.format(Date(transaction.timestamp)),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp
-                    )
-                    if (transaction.senderOrReceiver.isNotBlank()) {
-                        Text(
-                            transaction.senderOrReceiver.take(30),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 11.sp
-                        )
-                    }
-                }
-            }
-
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    transaction.getFormattedAmount(),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = amountColor
+                Icon(
+                    if (isCredit) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
+                    contentDescription = null,
+                    tint = amountColor,
+                    modifier = Modifier.size(13.dp)
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(if (transaction.isSynced) AppColors.CreditGreen else AppColors.WarningOrange)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        if (transaction.isSynced) strings.synced else strings.pending,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Text(
+                    "฿${String.format(Locale.US, "%,.2f", transaction.getAmountAsBigDecimal())}",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = amountColor,
+                    maxLines = 1
+                )
             }
+            Text(
+                timeFormat.format(Date(transaction.timestamp)),
+                fontSize = 10.5.sp,
+                color = AeroPalette.InkFaint
+            )
         }
     }
+}
+
+// ═══════════════════════════════════════
+// DATA HELPERS
+// ═══════════════════════════════════════
+
+/** Top 4 banks by transaction count from recent activity. */
+private fun topBanks(transactions: List<BankTransaction>): List<Pair<String, Int>> =
+    transactions
+        .groupingBy { it.bank }
+        .eachCount()
+        .entries
+        .sortedByDescending { it.value }
+        .take(4)
+        .map { it.key to it.value }
+
+/** Thai weekday abbreviation (จ อ พ พฤ ศ ส อา) from a yyyy-MM-dd key. */
+private fun thaiDayAbbrev(dateKey: String): String = try {
+    val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(dateKey)
+    when (java.util.Calendar.getInstance().apply { time = date!! }.get(java.util.Calendar.DAY_OF_WEEK)) {
+        java.util.Calendar.MONDAY -> "จ"
+        java.util.Calendar.TUESDAY -> "อ"
+        java.util.Calendar.WEDNESDAY -> "พ"
+        java.util.Calendar.THURSDAY -> "พฤ"
+        java.util.Calendar.FRIDAY -> "ศ"
+        java.util.Calendar.SATURDAY -> "ส"
+        else -> "อา"
+    }
+} catch (e: Exception) {
+    ""
+}
+
+/** Thai display name for a bank code (from AppStrings). */
+private fun thaiBankLabel(code: String, strings: AppStrings): String = when (code.uppercase()) {
+    "KBANK" -> strings.bankKbank
+    "SCB" -> strings.bankScb
+    "KTB" -> strings.bankKtb
+    "BBL" -> strings.bankBbl
+    "GSB" -> strings.bankGsb
+    "BAY" -> strings.bankBay
+    "TTB" -> strings.bankTtb
+    "PROMPTPAY" -> strings.bankPromptPay
+    "CIMB" -> strings.bankCimb
+    "KKP" -> strings.bankKkp
+    "LH" -> strings.bankLh
+    "TISCO" -> strings.bankTisco
+    "UOB" -> strings.bankUob
+    "ICBC" -> strings.bankIcbc
+    "BAAC" -> strings.bankBaac
+    else -> ""
 }

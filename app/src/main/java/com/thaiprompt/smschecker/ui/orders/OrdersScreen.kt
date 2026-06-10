@@ -2,11 +2,9 @@
 
 package com.thaiprompt.smschecker.ui.orders
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -14,46 +12,69 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.Assignment
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.thaiprompt.smschecker.data.model.ApprovalStatus
 import com.thaiprompt.smschecker.data.model.MatchConfidence
 import com.thaiprompt.smschecker.data.model.OrderApproval
+import com.thaiprompt.smschecker.ui.components.AeroChip
+import com.thaiprompt.smschecker.ui.components.AeroGlass
+import com.thaiprompt.smschecker.ui.components.AeroHeader
 import com.thaiprompt.smschecker.ui.components.AeroPillChip
-import com.thaiprompt.smschecker.ui.components.BankLogoCircle
+import com.thaiprompt.smschecker.ui.components.BankCoin
+import com.thaiprompt.smschecker.ui.components.ChipStyle
+import com.thaiprompt.smschecker.ui.components.ChromeSegmented
 import com.thaiprompt.smschecker.ui.components.DateRangePickerDialog
-import com.thaiprompt.smschecker.ui.components.GlassCard
 import com.thaiprompt.smschecker.ui.components.GlossButton
 import com.thaiprompt.smschecker.ui.components.GlossIconButton
 import com.thaiprompt.smschecker.ui.components.GlossStyle
-import com.thaiprompt.smschecker.ui.components.GradientHeader
-import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
+import com.thaiprompt.smschecker.ui.components.GlossyOrb
+import com.thaiprompt.smschecker.ui.components.HeaderTone
+import com.thaiprompt.smschecker.ui.components.StatusBarTone
+import com.thaiprompt.smschecker.ui.components.aeroHeaderBleed
+import com.thaiprompt.smschecker.ui.theme.AeroPalette
 import com.thaiprompt.smschecker.ui.theme.AppColors
 import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 import java.text.SimpleDateFormat
 import java.util.*
 
+/**
+ * Orders — Millennium 3D / Frutiger Aero (design 02).
+ * Navy header bleed, chrome segmented (รอ/อนุมัติ/ทั้งหมด), glass order cards
+ * with the green-decimal unique amount, action strip, and a floating bulk bar.
+ */
 @Composable
 fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     var showDatePicker by remember { mutableStateOf(false) }
+    var showSearch by remember { mutableStateOf(false) }
     val strings = LocalAppStrings.current
     val snackbarHostState = remember { SnackbarHostState() }
+
+    StatusBarTone(HeaderTone.Navy)
 
     // Show Snackbar when approve/reject action completes
     LaunchedEffect(state.actionResult) {
@@ -77,7 +98,7 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(premiumBackgroundBrush()),
+                .aeroHeaderBleed(HeaderTone.Navy),
             contentAlignment = Alignment.Center
         ) {
             Column(
@@ -104,439 +125,367 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(24.dp))
-                Button(onClick = { viewModel.refresh() }) {
-                    Icon(Icons.Default.Refresh, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("ลองอีกครั้ง")
-                }
+                GlossButton(
+                    text = "ลองอีกครั้ง",
+                    onClick = { viewModel.refresh() },
+                    style = GlossStyle.Green,
+                    leadingIcon = Icons.Default.Refresh
+                )
             }
         }
         return
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-    LazyColumn(
+    val segIndex = when (state.statusFilter) {
+        ApprovalStatus.PENDING_REVIEW -> 0
+        ApprovalStatus.AUTO_APPROVED, ApprovalStatus.MANUALLY_APPROVED -> 1
+        else -> 2
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(premiumBackgroundBrush()),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
+            .aeroHeaderBleed(HeaderTone.Navy)
     ) {
-        // Gradient Header
-        item {
-            GradientHeader {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = if (state.pendingCount > 0) 84.dp else 8.dp)
+        ) {
+            // ── navy app bar: title + search/refresh orbs + chrome segmented ──
+            item(key = "header") {
+                AeroHeader {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                strings.aeroOrdersTitle,
+                                fontSize = 21.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                "${state.pendingCount} ${strings.aeroPendingApprovalSuffix}",
+                                fontSize = 12.5.sp,
+                                color = Color.White.copy(alpha = 0.92f),
+                                maxLines = 1
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // refresh orb (kept feature; shows spinner while refreshing)
+                            GlossyOrb(
+                                gradient = listOf(Color(0x99FFFFFF), Color(0x22FFFFFF)),
+                                size = 38.dp,
+                                modifier = Modifier.clickable { viewModel.refresh() }
+                            ) {
+                                if (isRefreshing) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(17.dp),
+                                        strokeWidth = 2.dp,
+                                        color = Color(0xFF2A3A52)
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Default.Refresh,
+                                        contentDescription = strings.refresh,
+                                        tint = Color(0xFF2A3A52),
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
+                            }
+                            // search orb — toggles the search/filter panel
+                            GlossyOrb(
+                                gradient = listOf(Color(0x99FFFFFF), Color(0x22FFFFFF)),
+                                size = 38.dp,
+                                modifier = Modifier.clickable { showSearch = !showSearch }
+                            ) {
+                                Icon(
+                                    Icons.Default.Search,
+                                    contentDescription = strings.searchPlaceholder,
+                                    tint = Color(0xFF2A3A52),
+                                    modifier = Modifier.size(19.dp)
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+                    ChromeSegmented(
+                        options = listOf(
+                            "${strings.aeroSegPending} ${state.pendingCount}",
+                            strings.aeroSegApproved,
+                            strings.aeroSegAll
+                        ),
+                        selectedIndex = segIndex,
+                        onSelect = { index ->
+                            when (index) {
+                                0 -> viewModel.setStatusFilter(ApprovalStatus.PENDING_REVIEW)
+                                1 -> viewModel.setStatusFilter(ApprovalStatus.AUTO_APPROVED)
+                                else -> viewModel.setStatusFilter(null)
+                            }
+                        }
+                    )
+                }
+            }
+
+            // ── expandable search / extended filters panel ──
+            if (showSearch) {
+                item(key = "search_panel") {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        OutlinedTextField(
+                            value = state.searchQuery,
+                            onValueChange = { viewModel.setSearchQuery(it) },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text(strings.searchPlaceholder, fontSize = 13.sp) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Search,
+                                    contentDescription = null,
+                                    tint = AeroPalette.InkFaint
+                                )
+                            },
+                            trailingIcon = {
+                                if (state.searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { viewModel.clearSearch() }) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = strings.clearFilter,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(50),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = AeroPalette.Green,
+                                unfocusedBorderColor = Color(0xB3FFFFFF),
+                                focusedContainerColor = Color(0xB3FFFFFF),
+                                unfocusedContainerColor = Color(0x8CFFFFFF)
+                            ),
+                            textStyle = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        // full status filters (รวมปฏิเสธ/ยกเลิก) — reachable when expanded
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            val filters = listOf<Pair<String, ApprovalStatus?>>(
+                                strings.filterAll to null,
+                                strings.filterPendingReview to ApprovalStatus.PENDING_REVIEW,
+                                strings.filterAutoApproved to ApprovalStatus.AUTO_APPROVED,
+                                strings.filterApproved to ApprovalStatus.MANUALLY_APPROVED,
+                                strings.filterRejected to ApprovalStatus.REJECTED,
+                                strings.statusCancelled to ApprovalStatus.CANCELLED
+                            )
+                            items(filters) { (label, status) ->
+                                AeroPillChip(
+                                    text = label,
+                                    selected = state.statusFilter == status,
+                                    onClick = { viewModel.setStatusFilter(status) }
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (state.servers.size > 1) {
+                                LazyRow(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    item {
+                                        AeroPillChip(
+                                            text = strings.filterAll,
+                                            selected = state.serverFilter == null,
+                                            onClick = { viewModel.setServerFilter(null) }
+                                        )
+                                    }
+                                    items(state.servers) { server ->
+                                        AeroPillChip(
+                                            text = server.name,
+                                            selected = state.serverFilter == server.id,
+                                            onClick = { viewModel.setServerFilter(server.id) }
+                                        )
+                                    }
+                                }
+                            } else {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                            GlossButton(
+                                text = if (state.dateFrom != null) strings.filtered else strings.filterDate,
+                                onClick = { showDatePicker = true },
+                                style = GlossStyle.Ghost,
+                                leadingIcon = Icons.Default.DateRange,
+                                fontSize = 12,
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                            )
+                            if (state.dateFrom != null) {
+                                GlossIconButton(
+                                    icon = Icons.Default.Close,
+                                    onClick = { viewModel.clearDateRange() },
+                                    style = GlossStyle.Ghost,
+                                    size = 32.dp,
+                                    contentDescription = strings.clearFilter
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                }
+            }
+
+            // ── empty state ──
+            if (state.orders.isEmpty() && !state.isLoading) {
+                item(key = "empty") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(48.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(
+                                modifier = Modifier
+                                    .size(80.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Assignment,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(40.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                strings.noOrders,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Text(
+                                strings.matchedOrdersWillShow,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ── order cards ──
+            items(
+                items = state.orders,
+                key = { "order_${it.id}" }
+            ) { order ->
+                OrderCard(
+                    order = order,
+                    onApprove = { viewModel.approveOrder(order) },
+                    onForceApprove = { viewModel.forceApproveOrder(order) },
+                    onReject = { viewModel.rejectOrder(order) },
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                Spacer(modifier = Modifier.height(13.dp))
+            }
+
+            // ── load more (manual paging) ──
+            if (state.hasMorePages && !state.isLoading) {
+                item(key = "load_more_button") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (state.isLoadingMore) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp,
+                                color = AeroPalette.GreenLo
+                            )
+                        } else {
+                            GlossButton(
+                                text = "โหลดต่อ (${state.orders.size}/${state.totalCount})",
+                                onClick = { viewModel.loadMoreOrders() },
+                                style = GlossStyle.Ghost,
+                                fontSize = 13,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── floating bulk-approve bar (.glass pinned above the tab bar) ──
+        if (state.pendingCount > 0) {
+            AeroGlass(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .fillMaxWidth(),
+                cornerRadius = 18.dp,
+                contentPadding = PaddingValues(start = 16.dp, top = 9.dp, end = 10.dp, bottom = 9.dp)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            strings.ordersTitle,
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                        Text(
-                            strings.approvalManagement,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF66BB6A) // Light green accent
-                        )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (state.pendingCount > 0) {
-                            FilledTonalButton(
-                                onClick = { viewModel.bulkApproveAll() },
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = AppColors.CreditGreen.copy(alpha = 0.2f),
-                                    contentColor = AppColors.CreditGreen
-                                ),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(strings.approveAll, fontSize = 12.sp)
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                        }
-                        IconButton(onClick = { viewModel.refresh() }) {
-                            if (isRefreshing) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp,
-                                    color = Color(0xFF66BB6A)
-                                )
-                            } else {
-                                Icon(Icons.Default.Refresh, contentDescription = strings.refresh, tint = Color(0xFF66BB6A))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        item { Spacer(modifier = Modifier.height(12.dp)) }
-
-        // Search Bar
-        item {
-            OutlinedTextField(
-                value = state.searchQuery,
-                onValueChange = { viewModel.setSearchQuery(it) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                placeholder = { Text(strings.searchPlaceholder, fontSize = 13.sp) },
-                leadingIcon = {
-                    Icon(
-                        Icons.Default.Search,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                    )
-                },
-                trailingIcon = {
-                    if (state.searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.clearSearch() }) {
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = strings.clearFilter,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = AppColors.GoldAccent,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
-                ),
-                textStyle = MaterialTheme.typography.bodyMedium
-            )
-        }
-
-        item { Spacer(modifier = Modifier.height(8.dp)) }
-
-        // Status Filter Chips
-        item {
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(horizontal = 16.dp)
-            ) {
-                val filters = listOf<Pair<String, ApprovalStatus?>>(
-                    strings.filterAll to null,
-                    strings.filterPendingReview to ApprovalStatus.PENDING_REVIEW,
-                    strings.filterAutoApproved to ApprovalStatus.AUTO_APPROVED,
-                    strings.filterApproved to ApprovalStatus.MANUALLY_APPROVED,
-                    strings.filterRejected to ApprovalStatus.REJECTED,
-                    strings.statusCancelled to ApprovalStatus.CANCELLED
-                )
-                items(filters) { (label, status) ->
-                    AeroPillChip(
-                        text = label,
-                        selected = state.statusFilter == status,
-                        onClick = { viewModel.setStatusFilter(status) }
-                    )
-                }
-            }
-        }
-
-        item { Spacer(modifier = Modifier.height(8.dp)) }
-
-        // Server Filter + Date Range
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (state.servers.size > 1) {
-                    LazyRow(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        item {
-                            AeroPillChip(
-                                text = strings.filterAll,
-                                selected = state.serverFilter == null,
-                                onClick = { viewModel.setServerFilter(null) }
-                            )
-                        }
-                        items(state.servers) { server ->
-                            AeroPillChip(
-                                text = server.name,
-                                selected = state.serverFilter == server.id,
-                                onClick = { viewModel.setServerFilter(server.id) }
-                            )
-                        }
-                    }
-                } else {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-
-                OutlinedButton(
-                    onClick = { showDatePicker = true },
-                    border = ButtonDefaults.outlinedButtonBorder,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        if (state.dateFrom != null) strings.filtered else strings.filterDate,
-                        fontSize = 12.sp
+                        buildAnnotatedString {
+                            withStyle(SpanStyle(color = AeroPalette.InkSoft)) {
+                                append("${strings.aeroSelectedPrefix} ")
+                            }
+                            withStyle(
+                                SpanStyle(color = AeroPalette.NavyDeep, fontWeight = FontWeight.Bold)
+                            ) {
+                                append("${state.pendingCount}")
+                            }
+                            withStyle(SpanStyle(color = AeroPalette.InkSoft)) {
+                                append(" ${strings.aeroItemsSuffix}")
+                            }
+                        },
+                        fontSize = 13.sp
                     )
-                }
-
-                if (state.dateFrom != null) {
-                    IconButton(
-                        onClick = { viewModel.clearDateRange() },
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(Icons.Default.Close, contentDescription = strings.clearFilter, modifier = Modifier.size(16.dp))
-                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    GlossButton(
+                        text = strings.approveAll,
+                        onClick = { viewModel.bulkApproveAll() },
+                        style = GlossStyle.Green,
+                        fontSize = 14,
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp)
+                    )
                 }
             }
         }
 
-        item { Spacer(modifier = Modifier.height(12.dp)) }
-
-        // Stats summary card
-        item {
-            GlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    StatItem(strings.totalLabel, state.totalCount, MaterialTheme.colorScheme.onBackground)
-                    Box(
-                        modifier = Modifier
-                            .width(1.dp)
-                            .height(36.dp)
-                            .background(MaterialTheme.colorScheme.outline)
-                    )
-                    StatItem(strings.pendingCheck, state.pendingCount, AppColors.WarningOrange)
-                    Box(
-                        modifier = Modifier
-                            .width(1.dp)
-                            .height(36.dp)
-                            .background(MaterialTheme.colorScheme.outline)
-                    )
-                    StatItem(strings.offlineQueue, state.offlineQueueCount, AppColors.InfoBlue)
+        // Date picker dialog
+        if (showDatePicker) {
+            DateRangePickerDialog(
+                onDismiss = { showDatePicker = false },
+                onDateRangeSelected = { start, end ->
+                    viewModel.setDateRange(start, end)
+                    showDatePicker = false
                 }
-            }
-        }
-
-        item { Spacer(modifier = Modifier.height(12.dp)) }
-
-        // Empty state
-        if (state.orders.isEmpty() && !state.isLoading) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(48.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(
-                            modifier = Modifier
-                                .size(80.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Assignment,
-                                contentDescription = null,
-                                modifier = Modifier.size(40.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            strings.noOrders,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Text(
-                            strings.matchedOrdersWillShow,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
-                    }
-                }
-            }
-        }
-
-        // Order list
-        items(
-            items = state.orders,
-            key = { "order_${it.id}" }
-        ) { order ->
-            OrderCard(
-                order = order,
-                onApprove = { viewModel.approveOrder(order) },
-                onForceApprove = { viewModel.forceApproveOrder(order) },
-                onReject = { viewModel.rejectOrder(order) },
-                modifier = Modifier.padding(horizontal = 16.dp)
             )
-            Spacer(modifier = Modifier.height(8.dp))
         }
 
-        // ปุ่มโหลดต่อ — กดเองเพื่อไม่ให้แอพดูดบิลเป็นร้อยมาแสดงทีเดียว
-        if (state.hasMorePages && !state.isLoading) {
-            item(key = "load_more_button") {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (state.isLoadingMore) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            strokeWidth = 2.dp,
-                            color = AppColors.GoldAccent
-                        )
-                    } else {
-                        OutlinedButton(
-                            onClick = { viewModel.loadMoreOrders() },
-                            border = BorderStroke(1.dp, AppColors.GoldAccent.copy(alpha = 0.4f)),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = AppColors.GoldAccent
-                            )
-                        ) {
-                            Icon(
-                                Icons.Default.ExpandMore,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                "โหลดต่อ (${state.orders.size}/${state.totalCount})",
-                                fontSize = 13.sp
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        item { Spacer(modifier = Modifier.height(8.dp)) }
-    }
-
-    // Date picker dialog
-    if (showDatePicker) {
-        DateRangePickerDialog(
-            onDismiss = { showDatePicker = false },
-            onDateRangeSelected = { start, end ->
-                viewModel.setDateRange(start, end)
-                showDatePicker = false
-            }
-        )
-    }
-
-    // Snackbar for approve/reject feedback
-    SnackbarHost(
-        hostState = snackbarHostState,
-        modifier = Modifier.align(Alignment.BottomCenter)
-    )
-    } // Box
-}
-
-@Composable
-private fun StatItem(label: String, count: Int, color: Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = count.toString(),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = color
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 11.sp
+        // Snackbar for approve/reject feedback
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
         )
     }
 }
 
 // ============================================================================
-// OrderCard - การ์ดแสดงบิล พร้อมไอคอน สถานะ สี และอนิเมชั่นที่ชัดเจน
+// OrderCard — AeroGlass card: header row, green-decimal amount, meta row,
+// gloss action strip (design 02)
 // ============================================================================
-
-/**
- * ข้อมูลการแสดงผลสถานะของบิล
- */
-private data class StatusVisuals(
-    val icon: ImageVector,
-    val color: Color,
-    val bgColor: Color,
-    val label: String,
-    val borderColor: Color
-)
-
-/**
- * กำหนด visuals ตามสถานะบิล
- */
-@Composable
-private fun getStatusVisuals(status: ApprovalStatus): StatusVisuals {
-    val strings = LocalAppStrings.current
-    return when (status) {
-        ApprovalStatus.AUTO_APPROVED -> StatusVisuals(
-            icon = Icons.Default.CheckCircle,
-            color = Color(0xFF2E7D32),           // เขียวเข้ม
-            bgColor = Color(0xFF2E7D32).copy(alpha = 0.08f),
-            label = strings.statusAutoApproved,
-            borderColor = Color(0xFF2E7D32).copy(alpha = 0.3f)
-        )
-        ApprovalStatus.MANUALLY_APPROVED -> StatusVisuals(
-            icon = Icons.Default.Verified,
-            color = Color(0xFF1565C0),            // น้ำเงิน
-            bgColor = Color(0xFF1565C0).copy(alpha = 0.08f),
-            label = strings.statusApproved,
-            borderColor = Color(0xFF1565C0).copy(alpha = 0.3f)
-        )
-        ApprovalStatus.PENDING_REVIEW -> StatusVisuals(
-            icon = Icons.Default.Schedule,
-            color = Color(0xFFE65100),            // ส้มเข้ม
-            bgColor = Color(0xFFE65100).copy(alpha = 0.06f),
-            label = strings.statusPendingReview,
-            borderColor = Color(0xFFE65100).copy(alpha = 0.3f)
-        )
-        ApprovalStatus.REJECTED -> StatusVisuals(
-            icon = Icons.Default.Cancel,
-            color = Color(0xFFC62828),            // แดงเข้ม
-            bgColor = Color(0xFFC62828).copy(alpha = 0.06f),
-            label = strings.statusRejected,
-            borderColor = Color(0xFFC62828).copy(alpha = 0.3f)
-        )
-        ApprovalStatus.EXPIRED -> StatusVisuals(
-            icon = Icons.Default.TimerOff,
-            color = Color(0xFF757575),            // เทา
-            bgColor = Color(0xFF757575).copy(alpha = 0.06f),
-            label = strings.statusExpired,
-            borderColor = Color(0xFF757575).copy(alpha = 0.2f)
-        )
-        ApprovalStatus.CANCELLED -> StatusVisuals(
-            icon = Icons.Default.RemoveCircle,
-            color = Color(0xFFBF360C),            // ส้มแดง
-            bgColor = Color(0xFFBF360C).copy(alpha = 0.06f),
-            label = strings.statusCancelled,
-            borderColor = Color(0xFFBF360C).copy(alpha = 0.3f)
-        )
-        ApprovalStatus.DELETED -> StatusVisuals(
-            icon = Icons.Default.Delete,
-            color = Color(0xFF9E9E9E),            // เทาอ่อน
-            bgColor = Color(0xFF9E9E9E).copy(alpha = 0.04f),
-            label = strings.statusDeleted,
-            borderColor = Color(0xFF9E9E9E).copy(alpha = 0.15f)
-        )
-    }
-}
 
 @Composable
 fun OrderCard(
@@ -546,29 +495,21 @@ fun OrderCard(
     onReject: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // 🚀 (2026-05-21) State สำหรับ Force Approve confirmation dialog
-    var showForceApproveDialog by remember { mutableStateOf(false) }
+    val strings = LocalAppStrings.current
 
+    // Force Approve confirmation dialog (destructive — keeps its confirm step)
+    var showForceApproveDialog by remember { mutableStateOf(false) }
     if (showForceApproveDialog) {
         AlertDialog(
             onDismissRequest = { showForceApproveDialog = false },
             icon = {
-                Icon(
-                    Icons.Default.Warning,
-                    contentDescription = null,
-                    tint = Color(0xFFFF6F00)
-                )
+                Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFF6F00))
             },
-            title = {
-                Text(
-                    "🚀 Force Approve",
-                    fontWeight = FontWeight.Bold
-                )
-            },
+            title = { Text("🚀 Force Approve", fontWeight = FontWeight.Bold) },
             text = {
                 Column {
                     Text(
-                        "อนุมัติบิล ${order.orderNumber ?: "#${order.id}"} โดย ${"ไม่ผ่านการจับคู่ SMS"} หรือไม่?",
+                        "อนุมัติบิล ${order.orderNumber ?: "#${order.id}"} โดยไม่ผ่านการจับคู่ SMS หรือไม่?",
                         fontWeight = FontWeight.SemiBold
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -592,9 +533,7 @@ fun OrderCard(
                         showForceApproveDialog = false
                         onForceApprove()
                     },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFFF6F00)
-                    )
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF6F00))
                 ) {
                     Text("🚀 ยืนยัน Force Approve")
                 }
@@ -607,181 +546,62 @@ fun OrderCard(
         )
     }
 
-    val strings = LocalAppStrings.current
-    val visuals = getStatusVisuals(order.approvalStatus)
-
-    // อนิเมชั่น pulse สำหรับ PENDING_REVIEW (กะพริบเพื่อดึงดูดความสนใจ)
     val isPending = order.approvalStatus == ApprovalStatus.PENDING_REVIEW
-    val pulseAnim = rememberInfiniteTransition(label = "pulse")
-    val pulseAlpha by pulseAnim.animateFloat(
-        initialValue = 1f,
-        targetValue = if (isPending) 0.5f else 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = EaseInOutCubic),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseAlpha"
-    )
+    val showActions = isPending && order.pendingAction == null
 
-    // อนิเมชั่นเด้ง สำหรับ AUTO_APPROVED (เพิ่งจับคู่สำเร็จ)
-    val isAutoApproved = order.approvalStatus == ApprovalStatus.AUTO_APPROVED
-    val bounceScale by pulseAnim.animateFloat(
-        initialValue = 1f,
-        targetValue = if (isAutoApproved) 1.08f else 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = EaseInOutCubic),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "bounceScale"
-    )
-
-    // สี border แบบ animate
-    val animatedBorderColor by animateColorAsState(
-        targetValue = visuals.borderColor,
-        animationSpec = tween(300),
-        label = "borderColor"
-    )
-
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .border(1.5.dp, animatedBorderColor, RoundedCornerShape(16.dp)),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = visuals.bgColor
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isPending) 2.dp else 0.dp
-        )
+    AeroGlass(
+        modifier = modifier.fillMaxWidth(),
+        cornerRadius = 18.dp,
+        contentPadding = PaddingValues(0.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-            // แถบสีสถานะด้านซ้าย (gradient)
-            Box(
-                modifier = Modifier
-                    .width(5.dp)
-                    .fillMaxHeight()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(visuals.color, visuals.color.copy(alpha = 0.3f))
-                        )
-                    )
-            )
-
+        Column {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(14.dp)
+                modifier = Modifier.padding(start = 16.dp, top = 15.dp, end = 16.dp, bottom = 13.dp)
             ) {
-                // === แถวบน: ไอคอนสถานะ + ชื่อเว็บ + เซิร์ฟเวอร์ + Badge สถานะ ===
+                // ── header: order# / customer · channel + status chip ──
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.Top
                 ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // ไอคอนสถานะ พร้อมอนิเมชั่น
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .scale(if (isAutoApproved) bounceScale else 1f)
-                                .clip(CircleShape)
-                                .background(visuals.color.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                visuals.icon,
-                                contentDescription = visuals.label,
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .alpha(if (isPending) pulseAlpha else 1f),
-                                tint = visuals.color
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = order.websiteName ?: strings.unknown,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                            // แสดงชื่อเซิร์ฟเวอร์
-                            if (order.serverName != null) {
-                                Text(
-                                    text = order.serverName,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontSize = 10.sp,
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
-                    }
-                    // Badge สถานะ
-                    // 🏷️ (2026-05-25) ผ่าน cancellationReasonLabel เพื่อแสดงเหตุผลใน badge
-                    //   เคส CANCELLED: แทน "Cancelled" → "ยกเลิกโดยระบบ" / "ยกเลิกโดยลูกค้า"
-                    StatusBadge(order.approvalStatus, visuals, order.cancellationReasonLabel)
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // === แถวกลาง: เลขบิล + ลูกค้า + สินค้า ===
-                if (order.orderNumber != null) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.Receipt,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = AppColors.GoldAccent.copy(alpha = 0.8f)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "#${order.orderNumber}",
-                            style = MaterialTheme.typography.bodySmall,
+                            "ออเดอร์ #${order.orderNumber ?: order.id}",
+                            fontSize = 12.sp,
+                            color = AeroPalette.InkFaint,
+                            maxLines = 1
+                        )
+                        Text(
+                            listOfNotNull(
+                                order.customerName?.takeIf { it.isNotBlank() },
+                                order.websiteName ?: order.serverName
+                            ).joinToString(" · ").ifBlank { strings.unknown },
+                            fontSize = 13.5.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = AppColors.GoldAccent.copy(alpha = 0.9f)
+                            color = AeroPalette.Ink,
+                            maxLines = 1,
+                            modifier = Modifier.padding(top = 2.dp)
                         )
                     }
+                    StatusAeroChip(order = order, strings = strings)
                 }
-                if (!order.customerName.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.Person,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = order.customerName,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f),
-                            fontSize = 11.sp
-                        )
-                    }
-                }
+
+                // product line (+ Pay-Later privilege badge) — business info preserved
                 if (order.productName != null) {
-                    // 💎 (2026-05-04) Pay-Later badge — detect Laravel suffix "💎ดูก่อนจ่าย"
-                    //    Server tags it via SmsPaymentController::transformFortuneReadingToOrderApproval
-                    //    → highlight bill with gold badge so admin knows it's "free privilege"
                     val isPayLater = order.productName.contains("💎ดูก่อนจ่าย")
                     val cleanProductName = if (isPayLater) {
                         order.productName.replace(" 💎ดูก่อนจ่าย", "")
                     } else order.productName
-
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(start = 18.dp, top = 2.dp)
+                        modifier = Modifier.padding(top = 4.dp)
                     ) {
                         Text(
                             text = cleanProductName + (order.quantity?.let { " x$it" } ?: ""),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 11.sp
+                            fontSize = 11.sp,
+                            color = AeroPalette.InkSoft,
+                            maxLines = 1,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                         if (isPayLater) {
                             Spacer(modifier = Modifier.width(6.dp))
@@ -792,9 +612,8 @@ fun OrderCard(
                             ) {
                                 Text(
                                     text = "💎 ดูก่อนจ่าย",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
                                     fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
                                     color = AppColors.GoldAccent,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
@@ -803,44 +622,69 @@ fun OrderCard(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // === แถวล่าง: ธนาคาร + ยอดเงิน + เวลา ===
+                // ── amount row: label + green-decimal amount + bank coin ──
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.Bottom
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (order.bank != null) {
-                            BankLogoCircle(bankCode = order.bank, size = 28.dp)
-                            Spacer(modifier = Modifier.width(8.dp))
-                        }
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = formatAmount(order.amount),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = visuals.color
+                            if (isPending) strings.aeroUniqueDecimal
+                            else "${strings.aeroReceivedAt} ${formatDate(order.paymentTimestamp ?: order.createdAt)}",
+                            fontSize = 11.sp,
+                            color = AeroPalette.InkFaint,
+                            maxLines = 1
+                        )
+                        UniqueDecimalAmount(
+                            amount = order.amount,
+                            status = order.approvalStatus
                         )
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (order.bank != null) {
+                        BankCoin(bankCode = order.bank, size = 46.dp)
+                    }
+                }
+
+                // ── meta row: time + offline-queue flag ──
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.AccessTime,
+                        contentDescription = null,
+                        modifier = Modifier.size(13.dp),
+                        tint = AeroPalette.InkFaint
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        formatDate(order.paymentTimestamp ?: order.createdAt),
+                        fontSize = 11.5.sp,
+                        color = AeroPalette.InkFaint
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    if (order.pendingAction != null) {
                         Icon(
-                            Icons.Default.AccessTime,
+                            Icons.Default.CloudUpload,
                             contentDescription = null,
                             modifier = Modifier.size(12.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            tint = AppColors.InfoBlue
                         )
-                        Spacer(modifier = Modifier.width(3.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = formatDate(order.paymentTimestamp ?: order.createdAt),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 11.sp
+                            "${strings.queuedLabel}: ${order.pendingAction.name}",
+                            fontSize = 10.sp,
+                            color = AppColors.InfoBlue
                         )
                     }
                 }
 
-                // === Ambiguous match warning ===
+                // ── ambiguous match warning ──
                 if (order.confidence == MatchConfidence.AMBIGUOUS) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(
@@ -865,30 +709,26 @@ fun OrderCard(
                         )
                     }
                 }
+            }
 
-                // === Offline queue indicator ===
-                if (order.pendingAction != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.CloudUpload,
-                            contentDescription = null,
-                            modifier = Modifier.size(12.dp),
-                            tint = AppColors.InfoBlue
+            // ── action strip (pending only): tinted band, white top divider ──
+            if (showActions) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White)
+                        .height(1.dp)
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0x99F0F6FA), Color(0x80E8F1F6))
+                            )
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            "${strings.queuedLabel}: ${order.pendingAction.name}",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontSize = 10.sp,
-                            color = AppColors.InfoBlue
-                        )
-                    }
-                }
-
-                // === ปุ่ม Action สำหรับ PENDING_REVIEW ===
-                if (order.approvalStatus == ApprovalStatus.PENDING_REVIEW && order.pendingAction == null) {
-                    Spacer(modifier = Modifier.height(12.dp))
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(9.dp),
@@ -911,86 +751,95 @@ fun OrderCard(
                             contentDescription = strings.rejectButton
                         )
                     }
-
-                    // 🚀 (2026-05-21) Force Approve button (row 2) — bypass SMS matching
-                    //   ใช้กรณี: ลูกค้าโอนยอดผิด / SMS หาย / UPA mismatch
-                    //   แยก row ออกจาก approve/reject เพื่อลด accidental click + ให้เห็นว่าเป็นปุ่มพิเศษ
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedButton(
-                        onClick = { showForceApproveDialog = true },
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Color(0xFFFF6F00)
-                        ),
-                        border = BorderStroke(1.dp, Color(0xFFFF6F00).copy(alpha = 0.5f)),
+                    // Force Approve — bypass SMS matching (kept; confirm dialog above)
+                    Text(
+                        "🚀 Force Approve (ไม่ผ่านการจับคู่ SMS)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFFB85C00),
+                        textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(36.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
-                    ) {
-                        Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            "🚀 Force Approve (ไม่ผ่านการจับคู่ SMS)",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                            .padding(top = 8.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { showForceApproveDialog = true }
+                            .padding(vertical = 5.dp)
+                    )
                 }
             }
         }
     }
 }
 
-// ============================================================================
-// StatusBadge - แสดงสถานะเป็น badge พร้อมไอคอนขนาดเล็ก
-// ============================================================================
-
+/** Status chip per design 02: amber รอจับคู่ / green จับคู่แล้ว / red ปฏิเสธ / glass others. */
 @Composable
-private fun StatusBadge(
-    status: ApprovalStatus,
-    visuals: StatusVisuals,
-    // 🏷️ (2026-05-25) Server-provided Thai label สำหรับ CANCELLED — ถ้ามี จะแทน "Cancelled"
-    //   Values: "ยกเลิกโดยระบบ" | "ยกเลิกโดยลูกค้า" | "ยกเลิก (ไม่ทราบสาเหตุ)"
-    //   ส่ง null สำหรับสถานะอื่นๆ — fallback เป็น visuals.label ตามเดิม
-    cancellationReasonLabel: String? = null
-) {
-    // ใช้ specific label ถ้าเป็น CANCELLED และมี server label ส่งมา
-    val displayLabel = if (status == ApprovalStatus.CANCELLED && !cancellationReasonLabel.isNullOrBlank()) {
-        cancellationReasonLabel
-    } else {
-        visuals.label
+private fun StatusAeroChip(order: OrderApproval, strings: com.thaiprompt.smschecker.ui.theme.AppStrings) {
+    when (order.approvalStatus) {
+        ApprovalStatus.PENDING_REVIEW -> AeroChip(
+            strings.aeroWaitingMatch,
+            style = ChipStyle.Amber,
+            leadingIcon = Icons.Default.AccessTime
+        )
+        ApprovalStatus.AUTO_APPROVED -> AeroChip(
+            strings.aeroMatchedDone,
+            style = ChipStyle.Green,
+            leadingIcon = Icons.Default.Check
+        )
+        ApprovalStatus.MANUALLY_APPROVED -> AeroChip(
+            strings.statusApproved,
+            style = ChipStyle.Green,
+            leadingIcon = Icons.Default.Check
+        )
+        ApprovalStatus.REJECTED -> AeroChip(
+            strings.statusRejected,
+            style = ChipStyle.Red,
+            leadingIcon = Icons.Default.Close
+        )
+        ApprovalStatus.EXPIRED -> AeroChip(strings.statusExpired, style = ChipStyle.Glass)
+        ApprovalStatus.CANCELLED -> AeroChip(
+            order.cancellationReasonLabel?.takeIf { it.isNotBlank() } ?: strings.statusCancelled,
+            style = ChipStyle.Glass
+        )
+        ApprovalStatus.DELETED -> AeroChip(strings.statusDeleted, style = ChipStyle.Glass)
     }
+}
 
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(visuals.color.copy(alpha = 0.12f))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            visuals.icon,
-            contentDescription = null,
-            modifier = Modifier.size(12.dp),
-            tint = visuals.color
-        )
-        Spacer(modifier = Modifier.width(4.dp))
-        Text(
-            displayLabel,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = visuals.color
-        )
+/**
+ * The headline concept of design 02 — the unique-decimal amount:
+ * pending = ฿500 in navy 31sp Black with ".37" in GREEN-LO (the matcher key);
+ * approved = whole amount in green-deep 26sp; others = ink 26sp.
+ */
+@Composable
+private fun UniqueDecimalAmount(amount: Double, status: ApprovalStatus) {
+    val isPending = status == ApprovalStatus.PENDING_REVIEW
+    val isApproved = status == ApprovalStatus.AUTO_APPROVED || status == ApprovalStatus.MANUALLY_APPROVED
+    val sizeSp = if (isPending) 31.sp else 26.sp
+    val wholeColor = when {
+        isPending -> AeroPalette.NavyDeep
+        isApproved -> AeroPalette.GreenDeep
+        status == ApprovalStatus.REJECTED -> AeroPalette.Red
+        else -> AeroPalette.InkFaint
     }
+    val whole = String.format(Locale.US, "%,d", amount.toLong())
+    val decimals = String.format(Locale.US, "%02d", ((amount - amount.toLong()) * 100).toInt().coerceIn(0, 99))
+
+    Text(
+        buildAnnotatedString {
+            withStyle(SpanStyle(color = wholeColor)) { append("฿$whole") }
+            withStyle(
+                SpanStyle(color = if (isPending) AeroPalette.GreenLo else wholeColor)
+            ) { append(".$decimals") }
+        },
+        fontSize = sizeSp,
+        fontWeight = FontWeight.Black,
+        letterSpacing = (-0.5).sp,
+        maxLines = 1
+    )
 }
 
 // ============================================================================
 // Utility functions
 // ============================================================================
-
-private fun formatAmount(amount: Double): String {
-    return String.format(Locale.getDefault(), "+\u0E3F%,.2f", amount)
-}
 
 private fun formatDate(timestamp: Long): String {
     val sdf = SimpleDateFormat("HH:mm dd/MM", Locale.getDefault())
