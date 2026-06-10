@@ -268,8 +268,30 @@ class TtsManager @Inject constructor(
      * พูดจริง — ต้องเรียกบน main thread เท่านั้น (TextToSpeech ทำงานดีสุดจาก thread ที่สร้างมัน)
      */
     private fun speakNowOnMain(text: String) {
+        ensureMediaVolumeAudible()
         applyTtsLanguage()
         tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "tts_${utteranceCounter.incrementAndGet()}")
+    }
+
+    /**
+     * 🐞 (2026-06-10) TTS เล่นผ่าน media stream (ตาม fix 2026-06-05) แต่เครื่องร้านค้าจำนวนมาก
+     * ลด/ปิด "เสียงสื่อ" ไว้ (คนละปุ่มกับเสียงเรียกเข้า) → TTS เงียบสนิทรวมถึงปุ่มทดลองฟัง
+     * หน้าที่หลักของแอพคือประกาศเงินเข้าให้ได้ยิน — ก่อนพูดทุกครั้ง ถ้า media volume ต่ำกว่า
+     * 60% ของ max ให้ดันขึ้นเป็น 60% (ไม่ลดเสียงผู้ใช้ที่ตั้งสูงกว่านั้น)
+     */
+    private fun ensureMediaVolumeAudible() {
+        try {
+            val current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+            val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            val floor = (max * 0.6f).toInt().coerceAtLeast(1)
+            if (current < floor) {
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, floor, 0)
+                Log.i(TAG, "Media volume raised $current -> $floor (max $max) so TTS is audible")
+            }
+        } catch (e: Exception) {
+            // SecurityException ได้ในโหมด Do-Not-Disturb แบบเข้มงวด — พูดต่อด้วย volume เดิม
+            Log.w(TAG, "ensureMediaVolumeAudible failed", e)
+        }
     }
 
     fun speakTransaction(

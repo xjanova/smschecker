@@ -608,16 +608,27 @@ fun AeroStatTile(
     valueColor: Color = AeroPalette.NavyDeep,
 ) {
     AeroGlass(modifier = modifier, cornerRadius = 18.dp, contentPadding = PaddingValues(horizontal = 15.dp, vertical = 14.dp)) {
-        OrbIcon(
-            icon = orbIcon,
-            gradient = orbGradient,
-            size = 30.dp,
-            modifier = Modifier.align(Alignment.TopEnd)
-        )
-        Column {
-            Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, maxLines = 1)
-            Spacer(Modifier.height(8.dp))
-            Text(value, color = valueColor, fontWeight = FontWeight.Black, fontSize = 28.sp, maxLines = 1)
+        // Inner Box must fill the tile width — AeroGlass's content box wraps content,
+        // so align(TopEnd) would otherwise hug the narrow text column, not the card corner.
+        Box(Modifier.fillMaxWidth()) {
+            OrbIcon(
+                icon = orbIcon,
+                gradient = orbGradient,
+                size = 30.dp,
+                modifier = Modifier.align(Alignment.TopEnd)
+            )
+            Column {
+                Text(
+                    label,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    modifier = Modifier.padding(end = 34.dp)
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(value, color = valueColor, fontWeight = FontWeight.Black, fontSize = 28.sp, maxLines = 1)
+            }
         }
     }
 }
