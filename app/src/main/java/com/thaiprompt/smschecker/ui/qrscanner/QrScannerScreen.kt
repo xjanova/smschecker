@@ -1,6 +1,7 @@
 package com.thaiprompt.smschecker.ui.qrscanner
 
 import android.Manifest
+import android.provider.Settings
 import android.util.Log
 import android.util.Size
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -13,27 +14,42 @@ import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material3.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -42,11 +58,15 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
-import com.thaiprompt.smschecker.ui.components.GradientHeader
+import com.thaiprompt.smschecker.R
 import com.thaiprompt.smschecker.ui.components.GlassCard
-import com.thaiprompt.smschecker.ui.components.premiumBackgroundBrush
+import com.thaiprompt.smschecker.ui.components.GlossButton
+import com.thaiprompt.smschecker.ui.components.GlossIconButton
+import com.thaiprompt.smschecker.ui.components.GlossStyle
+import com.thaiprompt.smschecker.ui.components.HeaderTone
+import com.thaiprompt.smschecker.ui.components.StatusBarTone
+import com.thaiprompt.smschecker.ui.components.darkNavyRadial
 import com.thaiprompt.smschecker.ui.theme.AeroPalette
-import com.thaiprompt.smschecker.ui.theme.AppColors
 import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
 import org.json.JSONObject
 import java.util.concurrent.Executors
@@ -71,7 +91,11 @@ private val scannerOptions = BarcodeScannerOptions.Builder()
     .enableAllPotentialBarcodes()
     .build()
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * QR Device Setup — Millennium 3D / Frutiger Aero (design 05).
+ * Dark radial navy screen: glowing logo coin, 230dp camera viewport with green
+ * corner brackets + scanning laser, encrypted-connection readout, gloss buttons.
+ */
 @Composable
 fun QrScannerScreen(
     onConfigScanned: (QrConfigResult) -> Unit,
@@ -83,9 +107,10 @@ fun QrScannerScreen(
     var hasCameraPermission by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var scanStatus by remember { mutableStateOf<String?>(null) }
-    var isScanning by remember { mutableStateOf(false) }
     val isProcessing = remember { AtomicBoolean(false) }
     val hasFoundResult = remember { AtomicBoolean(false) }
+
+    StatusBarTone(HeaderTone.Navy)
 
     // Background executor for ML Kit — keeps UI thread free
     val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
@@ -125,56 +150,63 @@ fun QrScannerScreen(
         }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(premiumBackgroundBrush())
+            .darkNavyRadial()
     ) {
-        // Header
-        GradientHeader {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = strings.backButton,
-                        tint = Color.White
-                    )
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        strings.qrScannerTitle,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        strings.qrScannerSubtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF66BB6A) // Light green accent
-                    )
-                }
-            }
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (hasCameraPermission) {
-                // Camera preview
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
-                ) {
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // logo coin with green glow
+            Box(
+                modifier = Modifier
+                    .size(62.dp)
+                    .shadow(14.dp, RoundedCornerShape(30), spotColor = AeroPalette.GreenLo, ambientColor = AeroPalette.GreenLo)
+                    .clip(RoundedCornerShape(30))
+                    .background(Color.White)
+                    .border(1.5.dp, Color(0xE6FFFFFF), RoundedCornerShape(30)),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.logo),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(0.88f)
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                strings.aeroConnectDevice,
+                fontSize = 23.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+            Text(
+                strings.aeroConnectDeviceSub,
+                fontSize = 12.5.sp,
+                color = Color.White.copy(alpha = 0.8f)
+            )
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // scanner viewport — camera preview clipped in a 230dp rounded box
+            Box(
+                modifier = Modifier
+                    .size(230.dp)
+                    .shadow(16.dp, RoundedCornerShape(30.dp), spotColor = Color.Black)
+                    .clip(RoundedCornerShape(30.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xFF35404F), Color(0xFF232B36))
+                        )
+                    )
+            ) {
+                if (hasCameraPermission) {
                     AndroidView(
                         factory = { ctx ->
                             PreviewView(ctx).also { previewView ->
@@ -204,7 +236,6 @@ fun QrScannerScreen(
                                             .also { analysis ->
                                                 // Use background executor to avoid blocking UI
                                                 analysis.setAnalyzer(analysisExecutor) { imageProxy ->
-                                                    isScanning = true
                                                     processImage(
                                                         imageProxy,
                                                         barcodeScanner,
@@ -235,7 +266,8 @@ fun QrScannerScreen(
                                         )
                                         Log.d(TAG, "Camera bound successfully")
                                     } catch (e: Exception) {
-                                        errorMessage = "${strings.cameraFailed}: ${e.message}"
+                                        // Localized message only — never leak the raw exception to UI
+                                        errorMessage = strings.cameraFailed
                                         Log.e(TAG, "Camera bind failed", e)
                                     }
                                 }, ContextCompat.getMainExecutor(ctx))
@@ -243,198 +275,274 @@ fun QrScannerScreen(
                         },
                         modifier = Modifier.fillMaxSize()
                     )
-
-                    // Scan frame overlay — glowing green frame + sweeping laser line
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(40.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        BoxWithConstraints(
-                            modifier = Modifier
-                                .fillMaxSize(0.8f)
-                                .border(
-                                    width = 2.dp,
-                                    brush = Brush.linearGradient(
-                                        colors = listOf(AeroPalette.GreenHi, AeroPalette.Green)
-                                    ),
-                                    shape = RoundedCornerShape(16.dp)
-                                )
-                        ) {
-                            val laser = rememberInfiniteTransition(label = "laser")
-                            val frac by laser.animateFloat(
-                                initialValue = 0f,
-                                targetValue = 1f,
-                                animationSpec = infiniteRepeatable(
-                                    animation = tween(2200, easing = FastOutSlowInEasing),
-                                    repeatMode = RepeatMode.Reverse
-                                ),
-                                label = "laserY"
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(2.dp)
-                                    .align(Alignment.TopCenter)
-                                    .offset(y = maxHeight * frac)
-                                    .background(
-                                        Brush.horizontalGradient(
-                                            listOf(Color.Transparent, AeroPalette.GreenHi, Color.Transparent)
-                                        )
-                                    )
-                            )
-                        }
-                    }
-
-                    // Scanning indicator + bottom instruction
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp),
-                        contentAlignment = Alignment.BottomCenter
-                    ) {
-                        Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-                            ),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                if (isScanning) {
-                                    val rotation = rememberInfiniteTransition(label = "scan")
-                                    val angle by rotation.animateFloat(
-                                        initialValue = 0f,
-                                        targetValue = 360f,
-                                        animationSpec = infiniteRepeatable(
-                                            animation = tween(1500, easing = LinearEasing)
-                                        ),
-                                        label = "scanRotation"
-                                    )
-                                    Icon(
-                                        Icons.Default.QrCodeScanner,
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .size(18.dp)
-                                            .rotate(angle),
-                                        tint = AppColors.GoldAccent
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                }
-                                Text(
-                                    strings.pointCameraAtQr,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    textAlign = TextAlign.Center,
-                                    color = MaterialTheme.colorScheme.onBackground
-                                )
-                            }
-                        }
-                    }
-                }
-            } else {
-                // No camera permission state
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center
-                ) {
+                } else {
+                    // no-permission placeholder inside the dark viewport
                     Column(
+                        modifier = Modifier.fillMaxSize(),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.Center
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(80.dp)
-                                .clip(CircleShape)
-                                .background(AppColors.GoldAccent.copy(alpha = 0.1f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.QrCodeScanner,
-                                contentDescription = null,
-                                modifier = Modifier.size(40.dp),
-                                tint = AppColors.GoldAccent.copy(alpha = 0.6f)
-                            )
-                        }
+                        Icon(
+                            Icons.Default.QrCodeScanner,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = AeroPalette.GreenHi.copy(alpha = 0.7f)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             strings.cameraPermissionRequired,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            fontSize = 11.5.sp,
+                            color = Color.White.copy(alpha = 0.75f),
+                            modifier = Modifier.padding(horizontal = 20.dp)
                         )
-                        Button(
-                            onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = AppColors.GoldAccent,
-                                contentColor = Color.Black
-                            )
-                        ) {
-                            Text(strings.allowCamera)
-                        }
                     }
                 }
+
+                // glowing corner brackets (4 separate L-shapes, NOT a full border)
+                ScannerCornerBrackets(modifier = Modifier.matchParentSize())
+
+                // sweeping laser line (respects reduced motion)
+                if (hasCameraPermission) {
+                    ScannerLaser(modifier = Modifier.matchParentSize())
+                }
+            }
+
+            // wrong-format / error notices (kept functional, restyled for the dark bg)
+            scanStatus?.let { status ->
+                Spacer(modifier = Modifier.height(14.dp))
+                NoticeCard(text = status, accent = AeroPalette.Gold)
+            }
+            errorMessage?.let { error ->
+                Spacer(modifier = Modifier.height(14.dp))
+                NoticeCard(text = error, accent = AeroPalette.RedHi)
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // encrypted-connection readout
+            GlassCard(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.Lock, contentDescription = null, tint = AeroPalette.GreenLo, modifier = Modifier.size(16.dp))
+                    Text(
+                        strings.aeroEncryptedConnection,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = AeroPalette.NavyDeep
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                ConfigRow(label = strings.aeroServerField, value = "—", showDivider = true)
+                ConfigRow(label = strings.aeroEncryptionField, value = "AES-256-GCM", showDivider = true)
+                ConfigRow(label = strings.aeroSignatureField, value = "HMAC-SHA256", showDivider = false)
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+            GlossButton(
+                text = strings.aeroStartScanQr,
+                onClick = {
+                    if (!hasCameraPermission) {
+                        permissionLauncher.launch(Manifest.permission.CAMERA)
+                    } else {
+                        // camera scans continuously; treat as retry — clear stale notices
+                        scanStatus = null
+                        errorMessage = null
+                    }
+                },
+                style = GlossStyle.Green,
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 22.dp, vertical = 15.dp)
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            GlossButton(
+                text = strings.aeroEnterManually,
+                onClick = onBack,
+                style = GlossStyle.Ghost,
+                fontSize = 14,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+        }
 
-            // Show scan status (wrong format QR detected)
-            scanStatus?.let { status ->
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = AppColors.WarningOrange.copy(alpha = 0.1f)
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(
-                        status,
-                        modifier = Modifier.padding(16.dp),
-                        color = AppColors.WarningOrange,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-            }
+        // back affordance (design has none, navigation requires one)
+        GlossIconButton(
+            icon = Icons.AutoMirrored.Filled.ArrowBack,
+            onClick = onBack,
+            style = GlossStyle.Ghost,
+            size = 38.dp,
+            contentDescription = strings.backButton,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(12.dp)
+        )
+    }
+}
 
-            errorMessage?.let { error ->
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = AppColors.DebitRed.copy(alpha = 0.1f)
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(
-                        error,
-                        modifier = Modifier.padding(16.dp),
-                        color = AppColors.DebitRed,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
-            // Instructions
-            GlassCard {
-                Text(
-                    strings.howToGetQrCode,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = AppColors.GoldAccent
+/** Four glowing green L-brackets at the viewport corners (.qcorner). */
+@Composable
+private fun ScannerCornerBrackets(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val inset = 16.dp.toPx()
+        val arm = 26.dp.toPx()
+        val stroke = 3.dp.toPx()
+        val glowStroke = 8.dp.toPx()
+        val c = AeroPalette.GreenHi
+        val corners = listOf(
+            // start point, horizontal arm direction, vertical arm direction
+            Triple(Offset(inset, inset), 1f, 1f),                                  // top-left
+            Triple(Offset(size.width - inset, inset), -1f, 1f),                    // top-right
+            Triple(Offset(inset, size.height - inset), 1f, -1f),                   // bottom-left
+            Triple(Offset(size.width - inset, size.height - inset), -1f, -1f),     // bottom-right
+        )
+        corners.forEach { (p, dx, dy) ->
+            // glow pass then solid pass
+            listOf(glowStroke to 0.25f, stroke to 1f).forEach { (w, a) ->
+                drawLine(
+                    color = c.copy(alpha = a),
+                    start = p,
+                    end = Offset(p.x + arm * dx, p.y),
+                    strokeWidth = w,
+                    cap = StrokeCap.Round
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    strings.qrInstructions,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    lineHeight = 22.sp
+                drawLine(
+                    color = c.copy(alpha = a),
+                    start = p,
+                    end = Offset(p.x, p.y + arm * dy),
+                    strokeWidth = w,
+                    cap = StrokeCap.Round
                 )
             }
         }
+    }
+}
+
+/** The sweeping green laser (.qscan): 2.6s ease-in-out + alpha pulse + glow halo. */
+@Composable
+private fun ScannerLaser(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val reducedMotion = remember {
+        Settings.Global.getFloat(
+            context.contentResolver,
+            Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f
+        ) == 0f
+    }
+
+    Box(modifier = modifier.padding(horizontal = 14.dp)) {
+        if (reducedMotion) {
+            LaserBand(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .alpha(0.6f)
+            )
+        } else {
+            val transition = rememberInfiniteTransition(label = "laser")
+            val frac by transition.animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(2600, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "laserY"
+            )
+            val pulse by transition.animateFloat(
+                initialValue = 0.4f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1300, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "laserPulse"
+            )
+            BoxWithConstraints(modifier = Modifier.matchParentSize()) {
+                val travel = maxHeight - 36.dp
+                LaserBand(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = 18.dp + travel * frac)
+                        .alpha(pulse)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LaserBand(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(10.dp)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color.Transparent,
+                        AeroPalette.GreenHi.copy(alpha = 0.5f),
+                        Color.Transparent
+                    )
+                )
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(Color.Transparent, AeroPalette.GreenHi, Color.Transparent)
+                    )
+                )
+        )
+    }
+}
+
+/** One label / mono value / green check row (.cfgrow). */
+@Composable
+private fun ConfigRow(label: String, value: String, showDivider: Boolean) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, fontSize = 12.5.sp, color = AeroPalette.InkSoft)
+        Spacer(modifier = Modifier.weight(1f))
+        Text(
+            value,
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace,
+            color = AeroPalette.NavyDeep
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Icon(Icons.Default.Check, contentDescription = null, tint = AeroPalette.GreenLo, modifier = Modifier.size(15.dp))
+    }
+    if (showDivider) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Color(0x99DBE4EC))
+        )
+    }
+}
+
+/** Small translucent notice card on the dark background (status / error). */
+@Composable
+private fun NoticeCard(text: String, accent: Color) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(accent.copy(alpha = 0.14f))
+            .border(1.dp, accent.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Text(text, fontSize = 12.sp, color = Color.White.copy(alpha = 0.92f), lineHeight = 17.sp)
     }
 }
 
@@ -579,7 +687,7 @@ private fun parseQrConfig(raw: String): QrConfigResult? {
             apiKey = apiKey,
             secretKey = secretKey,
             deviceId = deviceId,
-            deviceName = obj.optString("deviceName", "\u0E40\u0E0B\u0E34\u0E23\u0E4C\u0E1F\u0E40\u0E27\u0E2D\u0E23\u0E4C\u0E08\u0E32\u0E01 QR"),
+            deviceName = obj.optString("deviceName", "เซิร์ฟเวอร์จาก QR"),
             syncInterval = syncInterval
         ).also {
             Log.d(TAG, "✓ Parsed config: url=${it.url}, deviceId=${it.deviceId}, syncInterval=${it.syncInterval}s")

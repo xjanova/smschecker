@@ -138,12 +138,14 @@ fun GradientHeader(
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
+    cornerRadius: androidx.compose.ui.unit.Dp = 18.dp,
+    contentPadding: PaddingValues = PaddingValues(16.dp),
     content: @Composable ColumnScope.() -> Unit
 ) {
     AeroGlass(
         modifier = modifier.fillMaxWidth(),
-        cornerRadius = 18.dp,
-        contentPadding = PaddingValues(16.dp)
+        cornerRadius = cornerRadius,
+        contentPadding = contentPadding
     ) {
         Column(content = content)
     }
