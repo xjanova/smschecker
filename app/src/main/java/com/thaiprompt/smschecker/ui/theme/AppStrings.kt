@@ -281,63 +281,68 @@ data class AppStrings(
 
     // === Common ===
     val backButton: String,
-
-    // === Millennium 3D redesign (defaults = Thai; refine EN later) ===
-    val aeroIncomeToday: String = "เงินเข้าวันนี้",
-    val aeroConnected: String = "เชื่อมต่อ",
-    val aeroPopularBanks: String = "ธนาคารยอดนิยม",
-    val aeroViewAll: String = "ดูทั้งหมด",
-    val aeroLive: String = "สด",
-    val aeroMatched: String = "จับคู่",
-    val aeroCreditCount: String = "เครดิต",
-    val aeroDebitCount: String = "เดบิต",
-    val aeroTotalCount: String = "ยอดรวม",
-    val aeroAmountToTransfer: String = "ยอดที่ต้องโอน",
-    val aeroUniqueDecimal: String = "ยอดที่ต้องโอน (เลขทศนิยมเฉพาะ)",
-    val aeroWaitingMatch: String = "รอจับคู่",
-    val aeroMatchedDone: String = "จับคู่แล้ว",
-    val aeroSelectedPrefix: String = "เลือก",
-    val aeroItemsSuffix: String = "รายการ",
-    val aeroStatsTitle: String = "สถิติ",
-    val aeroOverview7Days: String = "ภาพรวม 7 วันล่าสุด",
-    val aeroAmountByBank: String = "ยอดตามธนาคาร",
-    val aeroThisWeek: String = "สัปดาห์นี้",
-    val aeroMatchRate: String = "จับคู่สำเร็จ",
-    val aeroSuccessSuffix: String = "สำเร็จ",
-    val aeroPendingSuffix: String = "รอ",
-    val aeroSegDay: String = "วัน",
-    val aeroSegWeek: String = "สัปดาห์",
-    val aeroSegMonth: String = "เดือน",
-    val aeroIncomeThisWeek: String = "เงินเข้ารวมสัปดาห์นี้",
-    val aeroAvgPerDay: String = "เฉลี่ย / วัน",
-    val aeroPeakDay: String = "สูงสุด",
-    val aeroTxnCount: String = "ธุรกรรม",
-    val aeroAvgMatchTime: String = "เวลาจับคู่เฉลี่ย",
-    val aeroEncryptedConnection: String = "การเชื่อมต่อที่เข้ารหัส",
-    val aeroStartScanQr: String = "เริ่มสแกน QR Code",
-    val aeroEnterManually: String = "ใส่รหัสด้วยตนเอง",
-    val aeroConnectDevice: String = "เชื่อมต่ออุปกรณ์",
-    val aeroConnectDeviceSub: String = "สแกน QR จากแผงควบคุมเพื่อตั้งค่าอัตโนมัติ",
-    val aeroServerField: String = "เซิร์ฟเวอร์",
-    val aeroEncryptionField: String = "การเข้ารหัส",
-    val aeroSignatureField: String = "ลายเซ็น",
-    val aeroAccountPrefix: String = "บัญชี",
-    val aeroIncomingLabel: String = "เงินเข้า",
-    val aeroOutgoingLabel: String = "เงินออก",
-    val aeroToday: String = "วันนี้",
-    val aeroYesterday: String = "เมื่อวาน",
-    val aeroTransactionsTitle: String = "รายการเงินเข้า",
-    val aeroSmsTitle: String = "ข้อความ SMS",
-    val aeroLatestMessages: String = "ข้อความล่าสุด",
-    val aeroOrdersTitle: String = "จัดการออเดอร์",
-    val aeroPendingApprovalSuffix: String = "รายการรอการอนุมัติ",
-    val aeroReceivedAt: String = "ได้รับเมื่อ",
-    val aeroExpiresIn: String = "หมดอายุใน",
-    val aeroSegPending: String = "รอ",
-    val aeroSegApproved: String = "อนุมัติ",
-    val aeroSegAll: String = "ทั้งหมด",
-    val aeroDashboardTitle: String = "แดชบอร์ด",
-)
+) {
+    // === Millennium 3D redesign strings (Thai for both languages; refine EN later) ===
+    // CLASS-BODY properties, NOT constructor parameters — adding these ~52 fields to
+    // the (already ~233-param) constructor pushed the synthetic default-args
+    // constructor past the dex 255-argument-register limit. That compiles, but the
+    // ART verifier rejects AppStringsKt.<clinit> at runtime (VerifyError) and the
+    // app crashes on every launch. Keep them out of the constructor.
+    val aeroIncomeToday: String = "เงินเข้าวันนี้"
+    val aeroConnected: String = "เชื่อมต่อ"
+    val aeroPopularBanks: String = "ธนาคารยอดนิยม"
+    val aeroViewAll: String = "ดูทั้งหมด"
+    val aeroLive: String = "สด"
+    val aeroMatched: String = "จับคู่"
+    val aeroCreditCount: String = "เครดิต"
+    val aeroDebitCount: String = "เดบิต"
+    val aeroTotalCount: String = "ยอดรวม"
+    val aeroAmountToTransfer: String = "ยอดที่ต้องโอน"
+    val aeroUniqueDecimal: String = "ยอดที่ต้องโอน (เลขทศนิยมเฉพาะ)"
+    val aeroWaitingMatch: String = "รอจับคู่"
+    val aeroMatchedDone: String = "จับคู่แล้ว"
+    val aeroSelectedPrefix: String = "เลือก"
+    val aeroItemsSuffix: String = "รายการ"
+    val aeroStatsTitle: String = "สถิติ"
+    val aeroOverview7Days: String = "ภาพรวม 7 วันล่าสุด"
+    val aeroAmountByBank: String = "ยอดตามธนาคาร"
+    val aeroThisWeek: String = "สัปดาห์นี้"
+    val aeroMatchRate: String = "จับคู่สำเร็จ"
+    val aeroSuccessSuffix: String = "สำเร็จ"
+    val aeroPendingSuffix: String = "รอ"
+    val aeroSegDay: String = "วัน"
+    val aeroSegWeek: String = "สัปดาห์"
+    val aeroSegMonth: String = "เดือน"
+    val aeroIncomeThisWeek: String = "เงินเข้ารวมสัปดาห์นี้"
+    val aeroAvgPerDay: String = "เฉลี่ย / วัน"
+    val aeroPeakDay: String = "สูงสุด"
+    val aeroTxnCount: String = "ธุรกรรม"
+    val aeroAvgMatchTime: String = "เวลาจับคู่เฉลี่ย"
+    val aeroEncryptedConnection: String = "การเชื่อมต่อที่เข้ารหัส"
+    val aeroStartScanQr: String = "เริ่มสแกน QR Code"
+    val aeroEnterManually: String = "ใส่รหัสด้วยตนเอง"
+    val aeroConnectDevice: String = "เชื่อมต่ออุปกรณ์"
+    val aeroConnectDeviceSub: String = "สแกน QR จากแผงควบคุมเพื่อตั้งค่าอัตโนมัติ"
+    val aeroServerField: String = "เซิร์ฟเวอร์"
+    val aeroEncryptionField: String = "การเข้ารหัส"
+    val aeroSignatureField: String = "ลายเซ็น"
+    val aeroAccountPrefix: String = "บัญชี"
+    val aeroIncomingLabel: String = "เงินเข้า"
+    val aeroOutgoingLabel: String = "เงินออก"
+    val aeroToday: String = "วันนี้"
+    val aeroYesterday: String = "เมื่อวาน"
+    val aeroTransactionsTitle: String = "รายการเงินเข้า"
+    val aeroSmsTitle: String = "ข้อความ SMS"
+    val aeroLatestMessages: String = "ข้อความล่าสุด"
+    val aeroOrdersTitle: String = "จัดการออเดอร์"
+    val aeroPendingApprovalSuffix: String = "รายการรอการอนุมัติ"
+    val aeroReceivedAt: String = "ได้รับเมื่อ"
+    val aeroExpiresIn: String = "หมดอายุใน"
+    val aeroSegPending: String = "รอ"
+    val aeroSegApproved: String = "อนุมัติ"
+    val aeroSegAll: String = "ทั้งหมด"
+    val aeroDashboardTitle: String = "แดชบอร์ด"
+}
 
 val ThaiStrings = AppStrings(
     // Navigation
