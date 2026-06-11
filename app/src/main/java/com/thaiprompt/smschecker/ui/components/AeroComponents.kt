@@ -23,14 +23,18 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.thaiprompt.smschecker.R
 import com.thaiprompt.smschecker.ui.theme.AeroPalette
 
 /* =========================================================================
@@ -437,6 +441,28 @@ private fun lighten(c: Color, f: Float = 0.45f): Color = Color(
     alpha = 1f
 )
 
+/**
+ * โลโก้ธนาคารจริง (bundle ใน drawable-nodpi, ที่มา logo.dev ตาม design handoff 222) —
+ * คืน null ถ้าไม่มีโลโก้ (เช่น PROMPTPAY) → BankCoin fallback เป็นเหรียญตัวอักษร
+ */
+private fun bankLogoRes(code: String): Int? = when (code.uppercase()) {
+    "KBANK" -> R.drawable.bank_logo_kbank
+    "SCB" -> R.drawable.bank_logo_scb
+    "KTB" -> R.drawable.bank_logo_ktb
+    "BBL" -> R.drawable.bank_logo_bbl
+    "GSB" -> R.drawable.bank_logo_gsb
+    "BAY" -> R.drawable.bank_logo_bay
+    "TTB" -> R.drawable.bank_logo_ttb
+    "CIMB" -> R.drawable.bank_logo_cimb
+    "KKP" -> R.drawable.bank_logo_kkp
+    "LH" -> R.drawable.bank_logo_lh
+    "TISCO" -> R.drawable.bank_logo_tisco
+    "UOB" -> R.drawable.bank_logo_uob
+    "ICBC" -> R.drawable.bank_logo_icbc
+    "BAAC" -> R.drawable.bank_logo_baac
+    else -> null
+}
+
 @Composable
 fun BankCoin(
     bankCode: String,
@@ -444,8 +470,44 @@ fun BankCoin(
     size: Dp = 46.dp,
     grayscale: Boolean = false,
 ) {
-    val base = if (grayscale) Color(0xFF8A93A0) else bankBrandColor(bankCode)
     val shape = RoundedCornerShape(percent = 30)
+    val logoRes = bankLogoRes(bankCode)
+
+    if (logoRes != null) {
+        // เหรียญโลโก้จริง (design .coin: ภาพ cover-crop + gloss highlight + ขอบขาว)
+        Box(
+            modifier = modifier
+                .size(size)
+                .shadow(6.dp, shape, clip = false, spotColor = AeroPalette.NavyDeep)
+                .clip(shape)
+                .background(Color.White)
+                .border(1.5.dp, Color(0xEBFFFFFF), shape)
+        ) {
+            Image(
+                painter = painterResource(id = logoRes),
+                contentDescription = bankCode,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                colorFilter = if (grayscale) {
+                    ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
+                } else null
+            )
+            // gloss highlight แบบเดียวกับเหรียญตัวอักษร (.coin::after)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth(0.62f)
+                    .fillMaxHeight(0.40f)
+                    .padding(top = size * 0.07f)
+                    .clip(RoundedCornerShape(50))
+                    .background(Brush.verticalGradient(listOf(Color(0x59FFFFFF), Color(0x00FFFFFF))))
+            )
+        }
+        return
+    }
+
+    // fallback: เหรียญตัวอักษรสีแบรนด์ (ธนาคารที่ไม่มีโลโก้ เช่น PromptPay)
+    val base = if (grayscale) Color(0xFF8A93A0) else bankBrandColor(bankCode)
     val initials = bankInitials(bankCode)
     val textColor = if (bankCode.uppercase() == "BAY") Color(0xFF333333) else Color.White
     val fontSize = when {
@@ -645,6 +707,12 @@ fun BankBar(
     modifier: Modifier = Modifier,
     showDivider: Boolean = false,
 ) {
+    // แถบสัดส่วนธนาคาร animate เข้า (และตอนค่าจริงเปลี่ยน)
+    val animatedFraction by animateFloatAsState(
+        targetValue = fraction.coerceIn(0f, 1f),
+        animationSpec = androidx.compose.animation.core.tween(800),
+        label = "bankBarFraction"
+    )
     Column(modifier = modifier.fillMaxWidth()) {
         if (showDivider) {
             Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x4D9FB8C8)))
@@ -673,7 +741,7 @@ fun BankBar(
                 ) {
                     Box(
                         Modifier
-                            .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                            .fillMaxWidth(animatedFraction)
                             .fillMaxHeight()
                             .clip(RoundedCornerShape(50))
                             .background(

@@ -32,6 +32,9 @@ class OrderRepository @Inject constructor(
     companion object {
         private const val TAG = "OrderRepository"
 
+        /** ค่า approvedBy ฝั่งแอพ — แอดมินกดอนุมัติเอง (รวม Force Approve) */
+        const val APPROVED_BY_ADMIN = "admin"
+
         /**
          * เช็คว่า server สะท้อน pendingAction ที่เราตั้งไว้แล้วหรือไม่
          * ใช้ตอน pull/fetch — ถ้า server มีสถานะที่ตรงกับ action ของเรา = action ถูกประมวลผลแล้ว
@@ -241,7 +244,11 @@ class OrderRepository @Inject constructor(
                                 }
 
                                 // Server is the source of truth — always sync server status (also clears stale pendingAction)
-                                orderApprovalDao.update(localOrder.copy(id = existing.id))
+                                // ยกเว้น approvedBy: server ส่ง null เสมอ → preserve local marker (badge วิธีอนุมัติ)
+                                orderApprovalDao.update(localOrder.copy(
+                                    id = existing.id,
+                                    approvedBy = localOrder.approvedBy ?: existing.approvedBy
+                                ))
                                 Log.d("OrderRepository", "  UPDATE order id=${remote.id}, fortune=$isFortune, status=${remote.approval_status}, orderNum=${localOrder.orderNumber}")
                             } else {
                                 orderApprovalDao.insert(localOrder)
@@ -357,6 +364,8 @@ class OrderRepository @Inject constructor(
         return if (outcome) {
             Log.i(TAG, "approveOrder: ✅ SUCCESS for $identifier (force=$force)")
             orderApprovalDao.updateStatus(order.id, ApprovalStatus.MANUALLY_APPROVED, null)
+            // marker วิธีอนุมัติ — แอดมินกดเองในแอพ (server ไม่เก็บค่านี้ ต้อง mark ฝั่งแอพ)
+            orderApprovalDao.updateApprovedBy(order.id, APPROVED_BY_ADMIN)
             ActionOutcome.Success
         } else if (lastError != null) {
             // Server ปฏิเสธอย่างชัดเจน (เช่น "ยังไม่จับคู่จ่าย") — ไม่ต้อง queue เพราะ retry ก็ไม่ผ่าน
@@ -795,6 +804,9 @@ class OrderRepository @Inject constructor(
                     null -> order.approvalStatus
                 }
                 orderApprovalDao.updateStatus(order.id, newStatus, null)
+                if (order.pendingAction == PendingAction.APPROVE) {
+                    orderApprovalDao.updateApprovedBy(order.id, APPROVED_BY_ADMIN)
+                }
             }
             // Keep pending if failed, will retry next sync
         }
@@ -1002,7 +1014,10 @@ class OrderRepository @Inject constructor(
                         val localOrder = serverOrder.toLocalEntity(server.id)
                         val existing = orderApprovalDao.getByRemoteId(serverOrder.id, server.id)
                         if (existing != null) {
-                            orderApprovalDao.update(localOrder.copy(id = existing.id))
+                            orderApprovalDao.update(localOrder.copy(
+                                id = existing.id,
+                                approvedBy = localOrder.approvedBy ?: existing.approvedBy
+                            ))
                         }
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to update local order from response", e)
@@ -1140,7 +1155,10 @@ class OrderRepository @Inject constructor(
                     val localOrder = serverOrder.toLocalEntity(server.id)
                     val existing = orderApprovalDao.getByRemoteId(serverOrder.id, server.id)
                     if (existing != null) {
-                        orderApprovalDao.update(localOrder.copy(id = existing.id))
+                        orderApprovalDao.update(localOrder.copy(
+                            id = existing.id,
+                            approvedBy = localOrder.approvedBy ?: existing.approvedBy
+                        ))
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to update local order from response", e)
@@ -1244,7 +1262,10 @@ class OrderRepository @Inject constructor(
 
                         val local = remote.toLocalEntity(serverId)
                         if (existing != null) {
-                            orderApprovalDao.update(local.copy(id = existing.id))
+                            orderApprovalDao.update(local.copy(
+                                id = existing.id,
+                                approvedBy = local.approvedBy ?: existing.approvedBy
+                            ))
                         } else {
                             orderApprovalDao.insert(local)
                         }

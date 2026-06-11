@@ -378,8 +378,11 @@ fun DashboardScreen(
 /** ฿48,250 (40sp Black navy) + .37 (24sp faint) — reference hero amount. */
 @Composable
 private fun HeroAmount(amount: Double, strings: AppStrings) {
-    val whole = String.format(Locale.US, "%,d", amount.toLong())
-    val decimals = String.format(Locale.US, "%02d", ((amount - amount.toLong()) * 100).toInt().coerceIn(0, 99))
+    // 🐞 (2026-06-11) คิดจากสตางค์ที่ round แล้ว — เดิม ((amount - long) * 100).toInt()
+    // ตัดเศษ float ทิ้ง ทำให้ เช่น 500.29 แสดงเป็น ฿500.28 (0.29*100 = 28.999...)
+    val totalSatang = Math.round(amount * 100)
+    val whole = String.format(Locale.US, "%,d", totalSatang / 100)
+    val decimals = String.format(Locale.US, "%02d", totalSatang % 100)
     Row(verticalAlignment = Alignment.Bottom) {
         Text(
             "${strings.bahtSymbol}$whole",

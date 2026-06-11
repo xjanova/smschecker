@@ -1,5 +1,8 @@
 package com.thaiprompt.smschecker.ui.components
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -22,6 +27,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -34,9 +40,25 @@ import com.thaiprompt.smschecker.ui.theme.AeroPalette
 /* =========================================================================
    Millennium 3D / Frutiger Aero — chart primitives.
    Self-contained Canvas drawings: smooth income sparkline, full area chart
-   with dashed grid + node dots + peak-marker bubble, and a single-value
-   gloss donut. Feed plain values; the screens map their ViewModel data in.
+   with dashed grid + node dots + peak-marker bubble, a dual-line bank
+   credit/debit chart, and a single-value gloss donut. Feed plain values;
+   the screens map their ViewModel data in. All charts animate in (reveal /
+   sweep) and re-animate when their data changes.
    ========================================================================= */
+
+/**
+ * Animation progress 0→1 ทุกครั้งที่ [key] (เช่น data ของกราฟ) เปลี่ยน —
+ * ใช้ทำ reveal ซ้าย→ขวา ของเส้นกราฟ และ sweep ของโดนัท
+ */
+@Composable
+private fun chartRevealProgress(key: Any?): Float {
+    val anim = remember { Animatable(0f) }
+    LaunchedEffect(key) {
+        anim.snapTo(0f)
+        anim.animateTo(1f, animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing))
+    }
+    return anim.value
+}
 
 /** Catmull-Rom → cubic Bézier so the line reads as a smooth aero curve. */
 private fun smoothPath(pts: List<Offset>): Path {
@@ -68,6 +90,7 @@ fun AeroSparkline(
     lineColor: Color = AeroPalette.GreenLo,
     fillColor: Color = AeroPalette.Green,
 ) {
+    val progress = chartRevealProgress(points)
     Canvas(modifier) {
         if (points.size < 2) return@Canvas
         val min = points.min()
@@ -88,11 +111,14 @@ fun AeroSparkline(
             lineTo(pts.first().x, size.height)
             close()
         }
-        drawPath(
-            area,
-            Brush.verticalGradient(listOf(fillColor.copy(alpha = 0.35f), fillColor.copy(alpha = 0f)))
-        )
-        drawPath(line, color = lineColor, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round))
+        // reveal ซ้าย→ขวา ตาม progress
+        clipRect(right = size.width * progress) {
+            drawPath(
+                area,
+                Brush.verticalGradient(listOf(fillColor.copy(alpha = 0.35f), fillColor.copy(alpha = 0f)))
+            )
+            drawPath(line, color = lineColor, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round))
+        }
     }
 }
 
@@ -110,6 +136,7 @@ fun AeroAreaChart(
     chartHeight: Dp = 120.dp,
 ) {
     val measurer = rememberTextMeasurer()
+    val progress = chartRevealProgress(points)
     Column(modifier) {
         Canvas(Modifier.fillMaxWidth().height(chartHeight)) {
             if (points.size < 2) return@Canvas
@@ -134,7 +161,7 @@ fun AeroAreaChart(
                 drawLine(gridColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx(), pathEffect = dash)
             }
 
-            // area + line
+            // area + line + node dots — reveal ซ้าย→ขวา
             val line = smoothPath(pts)
             val area = Path().apply {
                 addPath(line)
@@ -142,45 +169,131 @@ fun AeroAreaChart(
                 lineTo(pts.first().x, size.height)
                 close()
             }
-            drawPath(
-                area,
-                Brush.verticalGradient(listOf(AeroPalette.Green.copy(alpha = 0.40f), AeroPalette.Green.copy(alpha = 0f)))
-            )
-            drawPath(
-                line,
-                brush = Brush.horizontalGradient(listOf(AeroPalette.GreenLo, AeroPalette.GreenHi)),
-                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-            )
-
-            // node dots
-            pts.forEach { p ->
-                drawCircle(Color.White, radius = 3.dp.toPx(), center = p)
-                drawCircle(AeroPalette.GreenLo, radius = 3.dp.toPx(), center = p, style = Stroke(2.dp.toPx()))
+            clipRect(right = size.width * progress) {
+                drawPath(
+                    area,
+                    Brush.verticalGradient(listOf(AeroPalette.Green.copy(alpha = 0.40f), AeroPalette.Green.copy(alpha = 0f)))
+                )
+                drawPath(
+                    line,
+                    brush = Brush.horizontalGradient(listOf(AeroPalette.GreenLo, AeroPalette.GreenHi)),
+                    style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                )
+                pts.forEach { p ->
+                    drawCircle(Color.White, radius = 3.dp.toPx(), center = p)
+                    drawCircle(AeroPalette.GreenLo, radius = 3.dp.toPx(), center = p, style = Stroke(2.dp.toPx()))
+                }
             }
 
-            // peak marker
-            val peakIdx = points.indices.maxByOrNull { points[it] } ?: 0
-            val peak = pts[peakIdx]
-            drawCircle(AeroPalette.GreenHi, radius = 5.5.dp.toPx(), center = peak)
-            drawCircle(Color.White, radius = 5.5.dp.toPx(), center = peak, style = Stroke(2.5.dp.toPx()))
-            if (peakLabel != null) {
-                val layout = measurer.measure(
-                    peakLabel,
-                    style = TextStyle(color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            // peak marker — fade in ช่วงท้ายอนิเมชั่น
+            val peakAlpha = ((progress - 0.65f) / 0.35f).coerceIn(0f, 1f)
+            if (peakAlpha > 0f) {
+                val peakIdx = points.indices.maxByOrNull { points[it] } ?: 0
+                val peak = pts[peakIdx]
+                drawCircle(AeroPalette.GreenHi.copy(alpha = peakAlpha), radius = 5.5.dp.toPx(), center = peak)
+                drawCircle(Color.White.copy(alpha = peakAlpha), radius = 5.5.dp.toPx(), center = peak, style = Stroke(2.5.dp.toPx()))
+                if (peakLabel != null) {
+                    val layout = measurer.measure(
+                        peakLabel,
+                        style = TextStyle(
+                            color = Color.White.copy(alpha = peakAlpha),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                    val padX = 7.dp.toPx()
+                    val padBubbleY = 4.dp.toPx()
+                    val bw = layout.size.width + padX * 2
+                    val bh = layout.size.height + padBubbleY * 2
+                    val bx = (peak.x - bw / 2).coerceIn(0f, size.width - bw)
+                    val by = (peak.y - 10.dp.toPx() - bh).coerceAtLeast(0f)
+                    drawRoundRect(
+                        color = AeroPalette.NavyDeep.copy(alpha = peakAlpha),
+                        topLeft = Offset(bx, by),
+                        size = Size(bw, bh),
+                        cornerRadius = CornerRadius(7.dp.toPx())
+                    )
+                    drawText(layout, topLeft = Offset(bx + padX, by + padBubbleY))
+                }
+            }
+        }
+        if (xLabels.isNotEmpty()) {
+            Row(
+                Modifier.fillMaxWidth().padding(top = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                xLabels.forEach { Text(it, fontSize = 11.sp, color = AeroPalette.InkFaint) }
+            }
+        }
+    }
+}
+
+/**
+ * กราฟธนาคารสองเส้น (เงินเข้า/เงินออก RAW จาก SMS ธนาคาร) — สไตล์เดียวกับ
+ * [AeroAreaChart]: dashed grid + smooth line + soft area fill ต่อเส้น,
+ * animate reveal ซ้าย→ขวา. ทั้งสองเส้นแชร์สเกลแกน Y เดียวกันเพื่อเทียบกันได้
+ */
+@Composable
+fun AeroDualLineChart(
+    creditPoints: List<Float>,
+    debitPoints: List<Float>,
+    modifier: Modifier = Modifier.fillMaxWidth(),
+    creditColor: Color = AeroPalette.GreenLo,
+    debitColor: Color = AeroPalette.Red,
+    xLabels: List<String> = emptyList(),
+    chartHeight: Dp = 120.dp,
+) {
+    val progress = chartRevealProgress(creditPoints to debitPoints)
+    Column(modifier) {
+        Canvas(Modifier.fillMaxWidth().height(chartHeight)) {
+            val n = maxOf(creditPoints.size, debitPoints.size)
+            if (n < 2) return@Canvas
+            val allValues = creditPoints + debitPoints
+            val min = 0f // ยอดเงินเริ่มที่ 0 เสมอ — สเกลตรงไปตรงมา ไม่หลอกตา
+            val max = (allValues.maxOrNull() ?: 0f).takeIf { it > 0f } ?: 1f
+            val span = max - min
+            val padTop = 10.dp.toPx()
+            val padBottom = 8.dp.toPx()
+            val usableH = size.height - padTop - padBottom
+
+            // dashed gridlines
+            val gridColor = Color(0x80B6C2CF)
+            val dash = PathEffect.dashPathEffect(floatArrayOf(3f, 4f))
+            for (f in listOf(0.25f, 0.5f, 0.75f)) {
+                val y = padTop + f * usableH
+                drawLine(gridColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx(), pathEffect = dash)
+            }
+
+            fun toOffsets(points: List<Float>): List<Offset> = points.mapIndexed { i, v ->
+                val x = size.width * i / (n - 1)
+                val y = padTop + (1f - (v - min) / span) * usableH
+                Offset(x, y)
+            }
+
+            fun drawSeries(points: List<Float>, color: Color) {
+                if (points.size < 2) return
+                val pts = toOffsets(points)
+                val line = smoothPath(pts)
+                val area = Path().apply {
+                    addPath(line)
+                    lineTo(pts.last().x, size.height)
+                    lineTo(pts.first().x, size.height)
+                    close()
+                }
+                drawPath(
+                    area,
+                    Brush.verticalGradient(listOf(color.copy(alpha = 0.22f), color.copy(alpha = 0f)))
                 )
-                val padX = 7.dp.toPx()
-                val padBubbleY = 4.dp.toPx()
-                val bw = layout.size.width + padX * 2
-                val bh = layout.size.height + padBubbleY * 2
-                val bx = (peak.x - bw / 2).coerceIn(0f, size.width - bw)
-                val by = (peak.y - 10.dp.toPx() - bh).coerceAtLeast(0f)
-                drawRoundRect(
-                    color = AeroPalette.NavyDeep,
-                    topLeft = Offset(bx, by),
-                    size = Size(bw, bh),
-                    cornerRadius = CornerRadius(7.dp.toPx())
-                )
-                drawText(layout, topLeft = Offset(bx + padX, by + padBubbleY))
+                drawPath(line, color = color, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round))
+                pts.forEach { p ->
+                    drawCircle(Color.White, radius = 2.5.dp.toPx(), center = p)
+                    drawCircle(color, radius = 2.5.dp.toPx(), center = p, style = Stroke(1.5.dp.toPx()))
+                }
+            }
+
+            clipRect(right = size.width * progress) {
+                drawSeries(debitPoints, debitColor)   // วาดเส้นแดงก่อน ให้เส้นเขียว (พระเอก) อยู่บน
+                drawSeries(creditPoints, creditColor)
             }
         }
         if (xLabels.isNotEmpty()) {
@@ -208,6 +321,7 @@ fun MatchRateDonut(
     strokeWidth: Dp = 13.dp,
     centerSuffix: String = "%",
 ) {
+    val progress = chartRevealProgress(fraction)
     Box(modifier = modifier.size(diameter), contentAlignment = Alignment.Center) {
         Canvas(Modifier.size(diameter)) {
             val sw = strokeWidth.toPx()
@@ -226,7 +340,7 @@ fun MatchRateDonut(
             drawArc(
                 brush = Brush.linearGradient(listOf(AeroPalette.GreenHi, AeroPalette.GreenLo)),
                 startAngle = -90f,
-                sweepAngle = 360f * fraction.coerceIn(0f, 1f),
+                sweepAngle = 360f * fraction.coerceIn(0f, 1f) * progress,
                 useCenter = false,
                 topLeft = topLeft,
                 size = arcSize,

@@ -26,11 +26,26 @@ class TtsManager @Inject constructor(
 
     companion object {
         private const val TAG = "TtsManager"
+
+        /**
+         * 🐞 (2026-06-11) Google TTS engine — บังคับใช้ถ้าติดตั้งอยู่
+         * เคสจริง: Samsung ไม่พูดแต่ Vivo พูด — Samsung ตั้ง default engine เป็น
+         * Samsung TTS (com.samsung.SMT) ซึ่งส่วนใหญ่ "ไม่มีเสียงภาษาไทย" →
+         * setLanguage คืน LANG_NOT_SUPPORTED → speak เงียบสนิททั้งที่โค้ดปกติ
+         * Vivo/เครื่องอื่นใช้ Google TTS เป็น default อยู่แล้วเลยพูดได้
+         */
+        private const val GOOGLE_TTS_PACKAGE = "com.google.android.tts"
     }
 
     private var tts: TextToSpeech? = null
     @Volatile
     private var isInitialized = false
+    /** engine ที่ใช้สร้าง TTS รอบปัจจุบัน (null = system default) — ไว้ตัดสินใจ fallback ตอน init fail */
+    @Volatile
+    private var currentEngine: String? = null
+    /** กัน retry init วนลูป — fallback ได้ครั้งเดียว */
+    @Volatile
+    private var triedFallbackEngine = false
     private val pendingQueue = CopyOnWriteArrayList<String>()
     private val utteranceCounter = AtomicLong(0) // unique utterance id (กัน id ชนกันใน ms เดียว)
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -69,14 +84,38 @@ class TtsManager @Inject constructor(
     init {
         // TextToSpeech must be created on a thread with a Looper (Main thread)
         if (Looper.myLooper() == Looper.getMainLooper()) {
-            tts = TextToSpeech(context, this)
+            createTts()
         } else {
-            mainHandler.post { tts = TextToSpeech(context, this) }
+            mainHandler.post { createTts() }
         }
+    }
+
+    /**
+     * สร้าง TextToSpeech โดยเลือก engine ที่มีเสียงไทยแน่นอนที่สุดก่อน:
+     * Google TTS (ถ้าติดตั้ง) → system default. ต้องเรียกบน main thread
+     */
+    private fun createTts(preferredEngine: String? = pickPreferredEngine()) {
+        currentEngine = preferredEngine
+        cachedLangKey = null // engine ใหม่ต้อง setLanguage ใหม่เสมอ
+        tts = if (preferredEngine != null) {
+            Log.i(TAG, "Creating TTS with engine: $preferredEngine")
+            TextToSpeech(context, this, preferredEngine)
+        } else {
+            Log.i(TAG, "Creating TTS with system default engine")
+            TextToSpeech(context, this)
+        }
+    }
+
+    private fun pickPreferredEngine(): String? = try {
+        context.packageManager.getPackageInfo(GOOGLE_TTS_PACKAGE, 0)
+        GOOGLE_TTS_PACKAGE
+    } catch (e: Exception) {
+        null // Google TTS ไม่ได้ติดตั้ง → ใช้ default ของเครื่อง
     }
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
+            Log.i(TAG, "TTS init OK (engine=${currentEngine ?: "default"}, defaultEngine=${tts?.defaultEngine})")
             applyTtsLanguage()
 
             tts?.setPitch(1.0f)
@@ -115,7 +154,14 @@ class TtsManager @Inject constructor(
             pendingQueue.clear()
             queued.forEach { speakNowOnMain(it) }
         } else {
-            Log.e(TAG, "TTS initialization failed with status: $status")
+            Log.e(TAG, "TTS initialization failed with status: $status (engine=${currentEngine ?: "default"})")
+            // engine ที่ขอไป init ไม่ได้ (เช่น Google TTS ถูก disable) → ลอง engine อีกตัวหนึ่งครั้งเดียว
+            if (!triedFallbackEngine) {
+                triedFallbackEngine = true
+                val fallback = if (currentEngine != null) null else pickPreferredEngine()
+                Log.w(TAG, "Retrying TTS init with ${fallback ?: "system default"} engine")
+                mainHandler.post { createTts(fallback) }
+            }
         }
     }
 
@@ -203,7 +249,14 @@ class TtsManager @Inject constructor(
 
         val result = tts?.setLanguage(locale)
         if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-            Log.w(TAG, "$langKey TTS not available, using default locale")
+            // เคส Samsung TTS ไม่มีเสียงไทย — log ชัดๆ ให้เห็นใน bug report + อย่า cache
+            // ภาษาที่ตั้งไม่สำเร็จ (เผื่อผู้ใช้ไปติดตั้งเสียงไทยแล้วกลับมา จะได้ลองใหม่)
+            Log.e(
+                TAG,
+                "TTS language $locale NOT available (result=$result, engine=${tts?.defaultEngine}) — " +
+                    "falling back to device default locale"
+            )
+            cachedLangKey = null
             tts?.setLanguage(Locale.getDefault())
         }
     }
@@ -270,7 +323,11 @@ class TtsManager @Inject constructor(
     private fun speakNowOnMain(text: String) {
         ensureMediaVolumeAudible()
         applyTtsLanguage()
-        tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "tts_${utteranceCounter.incrementAndGet()}")
+        val result = tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "tts_${utteranceCounter.incrementAndGet()}")
+        if (result != TextToSpeech.SUCCESS) {
+            // ERROR ที่นี่ = engine ตาย/ไม่พร้อม (ไม่ใช่เรื่อง volume) — ให้เห็นใน log เสมอ
+            Log.e(TAG, "tts.speak() returned $result (engine=${tts?.defaultEngine})")
+        }
     }
 
     /**

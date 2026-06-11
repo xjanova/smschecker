@@ -79,21 +79,26 @@ class DashboardViewModel @Inject constructor(
         try { loadServerHealth() } catch (e: Exception) { Log.e(TAG, "loadServerHealth failed", e) }
     }
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private fun loadDashboardData() {
-        val todayStart = getTodayStart()
-
         // รายรับ = บิล approved (ไม่เกี่ยว SMS ธนาคาร)
         // รายจ่าย = net จาก SMS ธนาคารทั้งหมด = max(0, bankDEBIT - bankCREDIT) ไม่ยุ่งกับบิล
         // เช่น โอนเข้าตัวเอง 200 (CREDIT 200) + ถอน 500 (DEBIT 500) → expense = 300
+        //
+        // 🐞 (2026-06-11) เดิม todayStart คำนวณ "ครั้งเดียว" ตอนสร้าง ViewModel — เครื่องร้านค้า
+        // เปิดแอพค้างข้ามคืน ยอด "วันนี้" เลยนับรวมของเมื่อวานไปเรื่อยๆ จนกว่าจะ kill แอพ
+        // แก้ด้วย midnightTicker: ขอบเขตวันใหม่ทุกเที่ยงคืน → re-subscribe query ด้วย since ใหม่
         viewModelScope.launch {
             try {
-                kotlinx.coroutines.flow.combine(
-                    orderApprovalDao.getApprovedAmountFlow(todayStart),
-                    repository.getTotalCredit(todayStart),
-                    repository.getTotalDebit(todayStart)
-                ) { billIncome, bankCredit, bankDebit ->
-                    val netExpense = max(0.0, bankDebit - bankCredit)
-                    billIncome to netExpense
+                midnightTicker().flatMapLatest { todayStart ->
+                    kotlinx.coroutines.flow.combine(
+                        orderApprovalDao.getApprovedAmountFlow(todayStart),
+                        repository.getTotalCredit(todayStart),
+                        repository.getTotalDebit(todayStart)
+                    ) { billIncome, bankCredit, bankDebit ->
+                        val netExpense = max(0.0, bankDebit - bankCredit)
+                        billIncome to netExpense
+                    }
                 }.collect { (income, expense) ->
                     _state.update { it.copy(todayCredit = income, todayDebit = expense) }
                 }
@@ -128,9 +133,16 @@ class DashboardViewModel @Inject constructor(
         }
 
         // Collect recent transactions + today count + 7-day income/expense
+        // 🐞 (2026-06-11) เพิ่ม getApprovedAmountFlow เป็น trigger — เดิมกราฟ 7 วันรีเฟรชเฉพาะ
+        // ตอนมี bank transaction ใหม่ → อนุมัติบิล manual (ไม่มี SMS) การ์ดเลขเปลี่ยนแต่กราฟค้าง
         viewModelScope.launch {
             try {
-                repository.getAllTransactions().collect { transactions ->
+                midnightTicker().flatMapLatest { todayStart ->
+                    kotlinx.coroutines.flow.combine(
+                        repository.getAllTransactions(),
+                        orderApprovalDao.getApprovedAmountFlow(todayStart - 6 * DAY_MS)
+                    ) { transactions, _ -> transactions to todayStart }
+                }.collect { (transactions, todayStart) ->
                     val todayCount = transactions.count { it.timestamp >= todayStart }
                     val daily = try {
                         loadDailyIncomeExpense(days = 7)
@@ -209,6 +221,7 @@ class DashboardViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "DashboardVM"
+        private const val DAY_MS = 24L * 60 * 60 * 1000
     }
 
     private fun loadOrderStats() {
@@ -289,6 +302,21 @@ class DashboardViewModel @Inject constructor(
         cal.set(java.util.Calendar.SECOND, 0)
         cal.set(java.util.Calendar.MILLISECOND, 0)
         return cal.timeInMillis
+    }
+
+    /**
+     * emit เวลาเที่ยงคืนของ "วันนี้" ทันที แล้ว emit ใหม่ทุกครั้งที่ข้ามวัน —
+     * ใช้กับ flatMapLatest เพื่อให้ query "ตั้งแต่วันนี้" รีเซ็ตเองหลังเที่ยงคืน
+     * (เครื่องร้านเปิดแอพค้างหลายวัน ViewModel ไม่ถูกสร้างใหม่)
+     */
+    private fun midnightTicker(): kotlinx.coroutines.flow.Flow<Long> = kotlinx.coroutines.flow.flow {
+        while (true) {
+            val todayStart = getTodayStart()
+            emit(todayStart)
+            val untilNextMidnight = todayStart + DAY_MS - System.currentTimeMillis()
+            // +1s กัน clock drift ปลุกก่อนเที่ยงคืนแล้ววนซ้ำค่าเดิม
+            kotlinx.coroutines.delay(untilNextMidnight.coerceAtLeast(1_000L) + 1_000L)
+        }
     }
 
     /**

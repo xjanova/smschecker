@@ -378,41 +378,6 @@ class OrdersViewModel @Inject constructor(
         _state.update { it.copy(actionResult = null) }
     }
 
-    fun bulkApproveAll() {
-        viewModelScope.launch {
-            try {
-                // 🛡️ (2026-06-03) ดึง pending "ทั้งหมด" จาก DB ไม่ใช่เฉพาะ snapshot ที่ page/filter อยู่บนจอ
-                //   บั๊กเดิม: filter _state.value.orders (≤30 รายการตาม page + filter ปัจจุบัน) → ถ้ามี pending
-                //   80 บิล หรือผู้ใช้ตั้ง filter เป็นสถานะอื่น จะ approve แค่ที่เห็น แต่ขึ้น "✅ N สำเร็จ" ลวงตา
-                //   (เหลือ pending จริงอีกเพียบโดยไม่รู้ตัว)
-                val pending = orderRepository.getPendingOrdersList()
-                if (pending.isEmpty()) return@launch
-                var ok = 0
-                var queued = 0
-                var failed = 0
-                for (order in pending) {
-                    when (orderRepository.approveOrder(order)) {
-                        is OrderRepository.ActionOutcome.Success -> ok++
-                        is OrderRepository.ActionOutcome.Queued -> queued++
-                        is OrderRepository.ActionOutcome.FailedValidation -> failed++
-                    }
-                }
-                val msg = buildString {
-                    if (ok > 0) append("✅ $ok สำเร็จ ")
-                    if (queued > 0) append("⏳ $queued รอคิว ")
-                    if (failed > 0) append("❌ $failed ไม่สำเร็จ")
-                }
-                _state.update { it.copy(
-                    actionResult = ActionResult(
-                        success = failed == 0 && queued == 0,
-                        message = msg.trim(),
-                        orderNumber = null
-                    )
-                ) }
-                loadOrders(showLoading = false)
-            } catch (e: Exception) {
-                Log.e("OrdersViewModel", "Error bulk approving orders", e)
-            }
-        }
-    }
+    // (2026-06-11) bulkApproveAll ถูกถอดออกพร้อมแถบลอย "อนุมัติทั้งหมด" —
+    // owner สั่งนำออกเพราะไม่ได้ใช้และเสี่ยงอนุมัติยกชุดโดยไม่ตั้งใจ
 }

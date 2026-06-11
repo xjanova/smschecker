@@ -1,5 +1,8 @@
 package com.thaiprompt.smschecker.ui.dashboard
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -7,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -23,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.thaiprompt.smschecker.ui.components.AeroAreaChart
 import com.thaiprompt.smschecker.ui.components.AeroChip
+import com.thaiprompt.smschecker.ui.components.AeroDualLineChart
 import com.thaiprompt.smschecker.ui.components.AeroGlass
 import com.thaiprompt.smschecker.ui.components.AeroHeader
 import com.thaiprompt.smschecker.ui.components.AeroSectionHeader
@@ -288,6 +293,63 @@ fun RevenueDetailScreen(
                     }
                 }
 
+                // ── bank SMS chart: เงินเข้า/เงินออก RAW (มีในเวอร์ชันก่อน redesign —
+                //    owner สั่งนำกลับมาให้สอดคล้องดีไซน์ Millennium 3D) ──
+                item(key = "bank_section") {
+                    Spacer(modifier = Modifier.height(18.dp))
+                    AeroSectionHeader(
+                        title = strings.bankChartTitle,
+                        leadingIcon = Icons.Default.AccountBalance,
+                        actionText = periodChipLabel,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    Spacer(modifier = Modifier.height(9.dp))
+                }
+                item(key = "bank_chart") {
+                    AeroGlass(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        cornerRadius = 18.dp,
+                        contentPadding = PaddingValues(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 12.dp)
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            val creditPts = state.bankCreditSeries?.data?.map { it.toFloat() } ?: emptyList()
+                            val debitPts = state.bankDebitSeries?.data?.map { it.toFloat() } ?: emptyList()
+                            val hasData = (creditPts + debitPts).any { it > 0f } &&
+                                maxOf(creditPts.size, debitPts.size) >= 2
+                            // legend: เงินเข้า (เขียว) / เงินออก (แดง) + ยอดรวม
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                AeroChip(
+                                    "${state.bankCreditSeries?.name ?: strings.bankCreditTotal} ${formatCompactBaht(state.bankCreditTotal)}",
+                                    style = ChipStyle.Green
+                                )
+                                AeroChip(
+                                    "${state.bankDebitSeries?.name ?: strings.totalExpenseLabel} ${formatCompactBaht(state.bankDebitTotal)}",
+                                    style = ChipStyle.Red
+                                )
+                            }
+                            if (hasData) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                AeroDualLineChart(
+                                    creditPoints = creditPts,
+                                    debitPoints = debitPts,
+                                    xLabels = bucketAxisLabels(state.buckets, state.isMonthly),
+                                    chartHeight = 120.dp
+                                )
+                            } else {
+                                Spacer(modifier = Modifier.height(14.dp))
+                                Text(
+                                    strings.noBankActivity,
+                                    fontSize = 12.sp,
+                                    color = AeroPalette.InkFaint,
+                                    modifier = Modifier.padding(bottom = 10.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // ── per-server revenue comparison bars ──
                 if (state.billServerSeries.isNotEmpty()) {
                     item(key = "server_section") {
@@ -381,6 +443,12 @@ private fun KpiDivider() {
 /** Server comparison row (.srow): coin-initials + name + ฿total + progress track. */
 @Composable
 private fun ServerRevenueRow(name: String, fraction: Float, valueText: String) {
+    // แถบยาวขึ้นแบบ animate ทุกครั้งที่ค่าจริงเปลี่ยน (เปลี่ยนช่วงเวลา/refresh)
+    val animatedFraction by animateFloatAsState(
+        targetValue = fraction.coerceIn(0f, 1f),
+        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+        label = "serverBarFraction"
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -421,7 +489,7 @@ private fun ServerRevenueRow(name: String, fraction: Float, valueText: String) {
             ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                        .fillMaxWidth(animatedFraction)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(50))
                         .background(

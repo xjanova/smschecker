@@ -75,6 +75,26 @@ enum class ApprovalStatus(val apiValue: String, val displayName: String) {
     }
 }
 
+/**
+ * วิธีที่บิลถูกอนุมัติ — ใช้แสดง badge บนการ์ดบิล
+ *  SMS   = จับคู่ SMS ธนาคารอัตโนมัติ (auto_approved + มี notificationId)
+ *  SLIP  = server อนุมัติโดยไม่มี SMS จับคู่ (เช่น ตรวจสลิป SlipOK / gateway อื่น)
+ *  ADMIN = แอดมินกดอนุมัติเองในแอพ (รวม Force Approve) — marker เก็บใน approvedBy ฝั่งแอพ
+ */
+enum class ApprovalMethod { SMS, SLIP, ADMIN }
+
+fun OrderApproval.approvalMethod(): ApprovalMethod? {
+    val isApproved = approvalStatus == ApprovalStatus.AUTO_APPROVED ||
+        approvalStatus == ApprovalStatus.MANUALLY_APPROVED
+    if (!isApproved) return null
+    return when {
+        // server ส่ง approved_by = null เสมอ → ค่า non-null คือ marker ฝั่งแอพ ("admin")
+        approvedBy != null || approvalStatus == ApprovalStatus.MANUALLY_APPROVED -> ApprovalMethod.ADMIN
+        notificationId != null -> ApprovalMethod.SMS
+        else -> ApprovalMethod.SLIP
+    }
+}
+
 enum class MatchConfidence(val apiValue: String) {
     HIGH("high"),
     AMBIGUOUS("ambiguous");

@@ -145,6 +145,14 @@ interface OrderApprovalDao {
     @Query("UPDATE order_approvals SET approvalStatus = :status, pendingAction = :pendingAction, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateStatus(id: Long, status: ApprovalStatus, pendingAction: PendingAction?, updatedAt: Long = System.currentTimeMillis())
 
+    /**
+     * บันทึกว่าใคร/ช่องทางไหนเป็นคนอนุมัติ (เช่น "admin" = แอดมินกดอนุมัติในแอพ)
+     * server ส่ง approved_by = null เสมอ → ค่านี้เป็น local marker ใช้แสดง badge วิธีอนุมัติ
+     * (จุด merge จาก server ทุกจุดต้อง preserve ค่านี้ ไม่ให้ sync ทับเป็น null)
+     */
+    @Query("UPDATE order_approvals SET approvedBy = :approvedBy WHERE id = :id")
+    suspend fun updateApprovedBy(id: Long, approvedBy: String?)
+
     @Query("SELECT COUNT(*) FROM order_approvals")
     suspend fun getTotalOrderCount(): Int
 

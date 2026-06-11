@@ -290,6 +290,10 @@ data class AppStrings(
     // app crashes on every launch. Keep them out of the constructor.
     val aeroIncomeToday: String = "เงินเข้าวันนี้"
     val aeroConnected: String = "เชื่อมต่อ"
+    // badge วิธีอนุมัติบนการ์ดบิล (ApprovalMethod)
+    val approvedViaSms: String = "อนุมัติผ่าน SMS"
+    val approvedViaSlip: String = "อนุมัติผ่านสลิป"
+    val approvedViaAdmin: String = "แอดมินอนุมัติ"
     val aeroPopularBanks: String = "ธนาคารยอดนิยม"
     val aeroViewAll: String = "ดูทั้งหมด"
     val aeroLive: String = "สด"

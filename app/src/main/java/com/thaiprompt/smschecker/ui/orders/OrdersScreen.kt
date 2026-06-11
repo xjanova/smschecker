@@ -18,8 +18,11 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,9 +39,11 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.thaiprompt.smschecker.data.model.ApprovalMethod
 import com.thaiprompt.smschecker.data.model.ApprovalStatus
 import com.thaiprompt.smschecker.data.model.MatchConfidence
 import com.thaiprompt.smschecker.data.model.OrderApproval
+import com.thaiprompt.smschecker.data.model.approvalMethod
 import com.thaiprompt.smschecker.ui.components.AeroChip
 import com.thaiprompt.smschecker.ui.components.AeroGlass
 import com.thaiprompt.smschecker.ui.components.AeroHeader
@@ -149,7 +154,7 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = if (state.pendingCount > 0) 84.dp else 8.dp)
+            contentPadding = PaddingValues(bottom = 8.dp)
         ) {
             // ── navy app bar: title + search/refresh orbs + chrome segmented ──
             item(key = "header") {
@@ -421,47 +426,8 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
             }
         }
 
-        // ── floating bulk-approve bar (.glass pinned above the tab bar) ──
-        if (state.pendingCount > 0) {
-            AeroGlass(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                    .fillMaxWidth(),
-                cornerRadius = 18.dp,
-                contentPadding = PaddingValues(start = 16.dp, top = 9.dp, end = 10.dp, bottom = 9.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        buildAnnotatedString {
-                            withStyle(SpanStyle(color = AeroPalette.InkSoft)) {
-                                append("${strings.aeroSelectedPrefix} ")
-                            }
-                            withStyle(
-                                SpanStyle(color = AeroPalette.NavyDeep, fontWeight = FontWeight.Bold)
-                            ) {
-                                append("${state.pendingCount}")
-                            }
-                            withStyle(SpanStyle(color = AeroPalette.InkSoft)) {
-                                append(" ${strings.aeroItemsSuffix}")
-                            }
-                        },
-                        fontSize = 13.sp
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    GlossButton(
-                        text = strings.approveAll,
-                        onClick = { viewModel.bulkApproveAll() },
-                        style = GlossStyle.Green,
-                        fontSize = 14,
-                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp)
-                    )
-                }
-            }
-        }
+        // (2026-06-11) แถบลอย "อนุมัติทั้งหมด" ถูกถอดออกตามคำสั่ง owner —
+        // ไม่ได้ใช้งานจริงและเสี่ยงกดพลาดอนุมัติยกชุด ปุ่มรายการ์ดยังอยู่ครบ
 
         // Date picker dialog
         if (showDatePicker) {
@@ -583,7 +549,19 @@ fun OrderCard(
                             modifier = Modifier.padding(top = 2.dp)
                         )
                     }
-                    StatusAeroChip(order = order, strings = strings)
+                    Column(horizontalAlignment = Alignment.End) {
+                        StatusAeroChip(order = order, strings = strings)
+                        // badge วิธีอนุมัติ — แสดงเฉพาะบิลที่อนุมัติแล้ว
+                        order.approvalMethod()?.let { method ->
+                            Spacer(modifier = Modifier.height(4.dp))
+                            val (label, icon) = when (method) {
+                                ApprovalMethod.SMS -> strings.approvedViaSms to Icons.Default.Sms
+                                ApprovalMethod.SLIP -> strings.approvedViaSlip to Icons.Default.ReceiptLong
+                                ApprovalMethod.ADMIN -> strings.approvedViaAdmin to Icons.Default.Person
+                            }
+                            AeroChip(label, style = ChipStyle.Aqua, leadingIcon = icon)
+                        }
+                    }
                 }
 
                 // product line (+ Pay-Later privilege badge) — business info preserved
@@ -820,8 +798,11 @@ private fun UniqueDecimalAmount(amount: Double, status: ApprovalStatus) {
         status == ApprovalStatus.REJECTED -> AeroPalette.Red
         else -> AeroPalette.InkFaint
     }
-    val whole = String.format(Locale.US, "%,d", amount.toLong())
-    val decimals = String.format(Locale.US, "%02d", ((amount - amount.toLong()) * 100).toInt().coerceIn(0, 99))
+    // 🐞 (2026-06-11) คิดจากสตางค์ที่ round แล้ว — เดิมตัดเศษ float ทำให้ทศนิยม unique
+    // (หัวใจของการจับคู่ยอด) แสดงผิด เช่น 500.29 → ฿500.28 ร้านเทียบกับสลิปแล้วงง
+    val totalSatang = Math.round(amount * 100)
+    val whole = String.format(Locale.US, "%,d", totalSatang / 100)
+    val decimals = String.format(Locale.US, "%02d", totalSatang % 100)
 
     Text(
         buildAnnotatedString {
