@@ -164,7 +164,7 @@ fun chromeBrush(): Brush = Brush.verticalGradient(
 // ----------------------------------------------------------------------------
 // Gloss button
 // ----------------------------------------------------------------------------
-enum class GlossStyle { Green, Navy, Red, Ghost }
+enum class GlossStyle { Green, Navy, Red, Orange, Ghost }
 
 @Composable
 fun GlossButton(
@@ -186,6 +186,7 @@ fun GlossButton(
         GlossStyle.Green -> Brush.verticalGradient(listOf(AeroPalette.GreenHi, AeroPalette.Green, AeroPalette.GreenLo))
         GlossStyle.Navy -> Brush.verticalGradient(listOf(AeroPalette.NavyHi, AeroPalette.Navy, AeroPalette.NavyDeep))
         GlossStyle.Red -> Brush.verticalGradient(listOf(AeroPalette.RedHi, AeroPalette.Red, AeroPalette.RedLo))
+        GlossStyle.Orange -> Brush.verticalGradient(listOf(AeroPalette.OrangeHi, AeroPalette.Orange, AeroPalette.OrangeLo))
         GlossStyle.Ghost -> Brush.verticalGradient(listOf(Color(0xEBFFFFFF), Color(0xCCF2F7FA)))
     }
     val contentColor = if (style == GlossStyle.Ghost) AeroPalette.Navy else Color.White
@@ -193,6 +194,7 @@ fun GlossButton(
         GlossStyle.Green -> AeroPalette.GreenLo
         GlossStyle.Navy -> AeroPalette.NavyDeep
         GlossStyle.Red -> AeroPalette.RedLo
+        GlossStyle.Orange -> AeroPalette.OrangeLo
         GlossStyle.Ghost -> AeroPalette.Navy
     }
 
@@ -265,6 +267,7 @@ fun GlossIconButton(
         GlossStyle.Green -> Brush.verticalGradient(listOf(AeroPalette.GreenHi, AeroPalette.Green, AeroPalette.GreenLo))
         GlossStyle.Navy -> Brush.verticalGradient(listOf(AeroPalette.NavyHi, AeroPalette.Navy, AeroPalette.NavyDeep))
         GlossStyle.Red -> Brush.verticalGradient(listOf(AeroPalette.RedHi, AeroPalette.Red, AeroPalette.RedLo))
+        GlossStyle.Orange -> Brush.verticalGradient(listOf(AeroPalette.OrangeHi, AeroPalette.Orange, AeroPalette.OrangeLo))
         GlossStyle.Ghost -> Brush.verticalGradient(listOf(Color(0xEBFFFFFF), Color(0xCCF2F7FA)))
     }
     val contentColor = if (style == GlossStyle.Ghost) AeroPalette.Navy else Color.White

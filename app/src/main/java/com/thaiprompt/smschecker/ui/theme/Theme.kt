@@ -44,6 +44,11 @@ object AeroPalette {
     val GoldHi = Color(0xFFF2DD9A)      // oklch(0.92 0.09 92)
     val GoldText = Color(0xFF8A6A1E)    // readable gold-ink for "pending" labels
 
+    // --- orange (force approve / caution action) ---
+    val Orange = Color(0xFFE8821E)      // oklch(0.72 0.16 60)
+    val OrangeHi = Color(0xFFF6A94F)    // oklch(0.81 0.14 68)
+    val OrangeLo = Color(0xFFC2660A)    // oklch(0.60 0.14 58)
+
     // --- red (debit / reject) ---
     val Red = Color(0xFFD6452E)         // oklch(0.62 0.20 26)
     val RedHi = Color(0xFFEF6A4D)       // oklch(0.72 0.18 30)

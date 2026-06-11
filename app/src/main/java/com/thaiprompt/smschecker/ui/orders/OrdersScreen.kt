@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudUpload
@@ -707,6 +708,26 @@ fun OrderCard(
                         )
                         .padding(horizontal = 14.dp, vertical = 12.dp)
                 ) {
+                    // Force Approve — primary action (used most often); confirm dialog above
+                    GlossButton(
+                        text = strings.forceApproveButton,
+                        onClick = { showForceApproveDialog = true },
+                        style = GlossStyle.Orange,
+                        leadingIcon = Icons.Default.Bolt,
+                        fontSize = 16,
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        strings.forceApproveHint,
+                        fontSize = 10.sp,
+                        color = AeroPalette.InkFaint,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(9.dp),
@@ -717,32 +738,18 @@ fun OrderCard(
                             onClick = onApprove,
                             style = GlossStyle.Green,
                             leadingIcon = Icons.Default.Check,
-                            fontSize = 14,
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 11.dp),
+                            fontSize = 13,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp),
                             modifier = Modifier.weight(1f)
                         )
                         GlossIconButton(
                             icon = Icons.Default.Close,
                             onClick = onReject,
                             style = GlossStyle.Ghost,
-                            size = 46.dp,
+                            size = 40.dp,
                             contentDescription = strings.rejectButton
                         )
                     }
-                    // Force Approve — bypass SMS matching (kept; confirm dialog above)
-                    Text(
-                        "🚀 Force Approve (ไม่ผ่านการจับคู่ SMS)",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFFB85C00),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { showForceApproveDialog = true }
-                            .padding(vertical = 5.dp)
-                    )
                 }
             }
         }
