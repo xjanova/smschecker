@@ -52,6 +52,9 @@ data class OrderApproval(
     //   ใช้ใน OrdersScreen badge + FcmService notification body
     val cancellationReason: String? = null,
     val cancellationReasonLabel: String? = null,
+    // 📱 (2026-06-11) ช่องทางที่ลูกค้าทักมา — sync จาก server (order_details_json.platform)
+    //   "facebook" / "line" → badge โลโก้บนการ์ดบิล, null = บิลเว็บ/บิลเก่าก่อนฟีเจอร์นี้
+    val platform: String? = null,
     val syncedVersion: Long = 0,
     val lastSyncedAt: Long? = null,
     val pendingAction: PendingAction? = null,

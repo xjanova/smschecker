@@ -1734,6 +1734,8 @@ fun RemoteOrderApproval.toLocalEntity(serverId: Long): OrderApproval {
         // 🏷️ (2026-05-25) Cancellation reason — sync จาก server
         cancellationReason = cancellation_reason,
         cancellationReasonLabel = cancellation_reason_label,
+        // 📱 (2026-06-11) ช่องทางลูกค้า (facebook/line) — badge โลโก้บนการ์ดบิล
+        platform = details?.get("platform")?.toString()?.lowercase()?.takeIf { it.isNotBlank() },
         syncedVersion = synced_version,
         lastSyncedAt = System.currentTimeMillis()
     )

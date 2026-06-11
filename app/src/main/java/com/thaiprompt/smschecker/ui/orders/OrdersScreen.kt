@@ -3,7 +3,9 @@
 package com.thaiprompt.smschecker.ui.orders
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -32,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -40,6 +43,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.thaiprompt.smschecker.R
 import com.thaiprompt.smschecker.data.model.ApprovalMethod
 import com.thaiprompt.smschecker.data.model.ApprovalStatus
 import com.thaiprompt.smschecker.data.model.MatchConfidence
@@ -627,7 +631,7 @@ fun OrderCard(
                     }
                 }
 
-                // ── meta row: time + offline-queue flag ──
+                // ── meta row: time + platform badge + offline-queue flag ──
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -647,6 +651,13 @@ fun OrderCard(
                         color = AeroPalette.InkFaint
                     )
                     Spacer(modifier = Modifier.weight(1f))
+                    // 📱 ช่องทางที่ลูกค้าทักมา (Facebook / LINE) — โลโก้จริง
+                    order.platform?.let { platform ->
+                        PlatformChip(platform = platform)
+                        if (order.pendingAction != null) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                    }
                     if (order.pendingAction != null) {
                         Icon(
                             Icons.Default.CloudUpload,
@@ -753,6 +764,43 @@ fun OrderCard(
                 }
             }
         }
+    }
+}
+
+/**
+ * Badge ช่องทางที่บิลมาจาก — โลโก้ทางการ Facebook / LINE (bundle ใน drawable-nodpi)
+ * พื้น tint สีแบรนด์จางๆ + ขอบ ให้เข้ากับชิป Aero อื่นบนการ์ด
+ */
+@Composable
+private fun PlatformChip(platform: String) {
+    val (logoRes, label, brand) = when (platform.lowercase()) {
+        "facebook" -> Triple(R.drawable.platform_facebook, "Facebook", Color(0xFF1877F2))
+        "line" -> Triple(R.drawable.platform_line, "LINE", Color(0xFF06C755))
+        else -> return
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(brand.copy(alpha = 0.10f))
+            .border(1.dp, brand.copy(alpha = 0.35f), RoundedCornerShape(50))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    ) {
+        Image(
+            painter = painterResource(id = logoRes),
+            contentDescription = label,
+            modifier = Modifier
+                .size(14.dp)
+                .clip(CircleShape)
+        )
+        Text(
+            label,
+            fontSize = 10.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = brand,
+            maxLines = 1
+        )
     }
 }
 

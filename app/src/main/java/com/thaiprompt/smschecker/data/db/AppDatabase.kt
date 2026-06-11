@@ -25,7 +25,7 @@ import com.thaiprompt.smschecker.data.model.SyncLog
         MatchHistory::class,
         MisclassificationReport::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -273,6 +273,13 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE order_approvals ADD COLUMN cancellationReason TEXT")
                 db.execSQL("ALTER TABLE order_approvals ADD COLUMN cancellationReasonLabel TEXT")
+            }
+        }
+
+        // 📱 (2026-06-11) ช่องทางที่ลูกค้าทักมา (facebook/line) — badge โลโก้บนการ์ดบิล
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE order_approvals ADD COLUMN platform TEXT")
             }
         }
 
