@@ -30,5 +30,12 @@
     "scripts": {
         "test": "vendor/bin/phpunit --testdox"
     },
+    "config": {
+        "policy": {
+            "advisories": {
+                "ignore": ["laravel/framework"]
+            }
+        }
+    },
     "minimum-stability": "stable"
 }
