@@ -294,6 +294,12 @@ data class AppStrings(
     val approvedViaSms: String = "อนุมัติผ่าน SMS"
     val approvedViaSlip: String = "อนุมัติผ่านสลิป"
     val approvedViaAdmin: String = "แอดมินอนุมัติ"
+    // TTS voice health (เคส Samsung ไม่มีเสียงไทย)
+    val ttsVoiceWarningTitle: String = "เสียงพูดอาจไม่ทำงานบนเครื่องนี้"
+    val ttsGoogleMissingDesc: String = "ไม่พบ Google Text-to-Speech ในเครื่อง (Samsung มักไม่มีเสียงภาษาไทย) — ติดตั้งฟรีจาก Play Store แล้วแอพจะใช้เสียงไทยได้ทันที"
+    val ttsThaiVoiceMissingDesc: String = "มีโปรแกรมเสียงแล้ว แต่ยังไม่ได้ดาวน์โหลดชุดเสียงภาษาไทย — แตะปุ่มด้านล่างเพื่อดาวน์โหลด (ฟรี ใช้ครั้งเดียว)"
+    val ttsInstallGoogleButton: String = "ติดตั้ง Google TTS (ฟรี)"
+    val ttsDownloadVoiceButton: String = "ดาวน์โหลดชุดเสียงไทย"
     val aeroPopularBanks: String = "ธนาคารยอดนิยม"
     val aeroViewAll: String = "ดูทั้งหมด"
     val aeroLive: String = "สด"

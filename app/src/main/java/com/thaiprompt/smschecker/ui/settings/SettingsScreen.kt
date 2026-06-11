@@ -84,6 +84,8 @@ fun SettingsScreen(
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             viewModel.checkNotificationAccess(context)
             viewModel.checkSmsPermission(context)
+            // ตรวจเสียงพูดทุกครั้งที่กลับเข้าหน้า — รวมเคสกลับจากติดตั้ง Google TTS / โหลดเสียงไทย
+            viewModel.refreshTtsVoiceStatus()
             viewModel.checkBatteryOptimization(context)
         }
     }
@@ -712,6 +714,70 @@ fun SettingsScreen(
                             checkedTrackColor = AppColors.GoldAccent.copy(alpha = 0.3f)
                         )
                     )
+                }
+
+                // ⚠️ Voice health warning — เครื่องไม่มีเสียงภาษาที่ตั้งไว้ (เคส Samsung)
+                // แสดงเสมอแม้ปิด TTS เพราะปุ่มทดลองฟัง/ประกาศจะเงียบทั้งคู่
+                val voiceStatus = state.ttsVoiceStatus
+                if (voiceStatus == com.thaiprompt.smschecker.service.TtsVoiceStatus.GOOGLE_TTS_MISSING ||
+                    voiceStatus == com.thaiprompt.smschecker.service.TtsVoiceStatus.THAI_VOICE_MISSING
+                ) {
+                    val googleMissing =
+                        voiceStatus == com.thaiprompt.smschecker.service.TtsVoiceStatus.GOOGLE_TTS_MISSING
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(AppColors.WarningOrange.copy(alpha = 0.12f))
+                            .padding(12.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = AppColors.WarningOrange,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                strings.ttsVoiceWarningTitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = AppColors.WarningOrange
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            if (googleMissing) strings.ttsGoogleMissingDesc
+                            else strings.ttsThaiVoiceMissingDesc,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        FilledTonalButton(
+                            onClick = {
+                                if (googleMissing) viewModel.installGoogleTts()
+                                else viewModel.downloadTtsVoiceData()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = AppColors.WarningOrange.copy(alpha = 0.2f),
+                                contentColor = AppColors.WarningOrange
+                            )
+                        ) {
+                            Icon(
+                                Icons.Default.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                if (googleMissing) strings.ttsInstallGoogleButton
+                                else strings.ttsDownloadVoiceButton
+                            )
+                        }
+                    }
                 }
 
                 // Expanded settings when TTS is enabled

@@ -18,6 +18,16 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * สถานะความพร้อมของเสียงพูดบนเครื่อง — ใช้แสดง warning + ปุ่มแก้ไขใน Settings
+ *  READY              = พูดภาษาที่ตั้งไว้ได้
+ *  ENGINE_NOT_READY   = TTS ยัง init ไม่เสร็จ (ชั่วคราว)
+ *  GOOGLE_TTS_MISSING = engine ปัจจุบันไม่มีเสียงภาษาที่ต้องการ และไม่มี Google TTS ในเครื่อง
+ *                       (เคส Samsung TTS ไม่มีเสียงไทย) → พาไปติดตั้งจาก Play Store (ฟรี)
+ *  THAI_VOICE_MISSING = มี engine แล้วแต่ยังไม่ได้ดาวน์โหลดชุดข้อมูลเสียง → พาไปหน้าดาวน์โหลด
+ */
+enum class TtsVoiceStatus { READY, ENGINE_NOT_READY, GOOGLE_TTS_MISSING, THAI_VOICE_MISSING }
+
 @Singleton
 class TtsManager @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -459,6 +469,101 @@ class TtsManager @Inject constructor(
                     if (isNotEmpty()) append(" ")
                     append("สินค้า $productName")
                 }
+            }
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // Voice health check + ตัวช่วยติดตั้ง (2026-06-11)
+    // เคส Samsung: ไม่มี Google TTS / มีแต่ยังไม่โหลดชุดเสียงไทย → แอปตรวจเองแล้ว
+    // พาผู้ใช้ไปติดตั้ง (Google TTS ฟรี สังเคราะห์บนเครื่อง ไม่มีค่า API)
+    // ══════════════════════════════════════════════════════════════
+
+    fun isGoogleTtsInstalled(): Boolean = pickPreferredEngine() != null
+
+    /** locale ที่จะใช้พูดจริงตามการตั้งค่า (ตรงกับ applyTtsLanguage) */
+    private fun effectiveSpeakLocale(): Locale =
+        if (getEffectiveLangKey() == "en") Locale.ENGLISH else Locale("th", "TH")
+
+    /**
+     * ตรวจว่าเครื่องนี้พูดภาษาที่ตั้งไว้ได้จริงไหม — เรียกจาก Settings เพื่อโชว์ warning
+     */
+    fun checkVoiceStatus(): TtsVoiceStatus {
+        val engine = tts
+        if (engine == null || !isInitialized) {
+            return if (isGoogleTtsInstalled()) TtsVoiceStatus.ENGINE_NOT_READY
+            else TtsVoiceStatus.GOOGLE_TTS_MISSING
+        }
+        val availability = try {
+            engine.isLanguageAvailable(effectiveSpeakLocale())
+        } catch (e: Exception) {
+            Log.w(TAG, "isLanguageAvailable failed", e)
+            return TtsVoiceStatus.ENGINE_NOT_READY
+        }
+        return when {
+            availability >= TextToSpeech.LANG_AVAILABLE -> TtsVoiceStatus.READY
+            availability == TextToSpeech.LANG_MISSING_DATA -> TtsVoiceStatus.THAI_VOICE_MISSING
+            // LANG_NOT_SUPPORTED: engine นี้ไม่มีภาษานี้เลย — ถ้ามี Google TTS อยู่แล้ว
+            // แปลว่าเราใช้มันอยู่แต่ข้อมูลเสียงยังไม่มา ให้พาไปหน้าดาวน์โหลดเสียง
+            isGoogleTtsInstalled() -> TtsVoiceStatus.THAI_VOICE_MISSING
+            else -> TtsVoiceStatus.GOOGLE_TTS_MISSING
+        }
+    }
+
+    /**
+     * ถ้าตอนเปิดแอพยังไม่มี Google TTS แล้วผู้ใช้เพิ่งติดตั้ง — สร้าง TTS ใหม่ให้ใช้ Google
+     * เรียกตอนกลับเข้าหน้า Settings (ON_RESUME)
+     */
+    fun reinitWithGoogleIfNewlyInstalled() {
+        if (currentEngine == null && isGoogleTtsInstalled()) {
+            Log.i(TAG, "Google TTS detected after startup — reinitializing with it")
+            mainHandler.post {
+                try { tts?.shutdown() } catch (_: Exception) { }
+                isInitialized = false
+                triedFallbackEngine = false
+                createTts()
+            }
+        }
+    }
+
+    /** เปิด Play Store หน้า Google Speech Services (ฟรี) — เคสเครื่องไม่มี Google TTS */
+    fun openGoogleTtsInstallPage() {
+        val market = android.content.Intent(
+            android.content.Intent.ACTION_VIEW,
+            android.net.Uri.parse("market://details?id=$GOOGLE_TTS_PACKAGE")
+        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(market)
+        } catch (e: Exception) {
+            try {
+                context.startActivity(
+                    android.content.Intent(
+                        android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://play.google.com/store/apps/details?id=$GOOGLE_TTS_PACKAGE")
+                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            } catch (e2: Exception) {
+                Log.e(TAG, "Cannot open Play Store for Google TTS", e2)
+            }
+        }
+    }
+
+    /** เปิดหน้าดาวน์โหลดชุดข้อมูลเสียงของ engine (เคสติดตั้ง Google TTS แล้วแต่ยังไม่มีเสียงไทย) */
+    fun openVoiceDataInstaller() {
+        val installIntent = android.content.Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        currentEngine?.let { installIntent.setPackage(it) }
+        try {
+            context.startActivity(installIntent)
+        } catch (e: Exception) {
+            // บางเครื่องไม่มี activity รับ intent นี้ → เปิดหน้าตั้งค่า TTS ของระบบแทน
+            try {
+                context.startActivity(
+                    android.content.Intent("com.android.settings.TTS_SETTINGS")
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            } catch (e2: Exception) {
+                Log.e(TAG, "Cannot open TTS data installer or settings", e2)
             }
         }
     }

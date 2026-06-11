@@ -43,6 +43,8 @@ data class SettingsState(
     val ttsSpeakOrder: Boolean = true,
     val ttsSpeakCustomer: Boolean = true,
     val ttsSpeakProduct: Boolean = true,
+    // สถานะเสียงบนเครื่อง — null = ยังไม่ตรวจ (เคส Samsung ไม่มีเสียงไทย)
+    val ttsVoiceStatus: com.thaiprompt.smschecker.service.TtsVoiceStatus? = null,
     val isNotificationListening: Boolean = false,
     val isNotificationAccessGranted: Boolean = false,
     val isSmsPermissionGranted: Boolean = false,
@@ -322,6 +324,25 @@ class SettingsViewModel @Inject constructor(
         secureStorage.setTtsSpeakProduct(enabled)
         _state.update { it.copy(ttsSpeakProduct = enabled) }
     }
+
+    /**
+     * ตรวจว่าเครื่องพูดภาษาที่ตั้งไว้ได้จริงไหม (เคส Samsung ไม่มีเสียงไทย) —
+     * เรียกตอนเข้าหน้า/กลับเข้าหน้า Settings. หน่วงสั้นๆ เผื่อ TTS เพิ่ง init/re-init
+     */
+    fun refreshTtsVoiceStatus() {
+        viewModelScope.launch {
+            try {
+                // ถ้าผู้ใช้เพิ่งกลับจากการติดตั้ง Google TTS → สลับ engine ให้อัตโนมัติ
+                ttsManager.reinitWithGoogleIfNewlyInstalled()
+                kotlinx.coroutines.delay(600)
+                _state.update { it.copy(ttsVoiceStatus = ttsManager.checkVoiceStatus()) }
+            } catch (e: Exception) { }
+        }
+    }
+
+    fun installGoogleTts() = ttsManager.openGoogleTtsInstallPage()
+
+    fun downloadTtsVoiceData() = ttsManager.openVoiceDataInstaller()
 
     fun previewTts() {
         val s = _state.value
