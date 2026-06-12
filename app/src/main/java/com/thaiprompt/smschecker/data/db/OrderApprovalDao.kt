@@ -68,7 +68,7 @@ interface OrderApprovalDao {
 
     @Query("""
         SELECT * FROM order_approvals
-        WHERE approvalStatus != 'DELETED'
+        WHERE (approvalStatus != 'DELETED' OR :status = 'DELETED')
         AND (:status IS NULL OR approvalStatus = :status)
         AND (:serverId IS NULL OR serverId = :serverId)
         AND (:startTime IS NULL OR COALESCE(paymentTimestamp, createdAt) >= :startTime)
@@ -84,6 +84,7 @@ interface OrderApprovalDao {
         ORDER BY COALESCE(paymentTimestamp, createdAt) DESC
         LIMIT :limit OFFSET :offset
     """)
+    // 🗑 (2026-06-12) :status='DELETED' = ดูถังขยะโดยตรง (Force อนุมัติบิลในถังขยะได้จนกว่าลบถาวร)
     suspend fun getFilteredOrdersPaged(
         status: String?,
         serverId: Long?,
@@ -96,7 +97,7 @@ interface OrderApprovalDao {
 
     @Query("""
         SELECT COUNT(*) FROM order_approvals
-        WHERE approvalStatus != 'DELETED'
+        WHERE (approvalStatus != 'DELETED' OR :status = 'DELETED')
         AND (:status IS NULL OR approvalStatus = :status)
         AND (:serverId IS NULL OR serverId = :serverId)
         AND (:startTime IS NULL OR COALESCE(paymentTimestamp, createdAt) >= :startTime)

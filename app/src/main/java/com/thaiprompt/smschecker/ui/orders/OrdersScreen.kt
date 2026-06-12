@@ -285,7 +285,9 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                                 strings.filterAutoApproved to ApprovalStatus.AUTO_APPROVED,
                                 strings.filterApproved to ApprovalStatus.MANUALLY_APPROVED,
                                 strings.filterRejected to ApprovalStatus.REJECTED,
-                                strings.statusCancelled to ApprovalStatus.CANCELLED
+                                strings.statusCancelled to ApprovalStatus.CANCELLED,
+                                // 🗑 (2026-06-12) ถังขยะ — บิลที่ถูกย้ายมารอลบถาวร ยังกด Force อนุมัติได้
+                                "🗑 ${strings.statusDeleted}" to ApprovalStatus.DELETED
                             )
                             items(filters) { (label, status) ->
                                 AeroPillChip(
@@ -518,7 +520,17 @@ fun OrderCard(
     }
 
     val isPending = order.approvalStatus == ApprovalStatus.PENDING_REVIEW
-    val showActions = isPending && order.pendingAction == null
+    // 🚀 (2026-06-12) Force อนุมัติได้ตลอดที่บิลยังไม่ถูกลบถาวร — เจ้าของสั่ง
+    //   บิลหมดอายุ/ยกเลิก/ปฏิเสธ/อยู่ถังขยะ (ก่อนลบจริง 7 วัน) → ลูกค้าโอนช้าก็กด Force เปิดไพ่ให้ได้
+    //   ปุ่มเขียวอนุมัติปกติ + ปุ่มปฏิเสธ ยังแสดงเฉพาะบิล pending เหมือนเดิม
+    val canForce = order.pendingAction == null && order.approvalStatus in setOf(
+        ApprovalStatus.PENDING_REVIEW,
+        ApprovalStatus.EXPIRED,
+        ApprovalStatus.CANCELLED,
+        ApprovalStatus.REJECTED,
+        ApprovalStatus.DELETED
+    )
+    val showActions = canForce
 
     AeroGlass(
         modifier = modifier.fillMaxWidth(),
@@ -701,7 +713,8 @@ fun OrderCard(
                 }
             }
 
-            // ── action strip (pending only): tinted band, white top divider ──
+            // ── action strip: tinted band, white top divider ──
+            //   Force = ทุกบิลที่ยังไม่ถูกลบถาวร / เขียวอนุมัติ+ปฏิเสธ = pending เท่านั้น
             if (showActions) {
                 Box(
                     modifier = Modifier
@@ -730,7 +743,18 @@ fun OrderCard(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Text(
-                        strings.forceApproveHint,
+                        // 🚀 (2026-06-12) บิลไม่ pending (หมดอายุ/ยกเลิก/ถังขยะ) → hint บอกว่า Force กู้บิลได้
+                        if (isPending) strings.forceApproveHint
+                        else {
+                            val statusLabel = when (order.approvalStatus) {
+                                ApprovalStatus.EXPIRED -> "หมดอายุแล้ว"
+                                ApprovalStatus.CANCELLED -> "ถูกยกเลิกแล้ว"
+                                ApprovalStatus.REJECTED -> "ถูกปฏิเสธแล้ว"
+                                ApprovalStatus.DELETED -> "อยู่ในถังขยะ"
+                                else -> ""
+                            }
+                            "บิลนี้$statusLabel — กด Force อนุมัติได้ตลอดจนกว่าบิลจะถูกลบถาวร"
+                        },
                         fontSize = 10.sp,
                         color = AeroPalette.InkFaint,
                         textAlign = TextAlign.Center,
@@ -738,28 +762,31 @@ fun OrderCard(
                             .fillMaxWidth()
                             .padding(top = 4.dp)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(9.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        GlossButton(
-                            text = strings.approveButton,
-                            onClick = onApprove,
-                            style = GlossStyle.Green,
-                            leadingIcon = Icons.Default.Check,
-                            fontSize = 13,
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp),
-                            modifier = Modifier.weight(1f)
-                        )
-                        GlossIconButton(
-                            icon = Icons.Default.Close,
-                            onClick = onReject,
-                            style = GlossStyle.Ghost,
-                            size = 40.dp,
-                            contentDescription = strings.rejectButton
-                        )
+                    // ปุ่มเขียวอนุมัติปกติ + ปฏิเสธ — เฉพาะบิล pending (ของเดิม)
+                    if (isPending) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(9.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            GlossButton(
+                                text = strings.approveButton,
+                                onClick = onApprove,
+                                style = GlossStyle.Green,
+                                leadingIcon = Icons.Default.Check,
+                                fontSize = 13,
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp),
+                                modifier = Modifier.weight(1f)
+                            )
+                            GlossIconButton(
+                                icon = Icons.Default.Close,
+                                onClick = onReject,
+                                style = GlossStyle.Ghost,
+                                size = 40.dp,
+                                contentDescription = strings.rejectButton
+                            )
+                        }
                     }
                 }
             }
