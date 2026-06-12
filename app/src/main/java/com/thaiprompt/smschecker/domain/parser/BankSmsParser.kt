@@ -544,10 +544,18 @@ class BankSmsParser {
      * → ให้ generic เดิมจัดการต่อ (ธนาคารอื่นและรูปแบบเก่าไม่กระทบ)
      */
     private fun parseKbank(message: String): ParseResult? {
-        // ต้องเป็นข้อความธุรกรรมจริง (กัน SMS แจ้งยอดคงเหลือล้วน/โปรโมชัน)
-        val isCredit = listOf("รับโอน", "รับเข้า", "เงินเข้า", "รับเงิน", "เข้าบัญชี")
+        // 💸 (2026-06-12) Strong debit — "หัก.." นำหน้า = เงินออกจากบัญชีเราแน่นอน
+        //   เคสจริง: "12/06/69 09:49 หักบช X-5349 เข้าพร้อมเพย์ X-2958 900.00 คงเหลือ 428.25 บ."
+        //   บั๊กเดิม: list มีแต่ "หักบัญชี" (ตัวเต็ม) → "หักบช" (ย่อ) หลุด, "เข้าพร้อมเพย์" ก็ไม่ใช่ credit
+        //     → ทั้งคู่ false → return null → generic จับ "X-5349 เข้า" เป็น credit ยอด 5349 (ผิดทั้งทิศ+ยอด)
+        //   ต้องตรวจก่อน credit เพราะ "เข้าพร้อมเพย์ X-2958" คือปลายทางขาออก ไม่ใช่เงินเข้าเรา
+        val isStrongDebit = listOf("หักบช", "หักบ/ช", "หักบ.ช", "หักบัญชี", "โอนออก", "โอนเงินออก", "ถอน")
             .any { message.contains(it, ignoreCase = true) }
-        val isDebit = listOf("โอนออก", "โอนเงินออก", "ถอน", "จ่าย", "ชำระ", "หักบัญชี", "ไปยัง")
+
+        // ต้องเป็นข้อความธุรกรรมจริง (กัน SMS แจ้งยอดคงเหลือล้วน/โปรโมชัน)
+        val isCredit = !isStrongDebit && listOf("รับโอน", "รับเข้า", "เงินเข้า", "รับเงิน", "เข้าบัญชี")
+            .any { message.contains(it, ignoreCase = true) }
+        val isDebit = isStrongDebit || listOf("จ่าย", "ชำระ", "ไปยัง")
             .any { message.contains(it, ignoreCase = true) }
         if (!isCredit && !isDebit) return null
 
@@ -564,11 +572,15 @@ class BankSmsParser {
         val amountDouble = normalizedAmount.toDoubleOrNull() ?: return null
         if (amountDouble <= 0.0 || amountDouble > 999_999_999.99) return null
 
-        // ทิศทาง: debit ชัดเจน (มีคำออก/ไม่มีคำเข้า) → DEBIT, ที่เหลือ → CREDIT
+        // ทิศทาง: strong debit ("หัก.."/โอนออก/ถอน) ชนะเสมอ — เงินออกจากบัญชีเราแน่นอน
+        //   (แม้มี "เข้าพร้อมเพย์/เข้าบช" ปน = ปลายทางที่เงินเข้าบัญชีคนอื่น ไม่ใช่เรา)
         val type = if (isDebit && !isCredit) TransactionType.DEBIT else TransactionType.CREDIT
 
-        // บัญชีคู่โอน (ผู้โอนเข้า/ผู้รับโอน) — หลัง "จาก" หรือ "ไปยัง"
-        val counterparty = Regex("""(?:จาก|ไปยัง)\s*([Xx]-?\d{2,})""", RegexOption.IGNORE_CASE)
+        // บัญชีคู่โอน — credit: ผู้โอนเข้า ("จาก") / debit: ปลายทางขาออก ("ไปยัง"/"เข้าพร้อมเพย์"/"เข้าบช")
+        val counterparty = Regex(
+            """(?:จาก|ไปยัง|เข้าพร้อมเพย์|เข้าบ[/.]?ช\.?|เข้าบัญชี)\s*([Xx]-?\d{2,})""",
+            RegexOption.IGNORE_CASE
+        )
             .find(message)?.groupValues?.get(1)?.trim().orEmpty()
 
         Log.d(TAG, "KBANK-specific parse: type=$type amount=$normalizedAmount counterparty=$counterparty")

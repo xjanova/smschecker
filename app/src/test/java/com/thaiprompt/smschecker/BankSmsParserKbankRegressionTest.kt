@@ -146,4 +146,46 @@ class BankSmsParserKbankRegressionTest {
 
         assertNull(result)
     }
+
+    /**
+     * เคสจริง 2026-06-12 — KBANK โอนออก/หักบัญชี:
+     * "12/06/69 09:49 หักบช X-5349 เข้าพร้อมเพย์ X-2958 900.00 คงเหลือ 428.25 บ."
+     *
+     * บั๊กเดิม: "หักบช" (ย่อ) ไม่อยู่ใน debit list (มีแต่ "หักบัญชี" ตัวเต็ม) + "เข้าพร้อมเพย์"
+     *   ไม่ใช่ credit → parseKbank คืน null → generic จับ "X-5349 เข้า" เป็น credit ยอด 5349
+     * ต้องได้: ทิศทาง DEBIT (เงินออก ไม่ใช่เงินเข้า) + ยอด 900.00 (ไม่ใช่ 5349) + ปลายทาง X-2958
+     */
+    @Test
+    fun `KBANK outgoing หักบช transfer parses DEBIT 900 not credit 5349`() {
+        val result = parser.parse(
+            "KBank",
+            "12/06/69 09:49 หักบช X-5349 เข้าพร้อมเพย์ X-2958 900.00 คงเหลือ 428.25 บ.",
+            System.currentTimeMillis()
+        )
+
+        assertNotNull(result)
+        assertEquals("KBANK", result?.bank)
+        // ทิศทางต้องเป็นเงินออก — กันบิลถูกตัดจากยอดโอนออก
+        assertEquals(TransactionType.DEBIT, result?.type)
+        assertEquals("900.00", result?.amount)
+        assertNotEquals("5349.00", result?.amount)
+        // ปลายทางขาออก = X-2958 (พร้อมเพย์ปลายทาง) ไม่ใช่บัญชีเรา X-5349
+        assertEquals("X-2958", result?.senderOrReceiver)
+    }
+
+    /**
+     * Collateral: ขาเข้า "รับโอน" ยังต้องเป็น CREDIT (strong-debit guard ต้องไม่ทับขาเข้าปกติ)
+     */
+    @Test
+    fun `KBANK incoming รับโอน stays CREDIT after debit guard`() {
+        val result = parser.parse(
+            "KBANK",
+            "X5349 รับโอนจาก X-3516 99.00 คงเหลือ 2,390.30 บ.",
+            System.currentTimeMillis()
+        )
+
+        assertNotNull(result)
+        assertEquals(TransactionType.CREDIT, result?.type)
+        assertEquals("99.00", result?.amount)
+    }
 }
