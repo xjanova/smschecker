@@ -67,19 +67,23 @@ fun RevenueDetailScreen(
 
     StatusBarTone(HeaderTone.Green)
 
-    // income per bucket = sum of approved-bill series; fallback to bank credit
-    val usingBillIncome = state.billIncomeTotal > 0.0
-    val incomePoints: List<Float> = remember(state.billServerSeries, state.bankCreditSeries, usingBillIncome) {
-        if (usingBillIncome) {
-            val n = state.buckets.size
-            val sums = FloatArray(n)
-            state.billServerSeries.forEach { series ->
-                series.data.forEachIndexed { i, v -> if (i < n) sums[i] += v.toFloat() }
-            }
-            sums.toList()
-        } else {
-            state.bankCreditSeries?.data?.map { it.toFloat() } ?: emptyList()
+    // รายได้บิลที่อนุมัติต่อ bucket (สูตรเดียวกับ VM.billIncomeTotal) — เป็นแหล่งความจริงของ
+    //  KPI รายได้/เฉลี่ย/สูงสุด เสมอ ไม่ว่าจะ fallback หรือไม่ (รายได้ต้องมาจากบิลเท่านั้น)
+    val billIncomePoints: List<Float> = remember(state.billServerSeries, state.buckets) {
+        val n = state.buckets.size
+        val sums = FloatArray(n)
+        state.billServerSeries.forEach { series ->
+            series.data.forEachIndexed { i, v -> if (i < n) sums[i] += v.toFloat() }
         }
+        sums.toList()
+    }
+    // hero + กราฟพระเอก: ใช้บิลถ้ามี, ไม่งั้น fallback ยอดเข้าธนาคารดิบ —
+    //  หัวข้อ hero จะ relabel เป็น "ยอดเงินเข้าธนาคาร" ให้ตรงความจริง (ไม่เรียกว่ารายได้)
+    val usingBillIncome = state.billIncomeTotal > 0.0
+    val incomePoints: List<Float> = if (usingBillIncome) {
+        billIncomePoints
+    } else {
+        state.bankCreditSeries?.data?.map { it.toFloat() } ?: emptyList()
     }
     val incomeTotal = if (usingBillIncome) state.billIncomeTotal else state.bankCreditTotal
 
@@ -198,6 +202,7 @@ fun RevenueDetailScreen(
                                     points = incomePoints,
                                     peakLabel = formatCompactBaht(incomePoints.max().toDouble()),
                                     xLabels = bucketAxisLabels(state.buckets, state.isMonthly),
+                                    pointLabels = bucketPointLabels(state.buckets, state.isMonthly),
                                     chartHeight = 120.dp
                                 )
                             } else {
@@ -269,19 +274,21 @@ fun RevenueDetailScreen(
                                 verticalArrangement = Arrangement.Center
                             ) {
                                 val bucketCount = state.buckets.size.coerceAtLeast(1)
+                                // รายได้/เฉลี่ย/สูงสุด = บิลที่อนุมัติเท่านั้น เสมอ (ไม่อิงยอดเข้าธนาคารดิบ
+                                //  ซึ่งรวม refund / โอนเข้าตัวเอง) แม้โหมด fallback ที่ hero โชว์ยอดธนาคาร
                                 KpiRow(
                                     label = strings.avgPerBucket,
-                                    value = formatCompactBaht(incomeTotal / bucketCount)
+                                    value = formatCompactBaht(state.billIncomeTotal / bucketCount)
                                 )
                                 KpiDivider()
                                 KpiRow(
                                     label = strings.maxIncome,
-                                    value = formatCompactBaht((incomePoints.maxOrNull() ?: 0f).toDouble())
+                                    value = formatCompactBaht((billIncomePoints.maxOrNull() ?: 0f).toDouble())
                                 )
                                 KpiDivider()
                                 KpiRow(
                                     label = strings.totalIncomeLabel,
-                                    value = formatCompactBaht(state.bankCreditTotal)
+                                    value = formatCompactBaht(state.billIncomeTotal)
                                 )
                                 KpiDivider()
                                 KpiRow(
@@ -335,6 +342,9 @@ fun RevenueDetailScreen(
                                     creditPoints = creditPts,
                                     debitPoints = debitPts,
                                     xLabels = bucketAxisLabels(state.buckets, state.isMonthly),
+                                    pointLabels = bucketPointLabels(state.buckets, state.isMonthly),
+                                    creditLabel = state.bankCreditSeries?.name ?: strings.bankCreditTotal,
+                                    debitLabel = state.bankDebitSeries?.name ?: strings.totalExpenseLabel,
                                     chartHeight = 120.dp
                                 )
                             } else {
@@ -551,4 +561,28 @@ private fun thaiDayAbbrevOf(dateKey: String): String = try {
     }
 } catch (e: Exception) {
     ""
+}
+
+/**
+ * ป้ายเต็มหนึ่งอันต่อ bucket (align กับจุดในกราฟ) สำหรับ tooltip ตอนแตะจุด —
+ * รายวัน → "อา 15 มิ.ย.", รายเดือน → "มิ.ย. 25". ไม่ thin เหมือน [bucketAxisLabels]
+ * เพราะแต่ละจุดต้องมีป้ายของตัวเอง
+ */
+private fun bucketPointLabels(buckets: List<String>, isMonthly: Boolean): List<String> =
+    buckets.map { key ->
+        val parts = key.split("-")
+        if (isMonthly) {
+            if (parts.size == 2) "${thaiMonthAbbrev(parts[1])} ${parts[0].takeLast(2)}" else key
+        } else {
+            if (parts.size == 3) {
+                "${thaiDayAbbrevOf(key)} ${parts[2].trimStart('0')} ${thaiMonthAbbrev(parts[1])}"
+            } else key
+        }
+    }
+
+private fun thaiMonthAbbrev(mm: String): String = when (mm.toIntOrNull()) {
+    1 -> "ม.ค."; 2 -> "ก.พ."; 3 -> "มี.ค."; 4 -> "เม.ย."
+    5 -> "พ.ค."; 6 -> "มิ.ย."; 7 -> "ก.ค."; 8 -> "ส.ค."
+    9 -> "ก.ย."; 10 -> "ต.ค."; 11 -> "พ.ย."; 12 -> "ธ.ค."
+    else -> mm
 }

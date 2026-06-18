@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,7 +16,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -26,8 +30,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -36,6 +43,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.thaiprompt.smschecker.ui.theme.AeroPalette
+import java.util.Locale
+import kotlin.math.roundToInt
 
 /* =========================================================================
    Millennium 3D / Frutiger Aero — chart primitives.
@@ -134,11 +143,28 @@ fun AeroAreaChart(
     peakLabel: String? = null,
     xLabels: List<String> = emptyList(),
     chartHeight: Dp = 120.dp,
+    pointLabels: List<String> = emptyList(),                       // ป้ายเต็มต่อจุด (หัวข้อ tooltip) — align กับ points
+    valueFormatter: (Float) -> String = ::defaultBahtFull,         // จัดรูปยอดเงินใน tooltip
 ) {
     val measurer = rememberTextMeasurer()
     val progress = chartRevealProgress(points)
+    // จุดที่ผู้ใช้แตะค้างไว้ (-1 = ไม่เลือก) — รีเซ็ตเมื่อ data หรือช่วงเวลา (pointLabels) เปลี่ยน
+    var selectedIndex by remember(points, pointLabels) { mutableStateOf(-1) }
     Column(modifier) {
-        Canvas(Modifier.fillMaxWidth().height(chartHeight)) {
+        Canvas(
+            Modifier
+                .fillMaxWidth()
+                .height(chartHeight)
+                .pointerInput(points) {
+                    detectTapGestures { tap ->
+                        val n = points.size
+                        val w = size.width.toFloat()
+                        if (n < 2 || w <= 0f) return@detectTapGestures
+                        val idx = (tap.x / w * (n - 1)).roundToInt().coerceIn(0, n - 1)
+                        selectedIndex = if (idx == selectedIndex) -1 else idx   // แตะจุดเดิมซ้ำ = ปิด tooltip
+                    }
+                }
+        ) {
             if (points.size < 2) return@Canvas
             val min = points.min()
             val max = points.max()
@@ -185,35 +211,52 @@ fun AeroAreaChart(
                 }
             }
 
-            // peak marker — fade in ช่วงท้ายอนิเมชั่น
-            val peakAlpha = ((progress - 0.65f) / 0.35f).coerceIn(0f, 1f)
-            if (peakAlpha > 0f) {
-                val peakIdx = points.indices.maxByOrNull { points[it] } ?: 0
-                val peak = pts[peakIdx]
-                drawCircle(AeroPalette.GreenHi.copy(alpha = peakAlpha), radius = 5.5.dp.toPx(), center = peak)
-                drawCircle(Color.White.copy(alpha = peakAlpha), radius = 5.5.dp.toPx(), center = peak, style = Stroke(2.5.dp.toPx()))
-                if (peakLabel != null) {
-                    val layout = measurer.measure(
-                        peakLabel,
-                        style = TextStyle(
-                            color = Color.White.copy(alpha = peakAlpha),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
+            val sel = selectedIndex
+            if (sel in pts.indices && progress > 0.999f) {
+                // ── จุดที่เลือก: เส้นไกด์ตั้ง + จุดไฮไลต์ + ป้ายรายละเอียด (วันที่ + ยอดเงินวันนั้น) ──
+                val p = pts[sel]
+                drawLine(
+                    color = Color(0x66486072),
+                    start = Offset(p.x, 0f),
+                    end = Offset(p.x, size.height),
+                    strokeWidth = 1.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f))
+                )
+                drawCircle(AeroPalette.GreenHi, radius = 5.5.dp.toPx(), center = p)
+                drawCircle(Color.White, radius = 5.5.dp.toPx(), center = p, style = Stroke(2.5.dp.toPx()))
+                val title = pointLabels.getOrNull(sel) ?: xLabels.getOrNull(sel) ?: ""
+                drawAeroTooltip(measurer, p, title, listOf(valueFormatter(points[sel]) to null))
+            } else {
+                // peak marker — fade in ช่วงท้ายอนิเมชั่น (ซ่อนเมื่อผู้ใช้เลือกจุด)
+                val peakAlpha = ((progress - 0.65f) / 0.35f).coerceIn(0f, 1f)
+                if (peakAlpha > 0f) {
+                    val peakIdx = points.indices.maxByOrNull { points[it] } ?: 0
+                    val peak = pts[peakIdx]
+                    drawCircle(AeroPalette.GreenHi.copy(alpha = peakAlpha), radius = 5.5.dp.toPx(), center = peak)
+                    drawCircle(Color.White.copy(alpha = peakAlpha), radius = 5.5.dp.toPx(), center = peak, style = Stroke(2.5.dp.toPx()))
+                    if (peakLabel != null) {
+                        val layout = measurer.measure(
+                            peakLabel,
+                            style = TextStyle(
+                                color = Color.White.copy(alpha = peakAlpha),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         )
-                    )
-                    val padX = 7.dp.toPx()
-                    val padBubbleY = 4.dp.toPx()
-                    val bw = layout.size.width + padX * 2
-                    val bh = layout.size.height + padBubbleY * 2
-                    val bx = (peak.x - bw / 2).coerceIn(0f, size.width - bw)
-                    val by = (peak.y - 10.dp.toPx() - bh).coerceAtLeast(0f)
-                    drawRoundRect(
-                        color = AeroPalette.NavyDeep.copy(alpha = peakAlpha),
-                        topLeft = Offset(bx, by),
-                        size = Size(bw, bh),
-                        cornerRadius = CornerRadius(7.dp.toPx())
-                    )
-                    drawText(layout, topLeft = Offset(bx + padX, by + padBubbleY))
+                        val padX = 7.dp.toPx()
+                        val padBubbleY = 4.dp.toPx()
+                        val bw = layout.size.width + padX * 2
+                        val bh = layout.size.height + padBubbleY * 2
+                        val bx = (peak.x - bw / 2).coerceIn(0f, size.width - bw)
+                        val by = (peak.y - 10.dp.toPx() - bh).coerceAtLeast(0f)
+                        drawRoundRect(
+                            color = AeroPalette.NavyDeep.copy(alpha = peakAlpha),
+                            topLeft = Offset(bx, by),
+                            size = Size(bw, bh),
+                            cornerRadius = CornerRadius(7.dp.toPx())
+                        )
+                        drawText(layout, topLeft = Offset(bx + padX, by + padBubbleY))
+                    }
                 }
             }
         }
@@ -242,10 +285,29 @@ fun AeroDualLineChart(
     debitColor: Color = AeroPalette.Red,
     xLabels: List<String> = emptyList(),
     chartHeight: Dp = 120.dp,
+    pointLabels: List<String> = emptyList(),                       // ป้ายเต็มต่อจุด (หัวข้อ tooltip)
+    creditLabel: String = "เงินเข้า",
+    debitLabel: String = "เงินออก",
+    valueFormatter: (Float) -> String = ::defaultBahtFull,
 ) {
+    val measurer = rememberTextMeasurer()
     val progress = chartRevealProgress(creditPoints to debitPoints)
+    var selectedIndex by remember(creditPoints, debitPoints, pointLabels) { mutableStateOf(-1) }
     Column(modifier) {
-        Canvas(Modifier.fillMaxWidth().height(chartHeight)) {
+        Canvas(
+            Modifier
+                .fillMaxWidth()
+                .height(chartHeight)
+                .pointerInput(creditPoints to debitPoints) {
+                    detectTapGestures { tap ->
+                        val n = maxOf(creditPoints.size, debitPoints.size)
+                        val w = size.width.toFloat()
+                        if (n < 2 || w <= 0f) return@detectTapGestures
+                        val idx = (tap.x / w * (n - 1)).roundToInt().coerceIn(0, n - 1)
+                        selectedIndex = if (idx == selectedIndex) -1 else idx
+                    }
+                }
+        ) {
             val n = maxOf(creditPoints.size, debitPoints.size)
             if (n < 2) return@Canvas
             val allValues = creditPoints + debitPoints
@@ -264,10 +326,9 @@ fun AeroDualLineChart(
                 drawLine(gridColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx(), pathEffect = dash)
             }
 
+            fun yOf(v: Float): Float = padTop + (1f - (v - min) / span) * usableH
             fun toOffsets(points: List<Float>): List<Offset> = points.mapIndexed { i, v ->
-                val x = size.width * i / (n - 1)
-                val y = padTop + (1f - (v - min) / span) * usableH
-                Offset(x, y)
+                Offset(size.width * i / (n - 1), yOf(v))
             }
 
             fun drawSeries(points: List<Float>, color: Color) {
@@ -294,6 +355,37 @@ fun AeroDualLineChart(
             clipRect(right = size.width * progress) {
                 drawSeries(debitPoints, debitColor)   // วาดเส้นแดงก่อน ให้เส้นเขียว (พระเอก) อยู่บน
                 drawSeries(creditPoints, creditColor)
+            }
+
+            val sel = selectedIndex
+            if (sel in 0 until n && progress > 0.999f) {
+                // ── จุดที่เลือก: เส้นไกด์ + จุดไฮไลต์ทั้งสองเส้น + ป้าย (เงินเข้า/ออก วันนั้น) ──
+                val gx = size.width * sel / (n - 1)
+                drawLine(
+                    color = Color(0x66486072),
+                    start = Offset(gx, 0f),
+                    end = Offset(gx, size.height),
+                    strokeWidth = 1.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f))
+                )
+                val rows = mutableListOf<Pair<String, Color?>>()
+                var anchorY = size.height
+                creditPoints.getOrNull(sel)?.let { v ->
+                    val y = yOf(v)
+                    drawCircle(Color.White, radius = 4.dp.toPx(), center = Offset(gx, y))
+                    drawCircle(creditColor, radius = 4.dp.toPx(), center = Offset(gx, y), style = Stroke(2.dp.toPx()))
+                    rows += "$creditLabel ${valueFormatter(v)}" to creditColor
+                    if (y < anchorY) anchorY = y
+                }
+                debitPoints.getOrNull(sel)?.let { v ->
+                    val y = yOf(v)
+                    drawCircle(Color.White, radius = 4.dp.toPx(), center = Offset(gx, y))
+                    drawCircle(debitColor, radius = 4.dp.toPx(), center = Offset(gx, y), style = Stroke(2.dp.toPx()))
+                    rows += "$debitLabel ${valueFormatter(v)}" to debitColor
+                    if (y < anchorY) anchorY = y
+                }
+                val title = pointLabels.getOrNull(sel) ?: xLabels.getOrNull(sel) ?: ""
+                if (rows.isNotEmpty()) drawAeroTooltip(measurer, Offset(gx, anchorY), title, rows)
             }
         }
         if (xLabels.isNotEmpty()) {
@@ -356,5 +448,76 @@ fun MatchRateDonut(
             }
             Text(centerLabel, fontSize = 10.5.sp, color = AeroPalette.InkFaint)
         }
+    }
+}
+
+/** ฿1,234.00 — รูปแบบยอดเงินเต็ม (มีทศนิยม) สำหรับ tooltip จุดข้อมูล */
+private fun defaultBahtFull(value: Float): String =
+    "฿" + String.format(Locale.US, "%,.2f", value)
+
+/**
+ * ป้ายรายละเอียด (tooltip) สไตล์ Aero — กล่อง navy โค้งมน วางเหนือ [anchor]
+ * (ถ้าชนขอบบนจะพลิกไปวางใต้จุดแทน). บรรทัดแรก = หัวข้อ (วันที่), บรรทัดถัดมา =
+ * แต่ละค่า โดยมีจุดสีนำหน้าถ้า [rows] ระบุสีไว้ (ใช้กับกราฟหลายเส้น).
+ */
+private fun DrawScope.drawAeroTooltip(
+    measurer: TextMeasurer,
+    anchor: Offset,
+    title: String,
+    rows: List<Pair<String, Color?>>,
+) {
+    if (rows.isEmpty()) return
+    val titleStyle = TextStyle(color = Color.White.copy(alpha = 0.92f), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+    val rowStyle = TextStyle(color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+    val titleLayout = if (title.isNotEmpty()) measurer.measure(title, titleStyle) else null
+    val rowLayouts = rows.map { measurer.measure(it.first, rowStyle) }
+
+    val dot = 5.dp.toPx()
+    val dotGap = 5.dp.toPx()
+    val padX = 9.dp.toPx()
+    val padY = 7.dp.toPx()
+    val lineGap = 3.dp.toPx()
+    val bulletReserve = if (rows.any { it.second != null }) dot + dotGap else 0f
+
+    val contentW = maxOf(
+        titleLayout?.size?.width?.toFloat() ?: 0f,
+        rowLayouts.maxOfOrNull { bulletReserve + it.size.width } ?: 0f
+    )
+    val titleH = titleLayout?.size?.height?.toFloat() ?: 0f
+    val rowsH = rowLayouts.sumOf { it.size.height }.toFloat() +
+        lineGap * (rowLayouts.size - 1).coerceAtLeast(0)
+    val gapTitleRows = if (titleLayout != null) lineGap + 1.dp.toPx() else 0f
+
+    val bw = contentW + padX * 2
+    val bh = titleH + gapTitleRows + rowsH + padY * 2
+    val bx = (anchor.x - bw / 2f).coerceIn(0f, (size.width - bw).coerceAtLeast(0f))
+    val gapAnchor = 12.dp.toPx()
+    // วางเหนือจุด ถ้าพื้นที่ด้านบนไม่พอค่อยพลิกลงล่าง แล้ว clamp ให้กล่องอยู่ในกรอบ Canvas เสมอ
+    // (กัน tooltip ล้นทะลุขอบล่างไปทับแถวป้ายแกน X ที่อยู่ใต้กราฟ)
+    val above = anchor.y - gapAnchor - bh
+    val by = (if (above >= 0f) above else anchor.y + gapAnchor)
+        .coerceIn(0f, (size.height - bh).coerceAtLeast(0f))
+
+    drawRoundRect(
+        color = AeroPalette.NavyDeep.copy(alpha = 0.95f),
+        topLeft = Offset(bx, by),
+        size = Size(bw, bh),
+        cornerRadius = CornerRadius(9.dp.toPx())
+    )
+
+    var cy = by + padY
+    if (titleLayout != null) {
+        drawText(titleLayout, topLeft = Offset(bx + padX, cy))
+        cy += titleH + gapTitleRows
+    }
+    rowLayouts.forEachIndexed { i, layout ->
+        val rowColor = rows[i].second
+        var tx = bx + padX
+        if (rowColor != null) {
+            drawCircle(rowColor, radius = dot / 2f, center = Offset(tx + dot / 2f, cy + layout.size.height / 2f))
+            tx += dot + dotGap
+        }
+        drawText(layout, topLeft = Offset(tx, cy))
+        cy += layout.size.height + lineGap
     }
 }
