@@ -56,6 +56,9 @@ class TtsManager @Inject constructor(
     /** กัน retry init วนลูป — fallback ได้ครั้งเดียว */
     @Volatile
     private var triedFallbackEngine = false
+    /** engine (package) ที่ init แล้วพบว่า "ไม่รองรับภาษาที่ตั้งไว้เลย" (LANG_NOT_SUPPORTED) —
+     *  ใช้กันการลองซ้ำ/วนลูป เวลาไล่สลับไป engine อื่นในเครื่อง (แตะเฉพาะบน main thread) */
+    private val triedEnginesForLang = mutableSetOf<String>()
     private val pendingQueue = CopyOnWriteArrayList<String>()
     private val utteranceCounter = AtomicLong(0) // unique utterance id (กัน id ชนกันใน ms เดียว)
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -123,9 +126,62 @@ class TtsManager @Inject constructor(
         null // Google TTS ไม่ได้ติดตั้ง → ใช้ default ของเครื่อง
     }
 
+    /**
+     * เลือก engine ตัวถัดไปที่ "ยังไม่ได้ลอง" สำหรับเคส engine ปัจจุบันไม่รองรับภาษาเลย
+     * (LANG_NOT_SUPPORTED) — ไล่จาก engine ทั้งหมดที่ติดตั้งในเครื่อง ([TextToSpeech.getEngines]),
+     * เรียง Google ไว้ก่อน (เป็นตัวเดียวที่โหลดชุดเสียงจากปุ่มในแอปได้). คืน null เมื่อไล่ครบทุกตัวแล้ว
+     * → หยุด ไม่วนลูป
+     */
+    private fun nextUntriedEngineForLanguage(): String? {
+        val installed = try {
+            tts?.engines?.mapNotNull { it.name } ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+        val ordered = buildList {
+            if (installed.contains(GOOGLE_TTS_PACKAGE)) add(GOOGLE_TTS_PACKAGE)
+            addAll(installed.filter { it != GOOGLE_TTS_PACKAGE })
+        }
+        return ordered.firstOrNull { it !in triedEnginesForLang }
+    }
+
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
-            Log.i(TAG, "TTS init OK (engine=${currentEngine ?: "default"}, defaultEngine=${tts?.defaultEngine})")
+            // ── ตรวจว่า engine ที่เพิ่ง init "พูดภาษาที่ตั้งไว้ได้จริงไหม" ก่อนใช้งาน ──
+            // เคสจริง: บังคับ Google TTS (แก้ Samsung) แต่บางเครื่อง Google "ไม่รองรับ" ไทยเลย
+            // ขณะที่ engine อื่นในเครื่องรองรับ → ก่อนหน้าพูดได้ พอบังคับ Google เลยเงียบทุกรุ่น
+            //
+            //   LANG_NOT_SUPPORTED (-2) = engine นี้พูดภาษานี้ไม่ได้เลย → ไล่สลับไป engine อื่นในเครื่อง
+            //   LANG_MISSING_DATA  (-1) = engine "รองรับ" แค่ยังไม่โหลดชุดเสียง → "อย่า" สลับ!
+            //                              ปล่อยให้การ์ดเตือน + ปุ่มดาวน์โหลด (ที่ชี้ไป engine ปัจจุบัน)
+            //                              ทำงาน ไม่งั้นปุ่มจะไปโหลดเสียงให้ engine ผิดตัว
+            val locale = effectiveSpeakLocale()
+            val langAvail = try {
+                tts?.isLanguageAvailable(locale) ?: TextToSpeech.LANG_NOT_SUPPORTED
+            } catch (e: Exception) {
+                Log.w(TAG, "isLanguageAvailable($locale) failed during init", e)
+                TextToSpeech.LANG_NOT_SUPPORTED
+            }
+            if (langAvail == TextToSpeech.LANG_NOT_SUPPORTED && tts != null) {
+                val loaded = currentEngine ?: tts?.defaultEngine
+                if (loaded != null) triedEnginesForLang.add(loaded)
+                val next = nextUntriedEngineForLanguage()
+                if (next != null) {
+                    Log.w(TAG, "Engine '${loaded ?: "default"}' does not support $locale — switching to '$next'")
+                    mainHandler.post {
+                        try { tts?.shutdown() } catch (_: Exception) { }
+                        isInitialized = false
+                        createTts(next)
+                    }
+                    return
+                }
+                Log.e(TAG, "No installed TTS engine supports $locale (tried=$triedEnginesForLang)")
+            }
+
+            Log.i(
+                TAG,
+                "TTS init OK (engine=${currentEngine ?: "default"}, defaultEngine=${tts?.defaultEngine}, langAvail=$langAvail)"
+            )
             applyTtsLanguage()
 
             tts?.setPitch(1.0f)
@@ -521,6 +577,7 @@ class TtsManager @Inject constructor(
                 try { tts?.shutdown() } catch (_: Exception) { }
                 isInitialized = false
                 triedFallbackEngine = false
+                triedEnginesForLang.clear()
                 createTts()
             }
         }
