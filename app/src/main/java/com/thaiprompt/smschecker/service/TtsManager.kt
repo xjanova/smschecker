@@ -12,6 +12,7 @@ import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import com.thaiprompt.smschecker.security.SecureStorage
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.delay
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicLong
@@ -542,6 +543,23 @@ class TtsManager @Inject constructor(
         if (getEffectiveLangKey() == "en") Locale.ENGLISH else Locale("th", "TH")
 
     /**
+     * ground truth ว่าเครื่องมีเสียงของ locale นี้ที่ "โหลดแล้วพร้อมใช้" จริงไหม —
+     * เช็คจาก tts.voices ซึ่งเชื่อถือได้กว่า isLanguageAvailable ที่คืนค่าเพี้ยนบ่อย
+     * (คืน MISSING_DATA/NOT_SUPPORTED ทั้งที่เสียงติดตั้งอยู่ โดยเฉพาะตอน engine เพิ่ง warm):
+     * ถือว่าใช้ได้ถ้ามี Voice ภาษาเดียวกันสักตัวที่ "ไม่ติดธง NOT_INSTALLED" (= ยังไม่โหลด)
+     */
+    private fun hasUsableLocaleVoice(locale: Locale): Boolean = try {
+        tts?.voices?.any { v ->
+            v.locale.language == locale.language &&
+                !v.features.orEmpty().contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)
+        } ?: false
+    } catch (e: Exception) {
+        // getVoices() อาจ throw บน engine บางตัวที่ยัง init ไม่สมบูรณ์
+        Log.w(TAG, "voices lookup failed", e)
+        false
+    }
+
+    /**
      * ตรวจว่าเครื่องนี้พูดภาษาที่ตั้งไว้ได้จริงไหม — เรียกจาก Settings เพื่อโชว์ warning
      */
     fun checkVoiceStatus(): TtsVoiceStatus {
@@ -550,11 +568,17 @@ class TtsManager @Inject constructor(
             return if (isGoogleTtsInstalled()) TtsVoiceStatus.ENGINE_NOT_READY
             else TtsVoiceStatus.GOOGLE_TTS_MISSING
         }
+        val locale = effectiveSpeakLocale()
         val availability = try {
-            engine.isLanguageAvailable(effectiveSpeakLocale())
+            engine.isLanguageAvailable(locale)
         } catch (e: Exception) {
             Log.w(TAG, "isLanguageAvailable failed", e)
             return TtsVoiceStatus.ENGINE_NOT_READY
+        }
+        // 🐞 (2026-07-10) isLanguageAvailable โกหกได้ — ยืนยันด้วย tts.voices เป็น ground truth
+        // ก่อนจะฟันธงว่า "เสียงหาย" (กันการ์ดเตือนเด้งหลอกทั้งที่ชุดเสียงยังอยู่)
+        if (availability < TextToSpeech.LANG_AVAILABLE && hasUsableLocaleVoice(locale)) {
+            return TtsVoiceStatus.READY
         }
         return when {
             availability >= TextToSpeech.LANG_AVAILABLE -> TtsVoiceStatus.READY
@@ -564,6 +588,31 @@ class TtsManager @Inject constructor(
             isGoogleTtsInstalled() -> TtsVoiceStatus.THAI_VOICE_MISSING
             else -> TtsVoiceStatus.GOOGLE_TTS_MISSING
         }
+    }
+
+    /**
+     * 🐞 (2026-07-10) ตรวจสถานะเสียงแบบ "เชื่อถือได้" — poll ซ้ำจน engine warm ก่อนตัดสิน
+     * เหตุผล: หลัง reboot / process ถูก kill, engine cold-start โหลด catalog ไม่ทัน →
+     * isLanguageAvailable คืน MISSING_DATA ชั่วคราว → เช็คครั้งเดียวจะขึ้นการ์ด "ไม่มีเสียง"
+     * ทั้งที่ชุดเสียงยังอยู่ (= อาการ "เสียงหลุด ต้องโหลดใหม่เรื่อยๆ" ที่แท้จริงส่วนใหญ่)
+     *
+     * หยุด poll ทันทีเมื่อได้สถานะที่ "นิ่งแล้ว": READY (พร้อม) หรือ GOOGLE_TTS_MISSING
+     * (ไม่มี engine เลย = deterministic ไม่ขึ้นกับ warm-up). ส่วน ENGINE_NOT_READY /
+     * THAI_VOICE_MISSING อาจเป็นชั่วคราว → ลองซ้ำจนกว่าจะนิ่งหรือหมดเวลา (~2.4s)
+     * ต้องเรียกจาก coroutine (suspend); delay ไม่บล็อก main thread
+     */
+    suspend fun checkVoiceStatusReliable(): TtsVoiceStatus {
+        var status = checkVoiceStatus()
+        var attempts = 0
+        while (attempts < 6 &&
+            status != TtsVoiceStatus.READY &&
+            status != TtsVoiceStatus.GOOGLE_TTS_MISSING
+        ) {
+            delay(400)
+            status = checkVoiceStatus()
+            attempts++
+        }
+        return status
     }
 
     /**

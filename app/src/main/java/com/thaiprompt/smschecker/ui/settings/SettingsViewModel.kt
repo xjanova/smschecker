@@ -327,15 +327,17 @@ class SettingsViewModel @Inject constructor(
 
     /**
      * ตรวจว่าเครื่องพูดภาษาที่ตั้งไว้ได้จริงไหม (เคส Samsung ไม่มีเสียงไทย) —
-     * เรียกตอนเข้าหน้า/กลับเข้าหน้า Settings. หน่วงสั้นๆ เผื่อ TTS เพิ่ง init/re-init
+     * เรียกตอนเข้าหน้า/กลับเข้าหน้า Settings. poll จน engine warm ก่อนตัดสิน
      */
     fun refreshTtsVoiceStatus() {
         viewModelScope.launch {
             try {
                 // ถ้าผู้ใช้เพิ่งกลับจากการติดตั้ง Google TTS → สลับ engine ให้อัตโนมัติ
                 ttsManager.reinitWithGoogleIfNewlyInstalled()
-                kotlinx.coroutines.delay(600)
-                _state.update { it.copy(ttsVoiceStatus = ttsManager.checkVoiceStatus()) }
+                // ตรวจแบบเชื่อถือได้ — poll จน engine warm ก่อนตัดสิน แทนการรอเวลาคงที่แล้วเช็คครั้งเดียว
+                // (กัน phantom "เสียงหลุด" ตอน engine เพิ่ง cold-start หลัง reboot/process ถูก kill)
+                val status = ttsManager.checkVoiceStatusReliable()
+                _state.update { it.copy(ttsVoiceStatus = status) }
             } catch (e: Exception) { }
         }
     }
