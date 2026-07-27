@@ -55,6 +55,19 @@ data class OrderApproval(
     // 📱 (2026-06-11) ช่องทางที่ลูกค้าทักมา — sync จาก server (order_details_json.platform)
     //   "facebook" / "line" → badge โลโก้บนการ์ดบิล, null = บิลเว็บ/บิลเก่าก่อนฟีเจอร์นี้
     val platform: String? = null,
+    // 🧾 (2026-07-27) สลิปที่ทำให้บิลนี้ผ่าน (SlipOK) — sync จาก order_details_json.slip
+    //   slipImagePath = relative path บน server ("api/v1/sms-payment/orders/{bill}/slip-image")
+    //     ต่อกับ ServerConfig.baseUrl ตอนโหลดรูป (ต้องแนบ X-Api-Key + X-Device-Id)
+    //   null ทั้งชุด = ไม่มีสลิป (จับคู่ SMS / บิลเก่ากว่า 30 วันที่รูปถูก purge)
+    val slipImagePath: String? = null,
+    val slipTransRef: String? = null,
+    val slipSenderName: String? = null,
+    val slipReceiverAccount: String? = null,
+    val slipAmount: Double? = null,
+    val slipCheckedAt: Long? = null,
+    // 🚫 (2026-07-27) server อนุญาตให้ "ยกเลิกการอนุมัติ" บิลนี้ไหม (บิลดูดวง = true)
+    //   บิลร้านค้ายังยกเลิกได้เฉพาะหน้าเว็บแอดมิน → ไม่โชว์ปุ่มในแอพ
+    val canVoid: Boolean = false,
     val syncedVersion: Long = 0,
     val lastSyncedAt: Long? = null,
     val pendingAction: PendingAction? = null,
@@ -93,6 +106,8 @@ fun OrderApproval.approvalMethod(): ApprovalMethod? {
     return when {
         // server ส่ง approved_by = null เสมอ → ค่า non-null คือ marker ฝั่งแอพ ("admin")
         approvedBy != null || approvalStatus == ApprovalStatus.MANUALLY_APPROVED -> ApprovalMethod.ADMIN
+        // 🧾 (2026-07-27) มีสลิปติดบิล = SlipOK ตรวจผ่านแน่ๆ (ไม่ต้องเดาจาก notificationId)
+        slipImagePath != null -> ApprovalMethod.SLIP
         notificationId != null -> ApprovalMethod.SMS
         else -> ApprovalMethod.SLIP
     }

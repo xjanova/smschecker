@@ -70,6 +70,21 @@ interface PaymentApiService {
         @Body body: RejectBody
     ): Response<ApiResponse>
 
+    /**
+     * 🧾 (2026-07-27) โหลดรูปสลิปที่ทำให้บิลนี้ผ่าน (SlipOK) — ไว้ให้แอดมินตรวจซ้ำ
+     *
+     * Path มาจาก order_details_json.slip.image_path ของ server (relative) แต่ประกาศเป็น
+     * @Url เพื่อให้ต่อกับ baseUrl ของ server ที่บิลนั้นสังกัดได้ตรงตัว
+     * ต้องแนบ device auth เสมอ — endpoint นี้ไม่ public (PDPA: รูปมีชื่อผู้โอน/เลขบัญชี)
+     */
+    @Streaming
+    @GET
+    suspend fun getSlipImage(
+        @Url url: String,
+        @Header("X-Api-Key") apiKey: String,
+        @Header("X-Device-Id") deviceId: String
+    ): Response<okhttp3.ResponseBody>
+
     @POST("api/v1/sms-payment/orders/bulk-approve")
     suspend fun bulkApproveOrders(
         @Header("X-Api-Key") apiKey: String,

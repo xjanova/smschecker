@@ -25,7 +25,7 @@ import com.thaiprompt.smschecker.data.model.SyncLog
         MatchHistory::class,
         MisclassificationReport::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -280,6 +280,21 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_14_15 = object : Migration(14, 15) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE order_approvals ADD COLUMN platform TEXT")
+            }
+        }
+
+        // 🧾 (2026-07-27) สลิป SlipOK ติดบิล (ทัมบ์เนล + เปิดดูเต็ม) + สิทธิ์ยกเลิกการอนุมัติ
+        //   ข้อมูลมาจาก order_details_json.slip / .can_void ของ server
+        //   ไม่เก็บ "ไฟล์รูป" ลงเครื่อง — เก็บแค่ path แล้วโหลดสดทุกครั้ง (PDPA: รูปมีชื่อ/เลขบัญชี)
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE order_approvals ADD COLUMN slipImagePath TEXT")
+                db.execSQL("ALTER TABLE order_approvals ADD COLUMN slipTransRef TEXT")
+                db.execSQL("ALTER TABLE order_approvals ADD COLUMN slipSenderName TEXT")
+                db.execSQL("ALTER TABLE order_approvals ADD COLUMN slipReceiverAccount TEXT")
+                db.execSQL("ALTER TABLE order_approvals ADD COLUMN slipAmount REAL")
+                db.execSQL("ALTER TABLE order_approvals ADD COLUMN slipCheckedAt INTEGER")
+                db.execSQL("ALTER TABLE order_approvals ADD COLUMN canVoid INTEGER NOT NULL DEFAULT 0")
             }
         }
 

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sms
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -49,6 +50,7 @@ import com.thaiprompt.smschecker.data.model.ApprovalStatus
 import com.thaiprompt.smschecker.data.model.MatchConfidence
 import com.thaiprompt.smschecker.data.model.OrderApproval
 import com.thaiprompt.smschecker.data.model.approvalMethod
+import com.thaiprompt.smschecker.data.repository.SlipImageLoader
 import com.thaiprompt.smschecker.ui.components.AeroChip
 import com.thaiprompt.smschecker.ui.components.AeroGlass
 import com.thaiprompt.smschecker.ui.components.AeroHeader
@@ -399,6 +401,9 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                     onApprove = { viewModel.approveOrder(order) },
                     onForceApprove = { viewModel.forceApproveOrder(order) },
                     onReject = { viewModel.rejectOrder(order) },
+                    onVoidApproval = { viewModel.voidApproval(order) },
+                    onLoadSlip = { target, sizePx -> viewModel.loadSlipImage(target, sizePx) },
+                    isVoiding = state.voidingOrderId == order.id,
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
                 Spacer(modifier = Modifier.height(13.dp))
@@ -447,6 +452,40 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
             )
         }
 
+        // 🚫 (2026-07-27) ยืนยันรอบสอง — backend ตอบว่าลูกค้าเปิดไพ่/ได้คำทำนายไปแล้ว
+        state.voidConsumedConfirm?.let { pendingOrder ->
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissVoidConsumedConfirm() },
+                icon = {
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFC62828))
+                },
+                title = { Text(strings.voidConsumedTitle, fontWeight = FontWeight.Bold) },
+                text = {
+                    Column {
+                        Text(
+                            "บิล ${pendingOrder.orderNumber ?: "#${pendingOrder.id}"}",
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(strings.voidConsumedBody, fontSize = 13.sp, color = Color(0xFF666666))
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { viewModel.voidApproval(pendingOrder, force = true) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828))
+                    ) {
+                        Text(strings.voidConsumedConfirm)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissVoidConsumedConfirm() }) {
+                        Text(strings.cancelButton)
+                    }
+                }
+            )
+        }
+
         // Snackbar for approve/reject feedback
         SnackbarHost(
             hostState = snackbarHostState,
@@ -466,9 +505,72 @@ fun OrderCard(
     onApprove: () -> Unit,
     onForceApprove: () -> Unit,
     onReject: () -> Unit,
+    onVoidApproval: () -> Unit = {},
+    onLoadSlip: suspend (OrderApproval, Int) -> android.graphics.Bitmap? = { _, _ -> null },
+    isVoiding: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
+
+    // 🧾 (2026-07-27) สลิป SlipOK ของบิลนี้ — ทัมบ์เนลเล็กบนการ์ด + แตะการ์ดดูรูปเต็ม
+    val hasSlip = order.slipImagePath != null
+    var slipThumb by remember(order.id, order.slipImagePath) {
+        mutableStateOf<android.graphics.Bitmap?>(null)
+    }
+    var showSlipViewer by remember(order.id) { mutableStateOf(false) }
+
+    LaunchedEffect(order.id, order.slipImagePath) {
+        slipThumb = if (hasSlip) onLoadSlip(order, SlipImageLoader.THUMB_PX) else null
+    }
+
+    if (showSlipViewer && hasSlip) {
+        SlipViewerDialog(
+            order = order,
+            thumbnail = slipThumb,
+            onLoadSlip = onLoadSlip,
+            onDismiss = { showSlipViewer = false }
+        )
+    }
+
+    // 🚫 (2026-07-27) ยืนยันก่อนยกเลิกการอนุมัติ (destructive — ดึงเงิน/คอมมิชชั่นคืน)
+    var showVoidDialog by remember(order.id) { mutableStateOf(false) }
+    if (showVoidDialog) {
+        AlertDialog(
+            onDismissRequest = { showVoidDialog = false },
+            icon = {
+                Icon(Icons.Default.Undo, contentDescription = null, tint = Color(0xFFC62828))
+            },
+            title = { Text(strings.voidApprovalTitle, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(
+                        "บิล ${order.orderNumber ?: "#${order.id}"} · ฿${String.format(Locale.US, "%,.2f", order.amount)}",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(strings.voidApprovalBody, fontSize = 13.sp, color = Color(0xFF666666))
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(strings.voidApprovalHint, fontSize = 12.sp, color = Color(0xFF888888))
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showVoidDialog = false
+                        onVoidApproval()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828))
+                ) {
+                    Text(strings.voidApprovalConfirm)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showVoidDialog = false }) {
+                    Text(strings.cancelButton)
+                }
+            }
+        )
+    }
 
     // Force Approve confirmation dialog (destructive — keeps its confirm step)
     var showForceApproveDialog by remember { mutableStateOf(false) }
@@ -532,8 +634,16 @@ fun OrderCard(
     )
     val showActions = canForce
 
+    // 🚫 (2026-07-27) ปุ่มเล็ก "ยกเลิกการอนุมัติ" — เฉพาะบิลที่อนุมัติแล้วและ server อนุญาต
+    val isApproved = order.approvalStatus == ApprovalStatus.AUTO_APPROVED ||
+        order.approvalStatus == ApprovalStatus.MANUALLY_APPROVED
+    val showVoidAction = isApproved && order.canVoid && order.pendingAction == null
+
     AeroGlass(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            // แตะการ์ดที่มีสลิป = เปิดดูรูปเต็ม (ไม่มีสลิป = การ์ดไม่ clickable ไม่ให้ ripple หลอก)
+            .then(if (hasSlip) Modifier.clickable { showSlipViewer = true } else Modifier),
         cornerRadius = 18.dp,
         contentPadding = PaddingValues(0.dp)
     ) {
@@ -638,6 +748,12 @@ fun OrderCard(
                             status = order.approvalStatus
                         )
                     }
+                    // 🧾 ทัมบ์เนลสลิป — แตะการ์ดเพื่อดูเต็ม (โชว์เฉพาะบิลที่มีสลิปตรวจผ่าน)
+                    //    เล็กกว่าเหรียญธนาคารเล็กน้อย เพื่อไม่เบียดยอดเงินบนจอแคบ
+                    if (hasSlip) {
+                        SlipThumbnail(bitmap = slipThumb, size = 42.dp)
+                        Spacer(modifier = Modifier.width(7.dp))
+                    }
                     if (order.bank != null) {
                         BankCoin(bankCode = order.bank, size = 46.dp)
                     }
@@ -708,6 +824,60 @@ fun OrderCard(
                             fontSize = 10.sp,
                             color = AppColors.WarningOrange,
                             fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+
+            // ── (2026-07-27) แถบบิลที่อนุมัติแล้ว: hint แตะดูสลิป + ปุ่มเล็กยกเลิกการอนุมัติ ──
+            if (showVoidAction) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White)
+                        .height(1.dp)
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0x99F0F6FA), Color(0x80E8F1F6))
+                            )
+                        )
+                        .padding(start = 14.dp, end = 10.dp, top = 7.dp, bottom = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (hasSlip) {
+                        Icon(
+                            Icons.Default.ReceiptLong,
+                            contentDescription = null,
+                            modifier = Modifier.size(13.dp),
+                            tint = AeroPalette.InkFaint
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            strings.slipTapHint,
+                            fontSize = 11.sp,
+                            color = AeroPalette.InkFaint,
+                            maxLines = 1
+                        )
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    if (isVoiding) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = AeroPalette.Red
+                        )
+                    } else {
+                        GlossButton(
+                            text = strings.voidApprovalButton,
+                            onClick = { showVoidDialog = true },
+                            style = GlossStyle.Ghost,
+                            leadingIcon = Icons.Default.Undo,
+                            fontSize = 11,
+                            contentPadding = PaddingValues(horizontal = 11.dp, vertical = 6.dp)
                         )
                     }
                 }

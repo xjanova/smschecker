@@ -744,6 +744,84 @@ class OrderRepository @Inject constructor(
         }
     }
 
+    /**
+     * 🚫 (2026-07-27) ยกเลิกการอนุมัติบิลที่อนุมัติไปแล้ว (Void Approval)
+     *
+     * เคสใช้: SlipOK อนุมัติผิด (สลิปปลอม/สลิปเก่า) หรือแอดมินกด Force ผิดบิล
+     * Backend เรียก FortuneReading::voidApproval() — คืน UPA, ปลด SMS notification,
+     * ดึง commission คืน, is_paid=false → บิลกลับเป็น "ยังไม่ได้ชำระ" (สถานะ cancelled)
+     * แล้วยัง Force อนุมัติใหม่ได้ถ้าเงินเข้าจริงทีหลัง
+     *
+     * ⚠️ ไม่เข้าคิวออฟไลน์โดยตั้งใจ — void ที่ยิงย้อนหลังหลายชั่วโมงอาจไปล้มบิลที่
+     *    ลูกค้าจ่ายจริงไปแล้ว เน็ตล่ม = บอกแอดมินให้กดใหม่ตอนออนไลน์ ปลอดภัยกว่า
+     *
+     * @param force true = ยืนยันรอบสองหลัง backend ตอบ BILL_CONSUMED (ลูกค้าเปิดไพ่แล้ว)
+     */
+    suspend fun voidApproval(
+        order: OrderApproval,
+        reason: String = "",
+        force: Boolean = false
+    ): ActionOutcome {
+        Log.w(TAG, "🚫 VOID APPROVAL: START orderId=${order.id}, orderNumber=${order.orderNumber}, force=$force")
+
+        val server = serverConfigDao.getById(order.serverId)
+            ?: return ActionOutcome.FailedValidation("ไม่พบเซิร์ฟเวอร์ของบิลนี้", 0, null)
+        val apiKey = secureStorage.getApiKey(server.id)
+            ?: return ActionOutcome.FailedValidation("ไม่พบ API key ของเซิร์ฟเวอร์", 0, null)
+        val secretKey = secureStorage.getSecretKey(server.id)
+            ?: return ActionOutcome.FailedValidation("ไม่พบ secret key ของเซิร์ฟเวอร์", 0, null)
+        val deviceId = secureStorage.getDeviceId()
+            ?: return ActionOutcome.FailedValidation("ไม่พบ device ID", 0, null)
+
+        val identifier = order.orderNumber ?: order.remoteApprovalId.toString()
+
+        // retry เฉพาะกรณีเน็ตล้ม (Queued) — validation error คืนทันที ไม่ให้แอดมินรอ backoff
+        var result: ActionOutcome
+        var attempt = 0
+        while (true) {
+            result = sendEncryptedActionDetailed(
+                server = server,
+                apiKey = apiKey,
+                secretKey = secretKey,
+                deviceId = deviceId,
+                action = "void",
+                orderIdentifier = identifier,
+                amount = order.amount,
+                bank = order.bank,
+                reason = reason.ifBlank { "ยกเลิกการอนุมัติจากแอพ" },
+                force = force
+            )
+            if (result !is ActionOutcome.Queued || attempt >= 2) break
+            attempt++
+            kotlinx.coroutines.delay(1000L * attempt)
+        }
+
+        return when (val outcome = result) {
+            is ActionOutcome.Success -> {
+                Log.w(TAG, "🚫 VOID APPROVAL: ✅ SUCCESS for $identifier")
+                // server พลิกบิลเป็น completed + is_paid=false → transform เป็น 'cancelled'
+                // (sendEncryptedActionDetailed อัพเดท local จาก response แล้วถ้ามี order กลับมา
+                //  แต่บังคับซ้ำที่นี่เผื่อ response ไม่มี data.order)
+                orderApprovalDao.updateStatus(order.id, ApprovalStatus.CANCELLED, null)
+                // เคลียร์ marker "แอดมินอนุมัติ" ไม่งั้น badge วิธีอนุมัติค้างอยู่บนบิลที่ไม่ได้จ่ายแล้ว
+                orderApprovalDao.updateApprovedBy(order.id, null)
+                ActionOutcome.Success
+            }
+            is ActionOutcome.FailedValidation -> {
+                Log.w(TAG, "🚫 VOID APPROVAL: ❌ REJECTED for $identifier: ${outcome.message}")
+                outcome
+            }
+            is ActionOutcome.Queued -> {
+                Log.w(TAG, "🚫 VOID APPROVAL: ❌ NETWORK FAILED for $identifier")
+                ActionOutcome.FailedValidation(
+                    "ส่งคำสั่งไม่สำเร็จ (${outcome.message}) — ลองใหม่เมื่อออนไลน์",
+                    0,
+                    null
+                )
+            }
+        }
+    }
+
     suspend fun syncOfflineQueue() {
         val pending = orderApprovalDao.getPendingActions()
         val deviceId = secureStorage.getDeviceId() ?: return
@@ -1702,11 +1780,21 @@ class OrderRepository @Inject constructor(
     )
 }
 
+/**
+ * 🚫 backend ตอบ BILL_CONSUMED = ลูกค้าเปิดไพ่/ได้คำทำนายไปแล้ว → ต้องยืนยันรอบสอง (force)
+ */
+fun OrderRepository.ActionOutcome.FailedValidation.isBillConsumed(): Boolean =
+    rawBody?.contains("BILL_CONSUMED") == true || message.contains("ใช้บริการไปแล้ว")
+
 fun RemoteOrderApproval.toLocalEntity(serverId: Long): OrderApproval {
     val details = order_details_json
     // Server may update amount via order_details_json — prefer it over notification amount
     val serverAmount = (details?.get("amount") as? Number)?.toDouble()
     val notifAmount = notification?.amount?.toDoubleOrNull()
+
+    // 🧾 (2026-07-27) order_details_json.slip — Gson แปลง nested object เป็น Map (LinkedTreeMap)
+    @Suppress("UNCHECKED_CAST")
+    val slip = details?.get("slip") as? Map<String, Any?>
 
     // แปลง created_at (ISO 8601) จากเซิร์ฟเป็น milliseconds สำหรับแสดงเวลาสร้างบิลจริง
     val serverCreatedAtMs = created_at?.let { parseIso8601ToMillis(it) }
@@ -1736,6 +1824,15 @@ fun RemoteOrderApproval.toLocalEntity(serverId: Long): OrderApproval {
         cancellationReasonLabel = cancellation_reason_label,
         // 📱 (2026-06-11) ช่องทางลูกค้า (facebook/line) — badge โลโก้บนการ์ดบิล
         platform = details?.get("platform")?.toString()?.lowercase()?.takeIf { it.isNotBlank() },
+        // 🧾 (2026-07-27) สลิป SlipOK ที่ทำให้บิลนี้ผ่าน (server ส่งมาเฉพาะที่รูปยังไม่ถูก purge)
+        slipImagePath = slip?.get("image_path")?.toString()?.takeIf { it.isNotBlank() },
+        slipTransRef = slip?.get("trans_ref")?.toString()?.takeIf { it.isNotBlank() },
+        slipSenderName = slip?.get("sender_name")?.toString()?.takeIf { it.isNotBlank() },
+        slipReceiverAccount = slip?.get("receiver_account")?.toString()?.takeIf { it.isNotBlank() },
+        slipAmount = (slip?.get("amount") as? Number)?.toDouble(),
+        slipCheckedAt = slip?.get("checked_at")?.toString()?.let { parseIso8601ToMillis(it) },
+        // 🚫 (2026-07-27) server บอกว่ายกเลิกการอนุมัติบิลนี้จากแอพได้ไหม (บิลดูดวง = true)
+        canVoid = details?.get("can_void") == true,
         syncedVersion = synced_version,
         lastSyncedAt = System.currentTimeMillis()
     )

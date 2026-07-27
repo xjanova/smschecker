@@ -1,5 +1,6 @@
 package com.thaiprompt.smschecker.ui.orders
 
+import android.graphics.Bitmap
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -7,7 +8,9 @@ import com.thaiprompt.smschecker.data.model.ApprovalStatus
 import com.thaiprompt.smschecker.data.model.OrderApproval
 import com.thaiprompt.smschecker.data.model.ServerConfig
 import com.thaiprompt.smschecker.data.repository.OrderRepository
+import com.thaiprompt.smschecker.data.repository.SlipImageLoader
 import com.thaiprompt.smschecker.data.repository.TransactionRepository
+import com.thaiprompt.smschecker.data.repository.isBillConsumed
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -31,7 +34,11 @@ data class OrdersState(
     val searchQuery: String = "",
     val isLoadingMore: Boolean = false,
     val hasMorePages: Boolean = true,
-    val totalCount: Int = 0
+    val totalCount: Int = 0,
+    // 🚫 (2026-07-27) ยกเลิกการอนุมัติ — id บิลที่กำลังส่งคำสั่ง (โชว์ spinner บนปุ่ม)
+    val voidingOrderId: Long? = null,
+    // บิลที่ backend ตอบว่าลูกค้าใช้บริการไปแล้ว → เด้งถามยืนยันรอบสองก่อน force
+    val voidConsumedConfirm: OrderApproval? = null
 )
 
 data class ActionResult(
@@ -43,7 +50,8 @@ data class ActionResult(
 @HiltViewModel
 class OrdersViewModel @Inject constructor(
     private val orderRepository: OrderRepository,
-    private val transactionRepository: TransactionRepository
+    private val transactionRepository: TransactionRepository,
+    private val slipImageLoader: SlipImageLoader
 ) : ViewModel() {
 
     companion object {
@@ -355,6 +363,69 @@ class OrdersViewModel @Inject constructor(
             }
         }
     }
+
+    /**
+     * 🚫 (2026-07-27) ยกเลิกการอนุมัติบิลที่อนุมัติไปแล้ว
+     *
+     * เคสใช้: SlipOK อนุมัติผิด (สลิปปลอม/สลิปเก่า) หรือแอดมิน/ระบบกดอนุมัติผิดบิล
+     * → บิลกลับเป็น "ยังไม่ได้ชำระ" (cancelled) และ Force อนุมัติใหม่ได้ถ้าเงินเข้าจริงทีหลัง
+     *
+     * ถ้า backend ตอบ BILL_CONSUMED (ลูกค้าเปิดไพ่/ได้คำทำนายแล้ว) → ตั้ง voidConsumedConfirm
+     * ให้จอถามยืนยันรอบสอง แล้วค่อยเรียกซ้ำด้วย force = true
+     */
+    fun voidApproval(order: OrderApproval, force: Boolean = false) {
+        // กันกดรัวๆ / กดซ้ำระหว่างรอ response (UX trap: rapid repeated taps)
+        if (_state.value.voidingOrderId == order.id) return
+
+        viewModelScope.launch {
+            _state.update { it.copy(voidingOrderId = order.id, voidConsumedConfirm = null) }
+            try {
+                Log.w("OrdersViewModel", "🚫 VOID APPROVAL: orderId=${order.id}, orderNumber=${order.orderNumber}, force=$force")
+                val outcome = orderRepository.voidApproval(order, force = force)
+
+                if (outcome is OrderRepository.ActionOutcome.FailedValidation && outcome.isBillConsumed() && !force) {
+                    // ลูกค้าใช้บริการไปแล้ว → ถามยืนยันอีกรอบ (ยังไม่ขึ้น snackbar error)
+                    _state.update { it.copy(voidingOrderId = null, voidConsumedConfirm = order) }
+                    return@launch
+                }
+
+                _state.update {
+                    it.copy(
+                        voidingOrderId = null,
+                        actionResult = outcome.toResult("ยกเลิกการอนุมัติแล้ว", order.orderNumber)
+                    )
+                }
+                loadOrders(showLoading = false)
+            } catch (e: Exception) {
+                Log.e("OrdersViewModel", "Error voiding approval for order ${order.id}", e)
+                _state.update { it.copy(
+                    voidingOrderId = null,
+                    actionResult = ActionResult(
+                        success = false,
+                        message = e.message ?: "ยกเลิกการอนุมัติไม่สำเร็จ",
+                        orderNumber = order.orderNumber
+                    )
+                ) }
+            }
+        }
+    }
+
+    fun dismissVoidConsumedConfirm() {
+        _state.update { it.copy(voidConsumedConfirm = null) }
+    }
+
+    /**
+     * 🧾 (2026-07-27) โหลดรูปสลิปของบิล (แคชใน RAM เท่านั้น — ไม่เขียนลงเครื่อง)
+     *
+     * @param maxSizePx SlipImageLoader.THUMB_PX (ทัมบ์เนลบนการ์ด) หรือ FULL_PX (เปิดดูเต็ม)
+     */
+    suspend fun loadSlipImage(order: OrderApproval, maxSizePx: Int): Bitmap? =
+        try {
+            slipImageLoader.load(order, maxSizePx)
+        } catch (e: Exception) {
+            Log.w("OrdersViewModel", "loadSlipImage failed for ${order.orderNumber}: ${e.message}")
+            null
+        }
 
     /**
      * แปลง ActionOutcome จาก repository เป็น ActionResult ให้ snackbar แสดง
