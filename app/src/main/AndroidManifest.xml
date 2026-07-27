@@ -128,6 +128,29 @@
             android:exported="false"
             android:stopWithTask="false" />
 
+        <!-- 🔧 (2026-07-27) ปิด default WorkManager initializer เพื่อใช้ on-demand init
+             ผ่าน SmsCheckerApp : Configuration.Provider (ที่ set HiltWorkerFactory)
+
+             androidx.work.WorkManagerInitializer.create() เรียก
+             WorkManager.initialize(ctx, Configuration.Builder().build()) แบบตายตัว —
+             ไม่เคยอ่าน Configuration.Provider เลย และรันใน ContentProvider ก่อน
+             Application.onCreate() → ถ้าไม่ remove จะยึด WorkManager ด้วย default
+             WorkerFactory ที่สร้าง @HiltWorker ไม่ได้
+
+             ⚠️ ใช้ node="merge" ที่ตัว provider + node="remove" เฉพาะ meta-data ตัวนี้
+             ห้าม remove ทั้ง <provider> เพราะจะพา ProcessLifecycleInitializer /
+             EmojiCompatInitializer / ProfileInstallerInitializer ตายไปด้วย -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+
         <!-- FileProvider for APK update installation -->
         <provider
             android:name="androidx.core.content.FileProvider"

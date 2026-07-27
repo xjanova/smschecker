@@ -7,6 +7,8 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.Configuration
 import com.google.firebase.messaging.FirebaseMessaging
 import com.thaiprompt.smschecker.service.CrashReportWorker
 import com.thaiprompt.smschecker.service.FcmService
@@ -15,15 +17,39 @@ import com.thaiprompt.smschecker.service.ServiceWatchdogWorker
 import com.thaiprompt.smschecker.service.SmsSweepWorker
 import com.thaiprompt.smschecker.data.license.IntegrityChecker
 import dagger.hilt.android.HiltAndroidApp
+import javax.inject.Inject
 
 @HiltAndroidApp
-class SmsCheckerApp : Application() {
+class SmsCheckerApp : Application(), Configuration.Provider {
 
     companion object {
         const val NOTIFICATION_CHANNEL_ID = "sms_processing"
         const val NOTIFICATION_CHANNEL_TRANSACTION = "transaction_alerts"
         private const val TAG = "SmsCheckerApp"
     }
+
+    @Inject lateinit var workerFactory: HiltWorkerFactory
+
+    /**
+     * 🔧 (2026-07-27) WorkManager on-demand init ด้วย HiltWorkerFactory
+     *
+     * ก่อนหน้านี้แอปไม่เคย implement Configuration.Provider เลย (ตั้งแต่ commit แรก) →
+     * WorkManager ใช้ default WorkerFactory ซึ่งสร้าง @HiltWorker (constructor @AssistedInject)
+     * ไม่ได้ → NoSuchMethodException: <init> [Context, WorkerParameters]
+     * ผลคือ OrderSyncWorker / SmsSweepWorker / CrashReportWorker ตายสนิท
+     * (ServiceWatchdogWorker รอดมาได้เพราะบังเอิญไม่มี dependency ฉีดเพิ่ม)
+     *
+     * ต้องคู่กับการ remove androidx.work.WorkManagerInitializer ใน AndroidManifest —
+     * ไม่งั้น initializer ของ androidx.startup จะรันใน ContentProvider (ก่อน onCreate)
+     * แล้วยึด WorkManager ด้วย Configuration.Builder().build() เปล่า ๆ ทับ provider ตัวนี้
+     *
+     * ความปลอดภัยเรื่องลำดับ: getter นี้ถูกเรียกครั้งแรกตอน WorkManager.getInstance()
+     * ซึ่งเกิดใน onCreate() หลัง super.onCreate() (Hilt inject เสร็จแล้ว) เท่านั้น
+     */
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .build()
 
     override fun onCreate() {
         super.onCreate()
