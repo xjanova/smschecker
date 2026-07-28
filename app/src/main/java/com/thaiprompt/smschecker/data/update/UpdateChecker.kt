@@ -20,7 +20,16 @@ import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
 
 data class UpdateInfo(
+    /** เด้ง dialog ไหม — false ได้ถ้าผู้ใช้เพิ่งกด "ภายหลัง" (snooze) */
     val hasUpdate: Boolean = false,
+    /**
+     * 🔧 (2026-07-27) เซิร์ฟเวอร์บอกว่ามีเวอร์ชันใหม่จริงไหม — ไม่สนใจ snooze
+     *
+     * แยกจาก [hasUpdate] เพราะของเดิมพอผู้ใช้กดข้ามเวอร์ชันแล้ว hasUpdate=false และ
+     * isUpToDate=false พร้อมกัน → ไม่มี branch ไหนใน UI เป็นจริง → หน้าจอเงียบสนิท
+     * ทั้งที่มีอัพเดทอยู่ ฟิลด์นี้ทำให้หน้า Settings บอกความจริงได้เสมอ
+     */
+    val updateAvailable: Boolean = false,
     val isUpToDate: Boolean = false,
     val latestVersion: String = "",
     val currentVersion: String = BuildConfig.VERSION_NAME,
@@ -51,17 +60,31 @@ object UpdateChecker {
 
     private const val PREFS_NAME = "smschecker_update"
     private const val KEY_LAST_CHECK = "last_check_at"
-    private const val KEY_DISMISSED_VERSION = "dismissed_version"
     private const val KEY_AUTO_UPDATE = "auto_update_enabled"
 
-    private const val CHECK_INTERVAL_MS = 6L * 60 * 60 * 1000
+    /** legacy — เคยเก็บเวอร์ชันที่ "ข้ามถาวร" ตอนนี้เลิกใช้แล้ว ลบทิ้งตอน init */
+    private const val KEY_DISMISSED_VERSION_LEGACY = "dismissed_version"
+
+    // 🔧 (2026-07-27) snooze แทน dismiss ถาวร — เตือนใหม่ได้เสมอเมื่อครบเวลา
+    private const val KEY_SNOOZED_VERSION = "snoozed_version"
+    private const val KEY_SNOOZED_UNTIL = "snoozed_until"
+    private const val SNOOZE_DURATION_MS = 24L * 60 * 60 * 1000
+
+    // เดิม 6 ชม. — ถ้า release ออกหลังเช็คไปนิดเดียว เปิดแอปกี่รอบก็เงียบยาว
+    private const val CHECK_INTERVAL_MS = 30L * 60 * 1000
 
     private val _autoUpdateEnabled = MutableStateFlow(false)
     val autoUpdateEnabled: StateFlow<Boolean> = _autoUpdateEnabled
 
     fun initAutoUpdatePref(context: Context) {
-        _autoUpdateEnabled.value = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(KEY_AUTO_UPDATE, false)
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        _autoUpdateEnabled.value = prefs.getBoolean(KEY_AUTO_UPDATE, false)
+
+        // ล้างค่า "ข้ามถาวร" ของเดิมทิ้ง — เครื่องที่เคยแตะพลาดจะได้หลุดจากสภาพตันทันที
+        if (prefs.contains(KEY_DISMISSED_VERSION_LEGACY)) {
+            prefs.edit().remove(KEY_DISMISSED_VERSION_LEGACY).apply()
+            Log.i(TAG, "Cleared legacy dismissed_version — update prompts re-enabled")
+        }
     }
 
     fun setAutoUpdate(context: Context, enabled: Boolean) {
@@ -82,15 +105,36 @@ object UpdateChecker {
 
     private val gson = Gson()
 
-    fun dismissVersion(context: Context, version: String) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putString(KEY_DISMISSED_VERSION, version).apply()
+    /**
+     * ปุ่ม "ภายหลัง" — เลื่อนเตือน 24 ชม. (ไม่ใช่ปิดถาวร)
+     *
+     * ของเดิมเขียน dismissed_version ทิ้งไว้ตลอดกาล ผู้ใช้ที่กดครั้งเดียวจะไม่มีวัน
+     * เห็นเวอร์ชันนั้นอีกเลย และหน้า Settings ก็ไม่บอกอะไรด้วย
+     */
+    fun snoozeVersion(context: Context, version: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString(KEY_SNOOZED_VERSION, version)
+            .putLong(KEY_SNOOZED_UNTIL, System.currentTimeMillis() + SNOOZE_DURATION_MS)
+            .apply()
+        _updateInfo.value = _updateInfo.value.copy(hasUpdate = false)
+        Log.d(TAG, "Snoozed v$version for 24h")
+    }
+
+    /**
+     * แตะนอกกล่อง / ปัดกลับ — ซ่อนแค่รอบนี้ ไม่จำอะไรลง prefs
+     *
+     * ⚠️ ห้ามเรียก [snoozeVersion] จาก onDismissRequest — Samsung ตั้ง gesture
+     * navigation แบบปัดขอบจอเป็นค่าเริ่มต้น ปัดพลาดทีเดียวจะกลายเป็นข้ามเวอร์ชัน
+     */
+    fun hideUpdateDialogForNow() {
         _updateInfo.value = _updateInfo.value.copy(hasUpdate = false)
     }
 
-    private fun getDismissedVersion(context: Context): String? {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_DISMISSED_VERSION, null)
+    /** true = เวอร์ชันนี้ถูกกด "ภายหลัง" ไว้ และยังไม่ครบ 24 ชม. */
+    private fun isSnoozed(context: Context, version: String): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_SNOOZED_VERSION, null) == version &&
+            System.currentTimeMillis() < prefs.getLong(KEY_SNOOZED_UNTIL, 0L)
     }
 
     /**
@@ -101,7 +145,8 @@ object UpdateChecker {
         shouldThrottle: Boolean = false,
         isManual: Boolean = false
     ) = withContext(Dispatchers.IO) {
-        if (shouldThrottle && !isManual) {
+        // ถ้ารู้อยู่แล้วว่ามีอัพเดทค้าง ต้องเช็คทุกรอบจนกว่าจะติดตั้ง — ห้าม throttle ทับ
+        if (shouldThrottle && !isManual && !_updateInfo.value.updateAvailable) {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val lastCheck = prefs.getLong(KEY_LAST_CHECK, 0)
             if (System.currentTimeMillis() - lastCheck < CHECK_INTERVAL_MS) {
@@ -136,14 +181,19 @@ object UpdateChecker {
             val downloadUrl = json.get("download_url")?.asString ?: ""
             val changelog = json.get("changelog")?.asString ?: ""
 
-            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
+            // เขียน last_check เฉพาะตอนไม่มีอัพเดท — ไม่งั้นจะปิดตาตัวเองไว้ 30 นาที
+            // ทั้งที่มีของใหม่รออยู่แล้ว
+            if (!hasUpdate) {
+                context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    .edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
+            }
 
-            val dismissed = getDismissedVersion(context)
-            val showUpdate = hasUpdate && (latestVersion != dismissed || _autoUpdateEnabled.value)
+            val snoozed = hasUpdate && isSnoozed(context, latestVersion)
+            val showDialog = hasUpdate && (!snoozed || _autoUpdateEnabled.value)
 
             _updateInfo.value = UpdateInfo(
-                hasUpdate = showUpdate,
+                hasUpdate = showDialog,
+                updateAvailable = hasUpdate,
                 isUpToDate = !hasUpdate,
                 latestVersion = if (hasUpdate) latestVersion else currentVersion,
                 currentVersion = currentVersion,
@@ -152,7 +202,7 @@ object UpdateChecker {
                 fileName = "SmsChecker-v${latestVersion}.apk"
             )
 
-            Log.d(TAG, "Update check: current=$currentVersion latest=$latestVersion hasUpdate=$hasUpdate")
+            Log.d(TAG, "Update check: current=$currentVersion latest=$latestVersion hasUpdate=$hasUpdate snoozed=$snoozed")
 
         } catch (e: Exception) {
             Log.e(TAG, "Update check failed", e)

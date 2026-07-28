@@ -145,7 +145,10 @@ class MainActivity : ComponentActivity() {
                         ForceUpdateDialog(
                             updateInfo = updateInfo,
                             onUpdate = { updateScope.launch { UpdateChecker.downloadAndInstall(context) } },
-                            onDismiss = { UpdateChecker.dismissVersion(context, updateInfo.latestVersion) }
+                            // ปุ่ม "ภายหลัง" — เลื่อน 24 ชม.
+                            onSnooze = { UpdateChecker.snoozeVersion(context, updateInfo.latestVersion) },
+                            // แตะนอกกล่อง / ปัดกลับ — ซ่อนแค่รอบนี้ ไม่จำลง prefs
+                            onHide = { UpdateChecker.hideUpdateDialogForNow() }
                         )
                     }
 
@@ -512,10 +515,13 @@ private fun AeroTab(
 private fun ForceUpdateDialog(
     updateInfo: UpdateInfo,
     onUpdate: () -> Unit,
-    onDismiss: () -> Unit
+    onSnooze: () -> Unit,
+    onHide: () -> Unit
 ) {
     AlertDialog(
-        onDismissRequest = { if (!updateInfo.isDownloading) onDismiss() },
+        // 🔧 (2026-07-27) ปัดกลับ/แตะนอกกล่อง = ซ่อนชั่วคราวเท่านั้น
+        // ของเดิมยิง dismissVersion() ที่จำถาวร → ปัดพลาดครั้งเดียวไม่เห็นอัพเดทอีกเลย
+        onDismissRequest = { if (!updateInfo.isDownloading) onHide() },
         title = {
             Text(
                 if (updateInfo.isDownloading) "กำลังอัพเดท..."
@@ -562,7 +568,7 @@ private fun ForceUpdateDialog(
         },
         dismissButton = {
             if (!updateInfo.isDownloading) {
-                TextButton(onClick = onDismiss) {
+                TextButton(onClick = onSnooze) {
                     Text("ภายหลัง")
                 }
             }

@@ -1389,7 +1389,10 @@ fun SettingsScreen(
                 }
 
                 // Update available
-                if (updateInfo.hasUpdate) {
+                // 🔧 (2026-07-27) อิง updateAvailable (ความจริงจากเซิร์ฟเวอร์) ไม่ใช่ hasUpdate
+                // ของเดิมพอกด "ภายหลัง" แล้ว hasUpdate=false + isUpToDate=false พร้อมกัน
+                // → กดปุ่ม "เช็คอัพเดท" แล้วไม่มีอะไรขึ้นเลย ทั้งที่มีอัพเดทอยู่
+                if (updateInfo.updateAvailable) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Card(
                         modifier = Modifier.fillMaxWidth(),
