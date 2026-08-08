@@ -655,6 +655,26 @@ class TtsManager @Inject constructor(
     }
 
     /**
+     * 🔁 (2026-08-08) ตรวจเสียงใหม่แบบ "รื้อทั้งหมด" — ใช้กับปุ่ม "ตรวจสอบอีกครั้ง" ใน Settings
+     * และ health check อัตโนมัติใน [SmsSweepWorker]
+     *
+     * ต่างจาก [checkVoiceStatusReliable] ตรงที่บังคับสร้าง TextToSpeech ใหม่ก่อนตรวจ — จำเป็นเมื่อ
+     * ผู้ใช้ไปโหลด/ลบชุดเสียงนอกแอป เพราะ instance เดิมค้าง voice catalog ตอนที่ถูกสร้างไว้
+     * และเป็นตัวที่พาไป "ไล่หา engine อื่นที่มีเสียงไทยพร้อมใช้" ใน onInit ให้ใหม่อีกรอบด้วย
+     *
+     * ข้ามการรื้อถ้ากำลังพูดอยู่ — shutdown ระหว่างพูด = ประกาศเงินเข้าขาดกลางคัน
+     */
+    suspend fun recheckVoiceNow(): TtsVoiceStatus {
+        val speaking = try { tts?.isSpeaking == true } catch (e: Exception) { false }
+        if (speaking) {
+            Log.i(TAG, "recheckVoiceNow: กำลังพูดอยู่ — ข้าม re-init ตรวจด้วย instance เดิมแทน")
+        } else {
+            reinitEngineNow()
+        }
+        return checkVoiceStatusReliable()
+    }
+
+    /**
      * 🐞 (2026-08-08) สร้าง TextToSpeech ใหม่ทั้งตัว — ใช้เมื่อ "ของบนเครื่องเปลี่ยนไปแล้ว"
      * (เพิ่งติดตั้ง engine / เพิ่งโหลดชุดเสียง) เพราะ TextToSpeech ตัวเดิม bind กับ engine service
      * พร้อม voice catalog ตอนที่สร้าง — ถามซ้ำก็ยังได้คำตอบเก่า

@@ -1,7 +1,11 @@
 package com.thaiprompt.smschecker.service
 
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import androidx.hilt.work.HiltWorker
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
@@ -11,9 +15,12 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.thaiprompt.smschecker.R
+import com.thaiprompt.smschecker.SmsCheckerApp
 import com.thaiprompt.smschecker.data.license.LicenseManager
 import com.thaiprompt.smschecker.data.repository.TransactionRepository
 import com.thaiprompt.smschecker.domain.scanner.SmsInboxScanner
+import com.thaiprompt.smschecker.ui.MainActivity
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.util.concurrent.TimeUnit
@@ -50,6 +57,17 @@ class SmsSweepWorker @AssistedInject constructor(
         if (!LicenseManager.isLicenseValid()) {
             Log.d(TAG, "License invalid — skip sweep")
             return Result.success()
+        }
+
+        // 🔊 (2026-08-08) Voice health tripwire — ทำก่อน sweep เสมอ (แม้รอบนี้ไม่มี SMS ใหม่)
+        //   ปัญหาเดิม: ชุดเสียงไทยของ Google ถูก OS เขี่ยทิ้งได้ตลอด (Storage manager / เพิ่มพื้นที่ว่าง /
+        //   auto-update engine) แล้ว "ไม่มีใครรู้" จนเงินเข้าแล้วเงียบ — ร้านค้าเสียของฟรี
+        //   ตอนนี้ทุก 15 นาที: ตรวจ → ซ่อมเอง (สร้าง engine ใหม่ + ไล่หา engine ที่มีเสียงไทย) →
+        //   ถ้ายังไม่ได้ค่อยเด้ง noti เตือนล่วงหน้า (pattern เดียวกับ tripwire ใน ServiceWatchdogWorker)
+        try {
+            checkVoiceHealth()
+        } catch (e: Exception) {
+            Log.w(TAG, "Voice health check failed", e)
         }
 
         val startTime = System.currentTimeMillis()
@@ -127,9 +145,78 @@ class SmsSweepWorker @AssistedInject constructor(
         }
     }
 
+    /**
+     * ตรวจ + ซ่อมเสียงประกาศอัตโนมัติ แล้วเตือนล่วงหน้าถ้าซ่อมไม่ได้
+     *
+     * ลำดับตั้งใจให้ "ถูกก่อน แพงทีหลัง": [TtsManager.checkVoiceStatus] เป็นการอ่านสถานะเฉย ๆ
+     * เครื่องปกติจบตรงนี้ทุกรอบ ไม่มีการรื้อ engine ทิ้งทุก 15 นาที (เปลืองแบต + ตัดเสียงที่กำลังพูด)
+     */
+    private suspend fun checkVoiceHealth() {
+        // ปิดอ่านออกเสียงไว้เอง = ไม่ใช่ปัญหา อย่าไปกวน
+        if (!ttsManager.isTtsEnabled()) {
+            cancelVoiceAlert(applicationContext)
+            return
+        }
+        if (ttsManager.checkVoiceStatus() == TtsVoiceStatus.READY) {
+            cancelVoiceAlert(applicationContext)
+            return
+        }
+        // ผิดปกติ → ลองซ่อมเอง: สร้าง TextToSpeech ใหม่ (ล้าง catalog ค้าง) + onInit จะไล่หา
+        // engine ตัวอื่นในเครื่องที่มีเสียงไทยพร้อมใช้ให้เอง
+        val healed = ttsManager.recheckVoiceNow()
+        if (healed == TtsVoiceStatus.READY) {
+            Log.i(TAG, "🔊 Voice self-heal OK")
+            cancelVoiceAlert(applicationContext)
+        } else {
+            Log.w(TAG, "🔇 Voice still unusable after self-heal: $healed")
+            postVoiceAlert(applicationContext, healed)
+        }
+    }
+
+    /** เตือนล่วงหน้าว่า "เงินเข้าจะไม่มีเสียง" — แตะเพื่อเปิดแอปไปกดแก้ใน ตั้งค่า */
+    private fun postVoiceAlert(context: Context, status: TtsVoiceStatus) {
+        try {
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pi = PendingIntent.getActivity(
+                context, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val body = if (status == TtsVoiceStatus.GOOGLE_TTS_MISSING) {
+                "ไม่พบโปรแกรมเสียงในเครื่อง — แตะเพื่อเปิดแอป แล้วไปที่ ตั้งค่า > อ่านออกเสียง (ติดตั้งฟรี)"
+            } else {
+                "ชุดเสียงภาษาไทยหายไปจากเครื่อง — แตะเพื่อเปิดแอป แล้วไปที่ ตั้งค่า > อ่านออกเสียง (โหลดฟรี)"
+            }
+            val noti = NotificationCompat.Builder(context, SmsCheckerApp.NOTIFICATION_CHANNEL_TRANSACTION)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("🔇 เงินเข้าจะไม่มีเสียงประกาศ")
+                .setContentText(body)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setContentIntent(pi)
+                .build()
+            (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                .notify(VOICE_ALERT_NOTIF_ID, noti)
+        } catch (e: Exception) {
+            Log.w(TAG, "postVoiceAlert failed", e)
+        }
+    }
+
+    private fun cancelVoiceAlert(context: Context) {
+        try {
+            (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                .cancel(VOICE_ALERT_NOTIF_ID)
+        } catch (_: Exception) {}
+    }
+
     companion object {
         private const val TAG = "SmsSweep"
         private const val WORK_NAME = "sms_sweep_periodic"
+
+        // 9911 = ServiceWatchdogWorker (service ตาย) — อย่าชนกัน
+        private const val VOICE_ALERT_NOTIF_ID = 9912
 
         // Window 2 ชั่วโมง — ครอบคลุม UPA expiry (30 นาที) + เผื่อ Doze ขังนาน
         private const val SWEEP_WINDOW_HOURS = 2L

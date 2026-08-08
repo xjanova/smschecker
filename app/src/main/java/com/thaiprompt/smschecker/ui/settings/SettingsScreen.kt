@@ -777,6 +777,49 @@ fun SettingsScreen(
                                 else strings.ttsDownloadVoiceButton
                             )
                         }
+
+                        // 🔁 (2026-08-08) ตรวจซ้ำเดี๋ยวนั้น — เผื่อผู้ใช้ไปจัดการชุดเสียงเองในหน้า
+                        // ตั้งค่าของระบบ (ไม่ได้ผ่านปุ่มด้านบน) จะได้ไม่ต้องรอรอบ auto-check 15 นาที
+                        TextButton(
+                            onClick = { viewModel.recheckTtsVoice() },
+                            enabled = !state.ttsVoiceRechecking,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (state.ttsVoiceRechecking) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = AppColors.WarningOrange
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    strings.ttsRecheckingLabel,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = AppColors.WarningOrange
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    tint = AppColors.WarningOrange,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    strings.ttsRecheckButton,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = AppColors.WarningOrange
+                                )
+                            }
+                        }
+
+                        if (state.ttsRecheckFoundMissing) {
+                            Text(
+                                strings.ttsRecheckStillMissing,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
 

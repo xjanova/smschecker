@@ -45,6 +45,10 @@ data class SettingsState(
     val ttsSpeakProduct: Boolean = true,
     // สถานะเสียงบนเครื่อง — null = ยังไม่ตรวจ (เคส Samsung ไม่มีเสียงไทย)
     val ttsVoiceStatus: com.thaiprompt.smschecker.service.TtsVoiceStatus? = null,
+    // 🔁 (2026-08-08) ผู้ใช้กด "ตรวจสอบเสียงอีกครั้ง" อยู่ — โชว์ spinner + กันกดซ้ำ
+    val ttsVoiceRechecking: Boolean = false,
+    // true = ตรวจซ้ำจบแล้วยังไม่เจอเสียง → บอกให้ชัดว่า "กดแล้วนะ แต่ยังไม่มา" ไม่ใช่ปุ่มไม่ทำงาน
+    val ttsRecheckFoundMissing: Boolean = false,
     val isNotificationListening: Boolean = false,
     val isNotificationAccessGranted: Boolean = false,
     val isSmsPermissionGranted: Boolean = false,
@@ -339,8 +343,33 @@ class SettingsViewModel @Inject constructor(
                 // ตรวจแบบเชื่อถือได้ — poll จน engine warm ก่อนตัดสิน แทนการรอเวลาคงที่แล้วเช็คครั้งเดียว
                 // (กัน phantom "เสียงหลุด" ตอน engine เพิ่ง cold-start หลัง reboot/process ถูก kill)
                 val status = ttsManager.checkVoiceStatusReliable()
-                _state.update { it.copy(ttsVoiceStatus = status) }
+                _state.update { it.copy(ttsVoiceStatus = status, ttsRecheckFoundMissing = false) }
             } catch (e: Exception) { }
+        }
+    }
+
+    /**
+     * 🔁 (2026-08-08) ปุ่ม "ตรวจสอบเสียงอีกครั้ง" — รื้อ TextToSpeech สร้างใหม่แล้วตรวจสด
+     * ใช้ตอนผู้ใช้เพิ่งไปจัดการชุดเสียงในหน้าตั้งค่าของระบบเอง (ไม่ได้ผ่านปุ่มในแอป)
+     * ระบบเช็ค+ซ่อมเองทุก 15 นาทีอยู่แล้วใน SmsSweepWorker — ปุ่มนี้แค่ทางลัดให้ไม่ต้องรอ
+     */
+    fun recheckTtsVoice() {
+        if (_state.value.ttsVoiceRechecking) return // กันกดรัว
+        viewModelScope.launch {
+            _state.update { it.copy(ttsVoiceRechecking = true, ttsRecheckFoundMissing = false) }
+            val status = try {
+                ttsManager.recheckVoiceNow()
+            } catch (e: Exception) {
+                null
+            }
+            _state.update {
+                it.copy(
+                    ttsVoiceRechecking = false,
+                    ttsVoiceStatus = status ?: it.ttsVoiceStatus,
+                    ttsRecheckFoundMissing =
+                        status != null && status != com.thaiprompt.smschecker.service.TtsVoiceStatus.READY
+                )
+            }
         }
     }
 

@@ -322,6 +322,10 @@ data class AppStrings(
     val ttsThaiVoiceMissingDesc: String = "มีโปรแกรมเสียงแล้ว แต่ยังไม่ได้ดาวน์โหลดชุดเสียงภาษาไทย — แตะปุ่มด้านล่างเพื่อดาวน์โหลด (ฟรี ใช้ครั้งเดียว)"
     val ttsInstallGoogleButton: String = "ติดตั้ง Google TTS (ฟรี)"
     val ttsDownloadVoiceButton: String = "ดาวน์โหลดชุดเสียงไทย"
+    // 🔁 (2026-08-08) ปุ่มตรวจซ้ำ — ระบบเช็ค+ซ่อมเองทุก 15 นาทีอยู่แล้ว ปุ่มนี้คือทางลัดให้กดเดี๋ยวนั้น
+    val ttsRecheckButton: String = "ตรวจสอบเสียงอีกครั้ง"
+    val ttsRecheckingLabel: String = "กำลังตรวจสอบเสียง…"
+    val ttsRecheckStillMissing: String = "ตรวจซ้ำแล้วยังไม่พบชุดเสียงไทย — ลองกดปุ่มดาวน์โหลดด้านบน แล้วเลือก \"ไทย\" ในหน้าที่เปิดขึ้นมา"
     val aeroPopularBanks: String = "ธนาคารยอดนิยม"
     val aeroViewAll: String = "ดูทั้งหมด"
     val aeroLive: String = "สด"
