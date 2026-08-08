@@ -332,8 +332,10 @@ class SettingsViewModel @Inject constructor(
     fun refreshTtsVoiceStatus() {
         viewModelScope.launch {
             try {
-                // ถ้าผู้ใช้เพิ่งกลับจากการติดตั้ง Google TTS → สลับ engine ให้อัตโนมัติ
-                ttsManager.reinitWithGoogleIfNewlyInstalled()
+                // ถ้าผู้ใช้เพิ่งกลับจากหน้าติดตั้ง engine / ดาวน์โหลดชุดเสียง → สร้าง TTS ใหม่ก่อนตรวจ
+                // (TextToSpeech ตัวเดิมค้าง voice catalog "ก่อนโหลด" ไว้ → ตรวจไปก็ยังบอกว่าเสียงหาย
+                //  → การ์ดขึ้นซ้ำทั้งที่เพิ่งโหลดเสร็จ = อาการ "โหลดแล้วก็ยังขึ้นอีก")
+                ttsManager.refreshEngineOnResume()
                 // ตรวจแบบเชื่อถือได้ — poll จน engine warm ก่อนตัดสิน แทนการรอเวลาคงที่แล้วเช็คครั้งเดียว
                 // (กัน phantom "เสียงหลุด" ตอน engine เพิ่ง cold-start หลัง reboot/process ถูก kill)
                 val status = ttsManager.checkVoiceStatusReliable()

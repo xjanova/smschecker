@@ -57,9 +57,20 @@ class TtsManager @Inject constructor(
     /** กัน retry init วนลูป — fallback ได้ครั้งเดียว */
     @Volatile
     private var triedFallbackEngine = false
-    /** engine (package) ที่ init แล้วพบว่า "ไม่รองรับภาษาที่ตั้งไว้เลย" (LANG_NOT_SUPPORTED) —
+    /** engine (package) ที่ init แล้วพบว่า "พูดภาษาที่ตั้งไว้ไม่ได้" —
      *  ใช้กันการลองซ้ำ/วนลูป เวลาไล่สลับไป engine อื่นในเครื่อง (แตะเฉพาะบน main thread) */
     private val triedEnginesForLang = mutableSetOf<String>()
+    /** 🐞 (2026-08-08) ไล่ probe ครบทุก engine แล้วยังไม่เจอเสียง → กลับมานั่ง engine ที่ "โหลดเสียง
+     *  เพิ่มได้" (Google) ได้ครั้งเดียว เพื่อให้ปุ่มดาวน์โหลดชี้ถูกตัว + กัน onInit วนลูปไม่รู้จบ
+     *  (แตะเฉพาะบน main thread) */
+    private var restoredPreferredAfterProbe = false
+    /** 🐞 (2026-08-08) true เมื่อเพิ่งพาผู้ใช้ออกไปหน้าติดตั้ง/ดาวน์โหลดชุดเสียง — รอบหน้าที่กลับเข้า
+     *  Settings ต้องสร้าง TextToSpeech ใหม่ก่อนตรวจ ไม่งั้นไปถาม voice catalog เก่าที่ค้างอยู่ */
+    @Volatile
+    private var pendingVoiceInstallRecheck = false
+    /** กำลังสร้าง TextToSpeech ใหม่อยู่ — ระหว่างนี้สถานะยังตัดสินไม่ได้ (ต้องคืน ENGINE_NOT_READY) */
+    @Volatile
+    private var reinitInFlight = false
     private val pendingQueue = CopyOnWriteArrayList<String>()
     private val utteranceCounter = AtomicLong(0) // unique utterance id (กัน id ชนกันใน ms เดียว)
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -152,10 +163,12 @@ class TtsManager @Inject constructor(
             // เคสจริง: บังคับ Google TTS (แก้ Samsung) แต่บางเครื่อง Google "ไม่รองรับ" ไทยเลย
             // ขณะที่ engine อื่นในเครื่องรองรับ → ก่อนหน้าพูดได้ พอบังคับ Google เลยเงียบทุกรุ่น
             //
-            //   LANG_NOT_SUPPORTED (-2) = engine นี้พูดภาษานี้ไม่ได้เลย → ไล่สลับไป engine อื่นในเครื่อง
-            //   LANG_MISSING_DATA  (-1) = engine "รองรับ" แค่ยังไม่โหลดชุดเสียง → "อย่า" สลับ!
-            //                              ปล่อยให้การ์ดเตือน + ปุ่มดาวน์โหลด (ที่ชี้ไป engine ปัจจุบัน)
-            //                              ทำงาน ไม่งั้นปุ่มจะไปโหลดเสียงให้ engine ผิดตัว
+            // 🐞 (2026-08-08) เดิมสลับ engine เฉพาะ LANG_NOT_SUPPORTED (-2) เท่านั้น จงใจไม่แตะ
+            // LANG_MISSING_DATA (-1) เพราะกลัวปุ่มดาวน์โหลดไปโหลดเสียงให้ engine ผิดตัว. ผลคือเครื่องที่
+            // Google TTS โดน OS เขี่ยชุดเสียงไทยทิ้ง (แต่ Samsung TTS ยังมีเสียงไทยพร้อมใช้) จะเงียบสนิท
+            // ทั้งที่เครื่องพูดไทยได้. ตอนนี้ probe ทั้งสองเคส แต่ยัง "ไม่สลับ" ถ้า tts.voices ยืนยันว่า
+            // engine ปัจจุบันมีเสียงใช้ได้อยู่ (ground truth) และปุ่มดาวน์โหลดถูกปักไว้ที่ Google เสมอแล้ว
+            // (openVoiceDataInstaller) → gotcha "ปุ่มชี้ engine ผิดตัว" ถูกปิดจากอีกทางแทน
             val locale = effectiveSpeakLocale()
             val langAvail = try {
                 tts?.isLanguageAvailable(locale) ?: TextToSpeech.LANG_NOT_SUPPORTED
@@ -163,12 +176,13 @@ class TtsManager @Inject constructor(
                 Log.w(TAG, "isLanguageAvailable($locale) failed during init", e)
                 TextToSpeech.LANG_NOT_SUPPORTED
             }
-            if (langAvail == TextToSpeech.LANG_NOT_SUPPORTED && tts != null) {
+            val unusable = langAvail < TextToSpeech.LANG_AVAILABLE && !hasUsableLocaleVoice(locale)
+            if (unusable && tts != null) {
                 val loaded = currentEngine ?: tts?.defaultEngine
                 if (loaded != null) triedEnginesForLang.add(loaded)
                 val next = nextUntriedEngineForLanguage()
                 if (next != null) {
-                    Log.w(TAG, "Engine '${loaded ?: "default"}' does not support $locale — switching to '$next'")
+                    Log.w(TAG, "Engine '${loaded ?: "default"}' cannot speak $locale (avail=$langAvail) — probing '$next'")
                     mainHandler.post {
                         try { tts?.shutdown() } catch (_: Exception) { }
                         isInitialized = false
@@ -176,7 +190,20 @@ class TtsManager @Inject constructor(
                     }
                     return
                 }
-                Log.e(TAG, "No installed TTS engine supports $locale (tried=$triedEnginesForLang)")
+                // ไล่ครบทุก engine ในเครื่องแล้วไม่มีตัวไหนพูดได้ → อย่าค้างบน engine ตัวสุดท้ายที่บังเอิญ
+                // ลองถึง ให้กลับไปนั่ง Google (ตัวเดียวที่โหลดชุดเสียงเพิ่มจากปุ่มในแอปได้) แล้วโชว์การ์ด
+                val preferred = pickPreferredEngine()
+                if (!restoredPreferredAfterProbe && preferred != null && currentEngine != preferred) {
+                    restoredPreferredAfterProbe = true
+                    Log.w(TAG, "No engine can speak $locale (tried=$triedEnginesForLang) — returning to $preferred")
+                    mainHandler.post {
+                        try { tts?.shutdown() } catch (_: Exception) { }
+                        isInitialized = false
+                        createTts(preferred)
+                    }
+                    return
+                }
+                Log.e(TAG, "No installed TTS engine can speak $locale (tried=$triedEnginesForLang)")
             }
 
             Log.i(
@@ -214,6 +241,7 @@ class TtsManager @Inject constructor(
             })
 
             isInitialized = true
+            reinitInFlight = false
             Log.d(TAG, "TTS initialized successfully")
 
             // Speak any queued messages (เรากำลังอยู่บน main thread ใน onInit — เรียก speakNowOnMain ได้ตรงๆ)
@@ -228,6 +256,9 @@ class TtsManager @Inject constructor(
                 val fallback = if (currentEngine != null) null else pickPreferredEngine()
                 Log.w(TAG, "Retrying TTS init with ${fallback ?: "system default"} engine")
                 mainHandler.post { createTts(fallback) }
+            } else {
+                // ลองครบแล้วยัง init ไม่ได้ — เลิกกั๊กสถานะ ปล่อยให้ checkVoiceStatus ตัดสินตามจริง
+                reinitInFlight = false
             }
         }
     }
@@ -565,8 +596,13 @@ class TtsManager @Inject constructor(
     fun checkVoiceStatus(): TtsVoiceStatus {
         val engine = tts
         if (engine == null || !isInitialized) {
-            return if (isGoogleTtsInstalled()) TtsVoiceStatus.ENGINE_NOT_READY
-            else TtsVoiceStatus.GOOGLE_TTS_MISSING
+            // 🐞 (2026-08-08) ระหว่าง re-init (หลังโหลดชุดเสียงเสร็จ) ห้ามฟันธงว่า "ไม่มี engine" —
+            // ต้องคืนสถานะ "ยังไม่พร้อม" ให้ checkVoiceStatusReliable() รอจนสร้าง TTS ใหม่เสร็จก่อน
+            return when {
+                reinitInFlight -> TtsVoiceStatus.ENGINE_NOT_READY
+                isGoogleTtsInstalled() -> TtsVoiceStatus.ENGINE_NOT_READY
+                else -> TtsVoiceStatus.GOOGLE_TTS_MISSING
+            }
         }
         val locale = effectiveSpeakLocale()
         val availability = try {
@@ -598,13 +634,16 @@ class TtsManager @Inject constructor(
      *
      * หยุด poll ทันทีเมื่อได้สถานะที่ "นิ่งแล้ว": READY (พร้อม) หรือ GOOGLE_TTS_MISSING
      * (ไม่มี engine เลย = deterministic ไม่ขึ้นกับ warm-up). ส่วน ENGINE_NOT_READY /
-     * THAI_VOICE_MISSING อาจเป็นชั่วคราว → ลองซ้ำจนกว่าจะนิ่งหรือหมดเวลา (~2.4s)
+     * THAI_VOICE_MISSING อาจเป็นชั่วคราว → ลองซ้ำจนกว่าจะนิ่งหรือหมดเวลา (~3.2s)
      * ต้องเรียกจาก coroutine (suspend); delay ไม่บล็อก main thread
+     *
+     * 🐞 (2026-08-08) ขยาย 6→8 รอบ เพราะตอนนี้ onInit อาจไล่ probe engine หลายตัว (และ re-init
+     * หลังโหลดชุดเสียง) ก่อนจะนิ่ง — poll สั้นไปจะตัดจบตอนยัง ENGINE_NOT_READY
      */
     suspend fun checkVoiceStatusReliable(): TtsVoiceStatus {
         var status = checkVoiceStatus()
         var attempts = 0
-        while (attempts < 6 &&
+        while (attempts < 8 &&
             status != TtsVoiceStatus.READY &&
             status != TtsVoiceStatus.GOOGLE_TTS_MISSING
         ) {
@@ -616,24 +655,42 @@ class TtsManager @Inject constructor(
     }
 
     /**
-     * ถ้าตอนเปิดแอพยังไม่มี Google TTS แล้วผู้ใช้เพิ่งติดตั้ง — สร้าง TTS ใหม่ให้ใช้ Google
-     * เรียกตอนกลับเข้าหน้า Settings (ON_RESUME)
+     * 🐞 (2026-08-08) สร้าง TextToSpeech ใหม่ทั้งตัว — ใช้เมื่อ "ของบนเครื่องเปลี่ยนไปแล้ว"
+     * (เพิ่งติดตั้ง engine / เพิ่งโหลดชุดเสียง) เพราะ TextToSpeech ตัวเดิม bind กับ engine service
+     * พร้อม voice catalog ตอนที่สร้าง — ถามซ้ำก็ยังได้คำตอบเก่า
+     * ตั้ง [reinitInFlight] แบบ synchronous เพื่อให้ checkVoiceStatus() ที่เรียกทันทีหลังจากนี้
+     * เห็นว่า "ยังไม่นิ่ง" ตั้งแต่ครั้งแรก (mainHandler.post จะทำงานทีหลัง)
      */
-    fun reinitWithGoogleIfNewlyInstalled() {
-        if (currentEngine == null && isGoogleTtsInstalled()) {
-            Log.i(TAG, "Google TTS detected after startup — reinitializing with it")
-            mainHandler.post {
-                try { tts?.shutdown() } catch (_: Exception) { }
-                isInitialized = false
-                triedFallbackEngine = false
-                triedEnginesForLang.clear()
-                createTts()
-            }
+    private fun reinitEngineNow() {
+        isInitialized = false
+        reinitInFlight = true
+        triedFallbackEngine = false
+        mainHandler.post {
+            try { tts?.shutdown() } catch (_: Exception) { }
+            triedEnginesForLang.clear()
+            restoredPreferredAfterProbe = false
+            createTts()
         }
+    }
+
+    /**
+     * เรียกตอนกลับเข้าหน้า Settings (ON_RESUME) — สร้าง TTS ใหม่เมื่อ:
+     *  (a) 🐞 (2026-08-08) เพิ่งพาผู้ใช้ออกไปหน้าติดตั้ง/ดาวน์โหลดชุดเสียง — เดิมไม่ re-init เคสนี้เลย
+     *      (guard เก่าเช็คแค่ `currentEngine == null`) เครื่องที่มี Google TTS อยู่แล้วจึงไปถาม voice
+     *      catalog เก่าที่ค้าง → การ์ด "ไม่มีเสียงไทย" ขึ้นซ้ำทั้งที่เพิ่งโหลดเสร็จ → ผู้ใช้กดโหลดวนไม่จบ
+     *  (b) ตอนเปิดแอปยังไม่มี Google TTS แล้วผู้ใช้เพิ่งติดตั้ง
+     */
+    fun refreshEngineOnResume() {
+        val newlyInstalledGoogle = currentEngine == null && isGoogleTtsInstalled()
+        if (!pendingVoiceInstallRecheck && !newlyInstalledGoogle) return
+        pendingVoiceInstallRecheck = false
+        Log.i(TAG, "Rebuilding TTS after returning from installer (newGoogle=$newlyInstalledGoogle)")
+        reinitEngineNow()
     }
 
     /** เปิด Play Store หน้า Google Speech Services (ฟรี) — เคสเครื่องไม่มี Google TTS */
     fun openGoogleTtsInstallPage() {
+        pendingVoiceInstallRecheck = true
         val market = android.content.Intent(
             android.content.Intent.ACTION_VIEW,
             android.net.Uri.parse("market://details?id=$GOOGLE_TTS_PACKAGE")
@@ -654,11 +711,18 @@ class TtsManager @Inject constructor(
         }
     }
 
-    /** เปิดหน้าดาวน์โหลดชุดข้อมูลเสียงของ engine (เคสติดตั้ง Google TTS แล้วแต่ยังไม่มีเสียงไทย) */
+    /**
+     * เปิดหน้าดาวน์โหลดชุดข้อมูลเสียงของ engine (เคสติดตั้ง Google TTS แล้วแต่ยังไม่มีเสียงไทย)
+     *
+     * 🐞 (2026-08-08) ปักปลายทางไว้ที่ Google TTS เสมอถ้าติดตั้งอยู่ ไม่ผูกกับ [currentEngine]
+     * เพราะตอนนี้ onInit ไล่ probe engine อื่นได้ (อาจนั่งอยู่บน engine ที่โหลดเสียงเพิ่มไม่ได้) —
+     * Google เป็นตัวเดียวที่ ACTION_INSTALL_TTS_DATA ทำงานได้จริงและเป็น engine ที่เราจะกลับไปใช้
+     */
     fun openVoiceDataInstaller() {
+        pendingVoiceInstallRecheck = true
         val installIntent = android.content.Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)
             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-        currentEngine?.let { installIntent.setPackage(it) }
+        (pickPreferredEngine() ?: currentEngine)?.let { installIntent.setPackage(it) }
         try {
             context.startActivity(installIntent)
         } catch (e: Exception) {
