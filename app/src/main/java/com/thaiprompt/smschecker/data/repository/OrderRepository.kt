@@ -1796,6 +1796,11 @@ fun RemoteOrderApproval.toLocalEntity(serverId: Long): OrderApproval {
     @Suppress("UNCHECKED_CAST")
     val slip = details?.get("slip") as? Map<String, Any?>
 
+    // 🏬 (2026-08-16) order_details_json.branch — เพจ/สาขาที่บิลนี้เกิด (ระบบสาขา fortune_pages)
+    //   null = บิลเก่าก่อนระบบสาขา / บิลร้านค้า (PaymentTransaction ไม่มีสาขา)
+    @Suppress("UNCHECKED_CAST")
+    val branch = details?.get("branch") as? Map<String, Any?>
+
     // แปลง created_at (ISO 8601) จากเซิร์ฟเป็น milliseconds สำหรับแสดงเวลาสร้างบิลจริง
     val serverCreatedAtMs = created_at?.let { parseIso8601ToMillis(it) }
 
@@ -1833,6 +1838,10 @@ fun RemoteOrderApproval.toLocalEntity(serverId: Long): OrderApproval {
         slipCheckedAt = slip?.get("checked_at")?.toString()?.let { parseIso8601ToMillis(it) },
         // 🚫 (2026-07-27) server บอกว่ายกเลิกการอนุมัติบิลนี้จากแอพได้ไหม (บิลดูดวง = true)
         canVoid = details?.get("can_void") == true,
+        // 🏬 (2026-08-16) เพจ/สาขาที่บิลนี้มาจาก — chip บนการ์ดบิล
+        branchName = branch?.get("name")?.toString()?.takeIf { it.isNotBlank() },
+        branchCode = branch?.get("code")?.toString()?.takeIf { it.isNotBlank() },
+        branchIsDefault = branch?.get("is_default") as? Boolean,
         syncedVersion = synced_version,
         lastSyncedAt = System.currentTimeMillis()
     )

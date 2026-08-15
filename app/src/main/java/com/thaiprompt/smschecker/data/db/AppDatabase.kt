@@ -25,7 +25,7 @@ import com.thaiprompt.smschecker.data.model.SyncLog
         MatchHistory::class,
         MisclassificationReport::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -295,6 +295,16 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE order_approvals ADD COLUMN slipAmount REAL")
                 db.execSQL("ALTER TABLE order_approvals ADD COLUMN slipCheckedAt INTEGER")
                 db.execSQL("ALTER TABLE order_approvals ADD COLUMN canVoid INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        // 🏬 (2026-08-16) เพจ/สาขาที่บิลเกิด (ระบบสาขา fortune_pages) — chip บอกว่าบิลมาจากเพจไหน
+        //   ข้อมูลมาจาก order_details_json.branch ของ server (null = บิลเก่าก่อนระบบสาขา/บิลร้านค้า)
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE order_approvals ADD COLUMN branchName TEXT")
+                db.execSQL("ALTER TABLE order_approvals ADD COLUMN branchCode TEXT")
+                db.execSQL("ALTER TABLE order_approvals ADD COLUMN branchIsDefault INTEGER")
             }
         }
 

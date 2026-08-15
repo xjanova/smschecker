@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sms
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
@@ -40,6 +41,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -778,15 +780,24 @@ fun OrderCard(
                         fontSize = 11.5.sp,
                         color = AeroPalette.InkFaint
                     )
-                    Spacer(modifier = Modifier.weight(1f))
-                    // 📱 ช่องทางที่ลูกค้าทักมา (Facebook / LINE) — โลโก้จริง
-                    order.platform?.let { platform ->
-                        PlatformChip(platform = platform)
-                        if (order.pendingAction != null) {
-                            Spacer(modifier = Modifier.width(8.dp))
+                    // 🏬 เพจ/สาขาที่บิลนี้มาจาก — ชิดขวา ยืดหดตามที่ว่าง (ชื่อยาวตัดเป็น …)
+                    //    เพจหลัก = ชิปเทากลมกลืน / เพจสาขา = ชิปม่วงเด่น ให้กวาดตาแยกได้ทันที
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                        order.branchName?.takeIf { it.isNotBlank() }?.let { name ->
+                            BranchChip(
+                                name = name,
+                                isDefault = order.branchIsDefault != false,
+                                modifier = Modifier.padding(start = 6.dp)
+                            )
                         }
                     }
+                    // 📱 ช่องทางที่ลูกค้าทักมา (Facebook / LINE) — โลโก้จริง
+                    order.platform?.let { platform ->
+                        Spacer(modifier = Modifier.width(6.dp))
+                        PlatformChip(platform = platform)
+                    }
                     if (order.pendingAction != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
                         Icon(
                             Icons.Default.CloudUpload,
                             contentDescription = null,
@@ -961,6 +972,40 @@ fun OrderCard(
                 }
             }
         }
+    }
+}
+
+/**
+ * 🏬 Badge เพจ/สาขาที่บิลนี้เกิด (ระบบสาขา fortune_pages)
+ * เพจหลัก = เทากลมกลืน (กรณีปกติ ไม่ต้องสะดุดตา) / เพจสาขา = ม่วงเด่น (ของแปลกที่ควรเห็นทันที)
+ * ชื่อเพจยาวได้ → maxLines 1 + ellipsis, ปล่อยให้ parent (Box weight) เป็นตัวคุมความกว้าง
+ */
+@Composable
+private fun BranchChip(name: String, isDefault: Boolean, modifier: Modifier = Modifier) {
+    val brand = if (isDefault) Color(0xFF64748B) else Color(0xFF7C3AED)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(brand.copy(alpha = 0.10f))
+            .border(1.dp, brand.copy(alpha = 0.35f), RoundedCornerShape(50))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    ) {
+        Icon(
+            Icons.Default.Storefront,
+            contentDescription = "เพจ/สาขา",
+            modifier = Modifier.size(12.dp),
+            tint = brand
+        )
+        Text(
+            name,
+            fontSize = 10.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = brand,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

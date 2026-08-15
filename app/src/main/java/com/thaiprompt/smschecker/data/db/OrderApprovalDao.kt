@@ -80,6 +80,7 @@ interface OrderApprovalDao {
             OR websiteName LIKE '%' || :search || '%'
             OR serverName LIKE '%' || :search || '%'
             OR bank LIKE '%' || :search || '%'
+            OR branchName LIKE '%' || :search || '%'
         )
         ORDER BY COALESCE(paymentTimestamp, createdAt) DESC
         LIMIT :limit OFFSET :offset
@@ -109,6 +110,7 @@ interface OrderApprovalDao {
             OR websiteName LIKE '%' || :search || '%'
             OR serverName LIKE '%' || :search || '%'
             OR bank LIKE '%' || :search || '%'
+            OR branchName LIKE '%' || :search || '%'
         )
     """)
     suspend fun getFilteredOrdersCount(

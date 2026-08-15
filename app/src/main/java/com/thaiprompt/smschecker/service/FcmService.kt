@@ -179,10 +179,21 @@ class FcmService : FirebaseMessagingService() {
         // (เช่น new_order → order_approved ของบิลเดียวกัน จะทับกันแทนที่จะเด้ง 2 ครั้ง)
         val notifKey = orderNumber.hashCode()
 
+        // 🏬 (2026-08-16) เพจ/สาขาที่บิลเกิด — server แนบมากับ FCM data ทุกใบ (ว่าง = บิลเก่า/ไม่รู้สาขา)
+        //   ข้อความ push แปะชื่อเพจเฉพาะ "เพจสาขา" (เพจหลักคือกรณีปกติ แปะทุกใบ = ข้อความยาวฟรี)
+        //   แต่เก็บลง DB ทุกใบ เพื่อให้ chip สาขาบนการ์ดขึ้นทันทีไม่ต้องรอ sync รอบแรก
+        val branchName = data["branch_name"]?.takeIf { it.isNotBlank() }
+        val branchIsDefault = when (data["branch_is_default"]) {
+            "true" -> true
+            "false" -> false
+            else -> null
+        }
+
         val title = if (isFortune) "🔮 บิลดูดวงใหม่ รอชำระเงิน" else "คำสั่งซื้อใหม่ รอชำระเงิน"
         val body = if (isFortune) {
             val customer = data["customer_name"] ?: ""
-            "บิล #$orderNumber ยอด ฿$amount $customer"
+            val branchSuffix = if (branchName != null && branchIsDefault == false) " · 🏬 $branchName" else ""
+            "บิล #$orderNumber ยอด ฿$amount $customer$branchSuffix"
         } else {
             "คำสั่งซื้อ #$orderNumber ยอด ฿$amount กำลังรอการชำระเงิน"
         }
@@ -202,7 +213,9 @@ class FcmService : FirebaseMessagingService() {
                             orderNumber = orderNumber,
                             amount = amount.toDoubleOrNull() ?: 0.0,
                             customerName = data["customer_name"],
-                            serverUrl = serverUrl
+                            serverUrl = serverUrl,
+                            branchName = branchName,
+                            branchIsDefault = branchIsDefault
                         )
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to insert fortune order from FCM: ${e.message}", e)
@@ -226,7 +239,9 @@ class FcmService : FirebaseMessagingService() {
         orderNumber: String,
         amount: Double,
         customerName: String?,
-        serverUrl: String? = null
+        serverUrl: String? = null,
+        branchName: String? = null,
+        branchIsDefault: Boolean? = null
     ) {
         val servers = serverConfigDao.getActiveConfigs()
         if (servers.isEmpty()) {
@@ -269,6 +284,9 @@ class FcmService : FirebaseMessagingService() {
             customerName = customerName ?: "ลูกค้าดูดวง",
             amount = amount,
             serverName = server.name,
+            // 🏬 (2026-08-16) เพจ/สาขาจาก FCM data — chip ขึ้นทันที ไม่ต้องรอ sync รอบแรก
+            branchName = branchName,
+            branchIsDefault = branchIsDefault,
             syncedVersion = System.currentTimeMillis(),
             lastSyncedAt = System.currentTimeMillis()
         )

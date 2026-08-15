@@ -68,6 +68,13 @@ data class OrderApproval(
     // 🚫 (2026-07-27) server อนุญาตให้ "ยกเลิกการอนุมัติ" บิลนี้ไหม (บิลดูดวง = true)
     //   บิลร้านค้ายังยกเลิกได้เฉพาะหน้าเว็บแอดมิน → ไม่โชว์ปุ่มในแอพ
     val canVoid: Boolean = false,
+    // 🏬 (2026-08-16) เพจ/สาขาที่บิลนี้เกิด — sync จาก order_details_json.branch (ระบบสาขา fortune_pages)
+    //   branchName      = ชื่อเพจที่ลูกค้าทักมา (brand_name ถ้ามี ไม่งั้นชื่อสาขา) → chip บนการ์ดบิล
+    //   branchCode      = รหัสสาขา (เผื่อกรอง/สถิติรายสาขาในอนาคต — ไม่ต้อง migrate ซ้ำ)
+    //   branchIsDefault = true=เพจหลัก / false=เพจสาขา (สีชิปต่างกัน) / null=บิลเก่าก่อนระบบสาขา
+    val branchName: String? = null,
+    val branchCode: String? = null,
+    val branchIsDefault: Boolean? = null,
     val syncedVersion: Long = 0,
     val lastSyncedAt: Long? = null,
     val pendingAction: PendingAction? = null,
