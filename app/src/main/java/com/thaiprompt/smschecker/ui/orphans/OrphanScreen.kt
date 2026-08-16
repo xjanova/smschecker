@@ -157,30 +157,12 @@ fun OrphanScreen(viewModel: OrphanViewModel = hiltViewModel()) {
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                     )
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp),
-                            tint = AppColors.SuccessGreen
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            "ไม่มียอดรอจับคู่",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            "ยอดทุกรายการจับคู่สำเร็จแล้ว",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        )
-                    }
+                    com.thaiprompt.smschecker.ui.components.AeroEmptyState(
+                        art = com.thaiprompt.smschecker.R.drawable.art_empty_orphans,
+                        title = "ไม่มียอดรอจับคู่",
+                        subtitle = "ยอดทุกรายการจับคู่สำเร็จแล้ว",
+                        artSize = 116.dp
+                    )
                 }
             }
         }

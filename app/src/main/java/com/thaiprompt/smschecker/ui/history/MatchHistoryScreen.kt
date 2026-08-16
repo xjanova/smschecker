@@ -128,30 +128,12 @@ fun MatchHistoryScreen(viewModel: MatchHistoryViewModel = hiltViewModel()) {
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                     )
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            Icons.Default.History,
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            "ยังไม่มีประวัติการจับคู่",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            "เมื่อมียอดโอนเข้าและจับคู่สำเร็จจะแสดงที่นี่",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        )
-                    }
+                    com.thaiprompt.smschecker.ui.components.AeroEmptyState(
+                        art = com.thaiprompt.smschecker.R.drawable.art_empty_history,
+                        title = "ยังไม่มีประวัติการจับคู่",
+                        subtitle = "เมื่อมียอดโอนเข้าและจับคู่สำเร็จจะแสดงที่นี่",
+                        artSize = 116.dp
+                    )
                 }
             }
         }

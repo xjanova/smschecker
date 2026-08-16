@@ -428,7 +428,9 @@ class FcmService : FirebaseMessagingService() {
         )
 
         val notification = NotificationCompat.Builder(this, SmsCheckerApp.NOTIFICATION_CHANNEL_TRANSACTION)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            // ไอคอนเล็กของแจ้งเตือนต้องเป็นเงาทึบสีเดียว — ระบบย้อมเป็นสีขาวทับอยู่แล้ว
+            // ของเดิมชี้ไปที่ ic_launcher_foreground (ไอคอนแอพสีเต็ม) ซึ่งกลายเป็นก้อนขาวเบลอ
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

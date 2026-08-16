@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  พื้นไอคอนแอพ — เงินอ่อนไล่เฉด ให้โล่กรมท่าเด่นออกมา
+  (ของเดิมพื้นเป็น #1A1A2E กรมท่าเข้ม ซึ่งเป็นสีเดียวกับตัวโล่เอง โล่เลยจมหาย)
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:type="linear"
+        android:angle="270"
+        android:startColor="#F4F6F8"
+        android:centerColor="#E7ECF1"
+        android:endColor="#D6DDE5" />
+</shape>

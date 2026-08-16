@@ -1198,32 +1198,16 @@ fun SettingsScreen(
                             .padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(56.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Cloud,
-                                contentDescription = null,
-                                modifier = Modifier.size(28.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            strings.noServers,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onBackground
+                        // การ์ดที่ครอบอยู่เว้นขอบ 16dp มาแล้ว + ยังมีปุ่มสแกน QR ต่อท้าย
+                        // จึงลดระยะแนวตั้งลง ไม่ให้เว้นซ้อนกันจนกล่องยืดยาว
+                        com.thaiprompt.smschecker.ui.components.AeroEmptyState(
+                            art = com.thaiprompt.smschecker.R.drawable.art_empty_servers,
+                            title = strings.noServers,
+                            subtitle = strings.addServerToSync,
+                            artSize = 112.dp,
+                            verticalPadding = 10.dp
                         )
-                        Text(
-                            strings.addServerToSync,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
                         // Quick QR scan button in empty state
                         Button(
                             onClick = onNavigateToQrScanner,

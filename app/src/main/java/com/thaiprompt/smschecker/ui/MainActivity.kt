@@ -15,6 +15,10 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -30,6 +34,7 @@ import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,6 +65,7 @@ import com.thaiprompt.smschecker.ui.orders.OrdersScreen
 import com.thaiprompt.smschecker.ui.qrscanner.QrScannerScreen
 import com.thaiprompt.smschecker.ui.settings.SettingsScreen
 import com.thaiprompt.smschecker.ui.smshistory.SmsHistoryScreen
+import com.thaiprompt.smschecker.ui.splash.IntroSplashScreen
 import com.thaiprompt.smschecker.ui.smsmatcher.SmsMatcherScreen
 import com.thaiprompt.smschecker.ui.theme.*
 import com.thaiprompt.smschecker.ui.transactions.TransactionListScreen
@@ -104,6 +110,10 @@ class MainActivity : ComponentActivity() {
         RealtimeSyncService.start(applicationContext)
 
         setContent {
+            // 🎬 คลิปเปิดแอพ — rememberSaveable เพื่อไม่ให้เล่นซ้ำตอนหมุนจอ/เปลี่ยนธีม
+            //    (เห็นครั้งเดียวต่อการเปิดแอพหนึ่งครั้ง)
+            var showIntro by rememberSaveable { mutableStateOf(true) }
+
             val themeMode = remember { mutableStateOf(ThemeMode.fromKey(secureStorage.getThemeMode())) }
             val languageMode = remember { mutableStateOf(LanguageMode.fromKey(secureStorage.getLanguage())) }
 
@@ -172,6 +182,17 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
                         }
+                    }
+
+                    // 🎬 คลิปเปิดแอพวางทับทุกอย่าง (รวมหน้า license) แล้วค่อยจางออก
+                    //    งานเบื้องหลัง (ขอสิทธิ์ / start service / เช็คอัพเดท) เริ่มไปแล้วใน onCreate
+                    //    คลิปจึงไม่หน่วงอะไรเลย แค่บังจอระหว่างที่ของหลังบ้านตั้งตัว
+                    AnimatedVisibility(
+                        visible = showIntro,
+                        enter = EnterTransition.None,
+                        exit = fadeOut(animationSpec = tween(320))
+                    ) {
+                        IntroSplashScreen(onFinished = { showIntro = false })
                     }
                 }
             }

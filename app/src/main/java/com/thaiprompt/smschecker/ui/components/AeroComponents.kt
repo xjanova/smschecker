@@ -672,7 +672,8 @@ fun AeroStatTile(
     modifier: Modifier = Modifier,
     valueColor: Color = AeroPalette.NavyDeep,
 ) {
-    AeroGlass(modifier = modifier, cornerRadius = 18.dp, contentPadding = PaddingValues(horizontal = 15.dp, vertical = 14.dp)) {
+    // ระยะขอบเท่ากันทุกด้าน (เดิม 15/14 เอียงเล็กน้อย เห็นชัดตอนวางเรียง 4 ใบข้างกัน)
+    AeroGlass(modifier = modifier, cornerRadius = 20.dp, contentPadding = PaddingValues(16.dp)) {
         // Inner Box must fill the tile width — AeroGlass's content box wraps content,
         // so align(TopEnd) would otherwise hug the narrow text column, not the card corner.
         Box(Modifier.fillMaxWidth()) {
@@ -772,4 +773,66 @@ object OrbGradients {
     val Gold = listOf(AeroPalette.GoldHi, AeroPalette.Gold)
     val Navy = listOf(Color(0xFF3A4A63), AeroPalette.NavyDeep)
     val Red = listOf(AeroPalette.RedHi, AeroPalette.Red)
+}
+
+// ----------------------------------------------------------------------------
+// Empty state — ภาพประกอบ 3D แทนไอคอนเส้น
+// ----------------------------------------------------------------------------
+
+/**
+ * จอว่าง (ยังไม่มีข้อมูล) พร้อมภาพประกอบแก้วใส 3D
+ *
+ * ของเดิมเป็นไอคอน Material เส้นบาง ๆ ในวงกลมเทา ซึ่งดูเหมือน "ของยังไม่เสร็จ"
+ * มากกว่า "ตอนนี้ยังไม่มีรายการ" — ภาพประกอบจริงบอกสถานะได้ในแวบเดียว
+ * และเข้าชุดกับภาษาภาพ Frutiger Aero ของทั้งแอพ
+ *
+ * @param art         ภาพประกอบพื้นโปร่ง (drawable-nodpi/art_empty_*)
+ * @param title       บรรทัดหลัก บอกว่า "ตอนนี้ไม่มีอะไร"
+ * @param subtitle    บรรทัดรอง บอกว่า "แล้วจะมีตอนไหน" — ผู้ใช้ใหม่ต้องรู้ว่าไม่ได้พัง
+ * @param artSize     ปรับเล็กลงได้เมื่อวางในการ์ดแคบ
+ * @param verticalPadding  ลดลงเมื่อการ์ดที่ครอบอยู่มีระยะขอบของตัวเองแล้ว (กันเว้นซ้อนสองชั้น)
+ */
+@Composable
+fun AeroEmptyState(
+    art: Int,
+    title: String,
+    subtitle: String? = null,
+    modifier: Modifier = Modifier,
+    artSize: Dp = 132.dp,
+    verticalPadding: Dp = 34.dp
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 32.dp, vertical = verticalPadding),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Image(
+            painter = painterResource(id = art),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.size(artSize)
+        )
+        Spacer(modifier = Modifier.height(14.dp))
+        // ⚠️ ต้องใช้สีจาก colorScheme ห้ามหยิบ AeroPalette.Ink ตรง ๆ
+        //    AeroPalette.Ink เป็นสีเข้มที่ออกแบบมาสำหรับ "พื้นสว่าง" เท่านั้น
+        //    พอแอพอยู่ธีมมืด (พื้นกรมท่า) กลายเป็นเข้มบนเข้ม = อ่านไม่ออก (เห็นจากจอจริงบน emulator)
+        Text(
+            title,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center
+        )
+        if (!subtitle.isNullOrBlank()) {
+            Spacer(modifier = Modifier.height(5.dp))
+            Text(
+                subtitle,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                lineHeight = 17.sp
+            )
+        }
+    }
 }

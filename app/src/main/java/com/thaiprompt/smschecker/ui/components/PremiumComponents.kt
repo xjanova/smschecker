@@ -159,7 +159,7 @@ fun GoldAccentCard(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit
 ) {
-    AeroGlass(modifier = modifier.fillMaxWidth(), cornerRadius = 18.dp) {
+    AeroGlass(modifier = modifier.fillMaxWidth(), cornerRadius = 20.dp) {
         Row(modifier = Modifier.height(IntrinsicSize.Min)) {
             Box(
                 modifier = Modifier

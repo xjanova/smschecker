@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ชั้น monochrome สำหรับ "ไอคอนตามธีม" ของ Android 13+
+  ⚠️ ระบบใช้แค่ช่อง alpha แล้วย้อมสีเอง — กำหนดสีอะไรไปก็ไม่มีผล
+     "การเจาะรู" จึงต้องทำด้วย evenOdd ในพาธเดียวกัน ไม่ใช่วาดทับด้วยสีขาว
+  ทรง = โล่ที่มีเครื่องหมายถูกเจาะทะลุ — จำแบรนด์ได้แม้เหลือสีเดียว
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:translateX="22"
+        android:translateY="20">
+        <path
+            android:fillColor="#000000"
+            android:fillType="evenOdd"
+            android:pathData="M32,6L6,17V38C6,54.4 16.8,69.6 32,74C47.2,69.6 58,54.4 58,38V17L32,6Z
+                              M28.5,52L15,38.5L20.5,33L28.5,41L44,25.5L49.5,31L28.5,52Z" />
+    </group>
+</vector>

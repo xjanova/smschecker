@@ -14,7 +14,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
@@ -54,6 +53,7 @@ import com.thaiprompt.smschecker.data.model.OrderApproval
 import com.thaiprompt.smschecker.data.model.approvalMethod
 import com.thaiprompt.smschecker.data.repository.SlipImageLoader
 import com.thaiprompt.smschecker.ui.components.AeroChip
+import com.thaiprompt.smschecker.ui.components.AeroEmptyState
 import com.thaiprompt.smschecker.ui.components.AeroGlass
 import com.thaiprompt.smschecker.ui.components.AeroHeader
 import com.thaiprompt.smschecker.ui.components.AeroPillChip
@@ -356,40 +356,11 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
             // ── empty state ──
             if (state.orders.isEmpty() && !state.isLoading) {
                 item(key = "empty") {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(48.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Box(
-                                modifier = Modifier
-                                    .size(80.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.Assignment,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(40.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                strings.noOrders,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                            Text(
-                                strings.matchedOrdersWillShow,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            )
-                        }
-                    }
+                    AeroEmptyState(
+                        art = R.drawable.art_empty_orders,
+                        title = strings.noOrders,
+                        subtitle = strings.matchedOrdersWillShow
+                    )
                 }
             }
 
@@ -408,7 +379,7 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                     isVoiding = state.voidingOrderId == order.id,
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
-                Spacer(modifier = Modifier.height(13.dp))
+                Spacer(modifier = Modifier.height(12.dp))
             }
 
             // ── load more (manual paging) ──
@@ -646,12 +617,14 @@ fun OrderCard(
             .fillMaxWidth()
             // แตะการ์ดที่มีสลิป = เปิดดูรูปเต็ม (ไม่มีสลิป = การ์ดไม่ clickable ไม่ให้ ripple หลอก)
             .then(if (hasSlip) Modifier.clickable { showSlipViewer = true } else Modifier),
-        cornerRadius = 18.dp,
+        cornerRadius = 20.dp,
         contentPadding = PaddingValues(0.dp)
     ) {
         Column {
             Column(
-                modifier = Modifier.padding(start = 16.dp, top = 15.dp, end = 16.dp, bottom = 13.dp)
+                // ระยะขอบเท่ากันทุกด้าน + ทุกช่องไฟในการ์ดเป็นพหุคูณของ 4dp
+                // (ของเดิม 15/13/4/9/12 ปนกัน ตาจับจังหวะไม่ได้ การ์ดเลยดู "ขยับ ๆ")
+                modifier = Modifier.padding(16.dp)
             ) {
                 // ── header: order# / customer · channel + status chip ──
                 Row(
@@ -660,9 +633,11 @@ fun OrderCard(
                     verticalAlignment = Alignment.Top
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
+                        // เลขบิล = บรรทัดนำสายตา (เล็ก จาง) / ชื่อลูกค้า = พระเอกของแถวนี้
+                        // ของเดิม 12 กับ 13.5sp ต่างกันแค่ 1.5 มองเผิน ๆ เป็นน้ำหนักเดียวกันหมด
                         Text(
                             "ออเดอร์ #${order.orderNumber ?: order.id}",
-                            fontSize = 12.sp,
+                            fontSize = 11.5.sp,
                             color = AeroPalette.InkFaint,
                             maxLines = 1
                         )
@@ -671,7 +646,8 @@ fun OrderCard(
                                 order.customerName?.takeIf { it.isNotBlank() },
                                 order.websiteName ?: order.serverName
                             ).joinToString(" · ").ifBlank { strings.unknown },
-                            fontSize = 13.5.sp,
+                            fontSize = 15.sp,
+                            lineHeight = 19.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = AeroPalette.Ink,
                             maxLines = 1,
@@ -701,11 +677,11 @@ fun OrderCard(
                     } else order.productName
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = 4.dp)
+                        modifier = Modifier.padding(top = 6.dp)
                     ) {
                         Text(
                             text = cleanProductName + (order.quantity?.let { " x$it" } ?: ""),
-                            fontSize = 11.sp,
+                            fontSize = 11.5.sp,
                             color = AeroPalette.InkSoft,
                             maxLines = 1,
                             modifier = Modifier.weight(1f, fill = false)
@@ -733,7 +709,7 @@ fun OrderCard(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 12.dp),
+                        .padding(top = 14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.Bottom
                 ) {
@@ -741,7 +717,7 @@ fun OrderCard(
                         Text(
                             if (isPending) strings.aeroUniqueDecimal
                             else "${strings.aeroReceivedAt} ${formatDate(order.paymentTimestamp ?: order.createdAt)}",
-                            fontSize = 11.sp,
+                            fontSize = 11.5.sp,
                             color = AeroPalette.InkFaint,
                             maxLines = 1
                         )
@@ -752,12 +728,14 @@ fun OrderCard(
                     }
                     // 🧾 ทัมบ์เนลสลิป — แตะการ์ดเพื่อดูเต็ม (โชว์เฉพาะบิลที่มีสลิปตรวจผ่าน)
                     //    เล็กกว่าเหรียญธนาคารเล็กน้อย เพื่อไม่เบียดยอดเงินบนจอแคบ
+                    // ย่อเหรียญธนาคาร/ทัมบ์เนลลงเล็กน้อย — ของเดิม 46dp แย่งสายตากับยอดเงิน
+                    // ซึ่งเป็นข้อมูลสำคัญที่สุดบนการ์ด (ร้านกวาดตาหายอดก่อนเสมอ)
                     if (hasSlip) {
-                        SlipThumbnail(bitmap = slipThumb, size = 42.dp)
-                        Spacer(modifier = Modifier.width(7.dp))
+                        SlipThumbnail(bitmap = slipThumb, size = 38.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
                     }
                     if (order.bank != null) {
-                        BankCoin(bankCode = order.bank, size = 46.dp)
+                        BankCoin(bankCode = order.bank, size = 42.dp)
                     }
                 }
 
@@ -765,7 +743,7 @@ fun OrderCard(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 9.dp),
+                        .padding(top = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
@@ -856,7 +834,8 @@ fun OrderCard(
                                 listOf(Color(0x99F0F6FA), Color(0x80E8F1F6))
                             )
                         )
-                        .padding(start = 14.dp, end = 10.dp, top = 7.dp, bottom = 7.dp),
+                        // ขอบซ้ายต้องตรงกับเนื้อการ์ด (16dp) — ของเดิม 14dp ทำให้เส้นสายตาเยื้อง
+                        .padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (hasSlip) {
@@ -911,7 +890,7 @@ fun OrderCard(
                                 listOf(Color(0x99F0F6FA), Color(0x80E8F1F6))
                             )
                         )
-                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
                     // Force Approve — primary action (used most often); confirm dialog above
                     GlossButton(

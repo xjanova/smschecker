@@ -266,7 +266,7 @@ fun DashboardScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp),
-                        cornerRadius = 18.dp,
+                        cornerRadius = 20.dp,
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 15.dp)
                     ) {
                         Column {
@@ -341,7 +341,7 @@ fun DashboardScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp),
-                        cornerRadius = 18.dp,
+                        cornerRadius = 20.dp,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                     ) {
                         Column {

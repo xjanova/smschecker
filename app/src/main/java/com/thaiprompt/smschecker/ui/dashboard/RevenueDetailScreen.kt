@@ -236,7 +236,7 @@ fun RevenueDetailScreen(
                             modifier = Modifier
                                 .weight(1.05f)
                                 .fillMaxHeight(),
-                            cornerRadius = 18.dp,
+                            cornerRadius = 20.dp,
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 15.dp)
                         ) {
                             Column(
@@ -266,7 +266,7 @@ fun RevenueDetailScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight(),
-                            cornerRadius = 18.dp,
+                            cornerRadius = 20.dp,
                             contentPadding = PaddingValues(horizontal = 15.dp, vertical = 8.dp)
                         ) {
                             Column(
@@ -317,7 +317,7 @@ fun RevenueDetailScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp),
-                        cornerRadius = 18.dp,
+                        cornerRadius = 20.dp,
                         contentPadding = PaddingValues(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 12.dp)
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
@@ -378,7 +378,7 @@ fun RevenueDetailScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp),
-                            cornerRadius = 18.dp,
+                            cornerRadius = 20.dp,
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                         ) {
                             Column {
