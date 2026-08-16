@@ -109,6 +109,11 @@ class MainActivity : ComponentActivity() {
         ServiceWatchdogWorker.enqueuePeriodic(applicationContext)
         RealtimeSyncService.start(applicationContext)
 
+        // 🔄 (2026-08-16) ดึงข้อมูลสดทุกครั้งที่เปิดแอพ — ให้คลิปเปิดแอพทำหน้าที่เป็นหน้าโหลดไปด้วย
+        //    ของเดิมยิงซิงค์เฉพาะตอน FCM token เปลี่ยน (SmsCheckerApp) ที่เหลือรอ worker รอบ 15 นาที
+        //    → ร้านเปิดแอพมาเจอบิลเก่าค้างจนกว่ารอบถัดไปจะมา ทั้งที่นั่งรอคลิปอยู่แล้ว 10 วิ
+        OrderSyncWorker.enqueueOneTimeSync(applicationContext)
+
         setContent {
             // 🎬 คลิปเปิดแอพ — rememberSaveable เพื่อไม่ให้เล่นซ้ำตอนหมุนจอ/เปลี่ยนธีม
             //    (เห็นครั้งเดียวต่อการเปิดแอพหนึ่งครั้ง)
@@ -134,8 +139,15 @@ class MainActivity : ComponentActivity() {
 
             // Initialize license system
             val context = this@MainActivity
+
+            // ⚠️ อย่าเดา "ตรวจสิทธิ์เสร็จหรือยัง" จาก status != CHECKING
+            //    LicenseState() ตั้งค่าเริ่มต้นเป็น TRIAL ไม่ใช่ CHECKING → ก่อน initialize() จะทำงาน
+            //    มันจะอ่านได้ว่า "เสร็จแล้ว" ทั้งที่ยังไม่เริ่มตรวจ (เห็นข้อความสลับไปมาบนจอจริง)
+            //    จับตอน initialize() คืนค่าจริงแทน แม่นกว่าและไม่ผูกกับค่าเริ่มต้นของ enum
+            var licenseSettled by remember { mutableStateOf(false) }
             LaunchedEffect(Unit) {
                 LicenseManager.initialize(context)
+                licenseSettled = true
                 UpdateChecker.initAutoUpdatePref(context)
                 UpdateChecker.checkForUpdate(context, shouldThrottle = true)
             }
@@ -143,6 +155,30 @@ class MainActivity : ComponentActivity() {
             val licenseState by LicenseManager.state.collectAsState()
             val updateInfo by UpdateChecker.updateInfo.collectAsState()
             val updateScope = rememberCoroutineScope()
+
+            // 🔄 สถานะ "โหลดเสร็จหรือยัง" ที่คลิปเปิดแอพใช้เป็นเงื่อนไขจบ
+            //    จบ = ซิงค์รอบเปิดแอพเสร็จ (สำเร็จ/ล้มเหลว/ยกเลิก ก็นับ) + รู้ผลสิทธิ์ใช้งานแล้ว
+            //    ห้ามรอ "สำเร็จ" อย่างเดียว — เน็ตร้านล่มแล้วจะขังผู้ใช้ไว้ทั้งที่ดูบิลเก่าได้
+            val syncSettled by remember(context) {
+                OrderSyncWorker.oneTimeSyncSettled(context.applicationContext)
+            }.collectAsState(initial = false)
+
+            // ⏱ เพดานเวลารอ — ร้านที่เน็ตล่มต้องไม่รอนานกว่าร้านที่เน็ตดี
+            //    งานซิงค์ตั้งเงื่อนไข "ต้องมีเน็ต" ไว้ ถ้าออฟไลน์มันจะค้างสถานะรอคิวตลอดกาล
+            //    ไม่ใช่ล้มเหลว → ถ้าไม่ตั้งเพดานจะกลายเป็นขังคนออฟไลน์ไว้จนครบ HARD_CAP
+            //    ตั้ง 8 วิ (สั้นกว่าคลิป 10 วิ) = ออฟไลน์ก็ยังจบพร้อมคลิปพอดี ไม่รู้สึกว่านานกว่า
+            var syncGraceOver by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) {
+                kotlinx.coroutines.delay(8_000)
+                syncGraceOver = true
+            }
+
+            val startupReady = licenseSettled && (syncSettled || syncGraceOver)
+            val startupStatus = when {
+                startupReady -> appStrings.splashReady
+                !licenseSettled -> appStrings.splashCheckingLicense
+                else -> appStrings.splashSyncing
+            }
 
             CompositionLocalProvider(
                 LocalAppStrings provides appStrings,
@@ -185,14 +221,21 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // 🎬 คลิปเปิดแอพวางทับทุกอย่าง (รวมหน้า license) แล้วค่อยจางออก
-                    //    งานเบื้องหลัง (ขอสิทธิ์ / start service / เช็คอัพเดท) เริ่มไปแล้วใน onCreate
-                    //    คลิปจึงไม่หน่วงอะไรเลย แค่บังจอระหว่างที่ของหลังบ้านตั้งตัว
+                    //    เจ้าของสั่งให้คลิปทำหน้าที่เป็น "หน้าโหลด" ไปด้วย — ระหว่างเล่น 10 วินาที
+                    //    แอพซิงค์ข้อมูลจากเซิร์ฟเวอร์ + ตรวจสิทธิ์ใช้งานไปพร้อมกัน
+                    //    พอคลิปจบข้อมูลก็สดแล้ว ไม่ต้องมาเจอสปินเนอร์ในแอพอีกรอบ
+                    // ⚠️ AnimatedVisibility ต้องอยู่นอก if(showIntro) ไม่งั้นพอ showIntro=false
+                    //    ตัวมันถูกถอดออกจาก composition ทันที อนิเมชันจางออกไม่ได้เล่นเลย
                     AnimatedVisibility(
                         visible = showIntro,
                         enter = EnterTransition.None,
                         exit = fadeOut(animationSpec = tween(320))
                     ) {
-                        IntroSplashScreen(onFinished = { showIntro = false })
+                        IntroSplashScreen(
+                            isReady = startupReady,
+                            statusText = startupStatus,
+                            onFinished = { showIntro = false }
+                        )
                     }
                 }
             }

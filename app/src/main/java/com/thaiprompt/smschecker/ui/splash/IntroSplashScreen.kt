@@ -19,6 +19,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -31,13 +34,16 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.thaiprompt.smschecker.R
 import kotlinx.coroutines.delay
@@ -56,38 +62,70 @@ private val SplashNavy = Color(0xFF0B1426)
  */
 private const val NO_VIDEO_MS = 6_000L
 
-/** เริ่มเล่นแล้วแต่ค้างกลางทาง — คลิปยาว 10 วิ เผื่อไว้อีกหน่อย */
-private const val STUCK_MS = 14_000L
+/**
+ * เพดานสูงสุด — ถึงจะโหลดไม่เสร็จก็ต้องปล่อยเข้าแอพ
+ *
+ * แอพนี้อ่านบิลจากฐานข้อมูลในเครื่องได้อยู่แล้ว ถ้าเน็ตร้านล่มแล้วเราขังไว้ที่หน้าโหลด
+ * = ร้านดูบิลไม่ได้ทั้งที่ข้อมูลเก่ายังอยู่ครบ ซึ่งแย่กว่าการเข้าไปเจอข้อมูลเก่าเยอะ
+ */
+private const val HARD_CAP_MS = 22_000L
 
 /**
- * หน้าเปิดแอพ — คลิปโลโก้สั้น ๆ 2.7 วินาที
+ * หน้าเปิดแอพ — คลิปโลโก้ 10 วินาที ที่ทำหน้าที่เป็น "หน้าโหลด" ไปด้วย
+ *
+ * เจ้าของสั่ง: "10 วินาทีไม่นาน ทำเป็น loading อยู่แล้วในระหว่างเล่นวีดีโอ"
+ * → ระหว่างคลิปเล่น แอพซิงค์ข้อมูลจากเซิร์ฟเวอร์ + ตรวจสิทธิ์ใช้งานไปพร้อมกัน
+ *   พอคลิปจบ ข้อมูลก็สดแล้ว ไม่ต้องมานั่งดูสปินเนอร์ในแอพอีกรอบ
+ *
+ * จังหวะจบ = **คลิปจบครบรอบ และ โหลดเสร็จ** (เอาอันที่ช้ากว่า)
+ *   - โหลดเสร็จก่อนคลิปจบ → ดูคลิปให้จบสวย ๆ (10 วิ เจ้าของบอกว่าไม่นาน)
+ *   - คลิปจบก่อนโหลดเสร็จ → **วนคลิปซ้ำ** แทนที่จะค้างเฟรมสุดท้ายนิ่ง ๆ
  *
  * ทำไมใช้ TextureView ไม่ใช่ VideoView:
  *   VideoView วางบน SurfaceView ซึ่ง "เจาะรู" ทะลุ view ที่ซ้อนอยู่ → เอา Compose
  *   ไปวางทับแล้วลำดับชั้นเพี้ยน และจังหวะสร้าง surface มักแวบดำ
  *   TextureView เป็น view ปกติ ซ้อน/หรี่ความทึบ/ครอปด้วย matrix ได้ตามใจ
  *
- * ทางออกมี 4 ทาง (คลิปจบ / แตะข้าม / เล่นไม่ได้ / หมดเวลา) และเกิดพร้อมกันได้
+ * ทางออกมีหลายทาง (คลิปจบ+พร้อม / แตะข้าม / เล่นไม่ได้ / หมดเวลา) และเกิดพร้อมกันได้
  * เช่นแตะรัวตอนคลิปกำลังจบ → ต้องกันเรียก onFinished ซ้ำ ไม่งั้นสลับหน้าซ้อน
+ *
+ * @param isReady    งานตอนเปิดแอพเสร็จแล้วหรือยัง (ซิงค์ข้อมูล + ตรวจสิทธิ์)
+ * @param statusText ข้อความบอกว่ากำลังทำอะไรอยู่ — แสดงใต้โลโก้
  */
 @Composable
-fun IntroSplashScreen(onFinished: () -> Unit) {
+fun IntroSplashScreen(
+    isReady: Boolean,
+    statusText: String,
+    onFinished: () -> Unit
+) {
     val latestOnFinished by rememberUpdatedState(onFinished)
     val fired = remember { AtomicBoolean(false) }
     val finish: () -> Unit = { if (fired.compareAndSet(false, true)) latestOnFinished() }
 
     var videoDrawing by remember { mutableStateOf(false) }
+    var playedThrough by remember { mutableStateOf(false) }
 
-    // นับถอยหลังเป็น 2 จังหวะ และ "รีสตาร์ทเมื่อวิดีโอเริ่มวาดจริง"
-    //   จังหวะแรก  = รอดูว่าคลิปจะขึ้นไหม (เครื่องบางรุ่นถอดรหัสไม่ได้เลย)
-    //   จังหวะสอง  = ขึ้นแล้ว ให้เวลาจนจบคลิป เผื่อเครื่องช้า
+    // อ่านค่าล่าสุดจากใน callback ของ MediaPlayer (ซึ่งไม่ recompose ตามเรา)
+    val readyNow by rememberUpdatedState(isReady)
+
+    // เงื่อนไขจบปกติ: คลิปจบครบรอบ + โหลดเสร็จ
+    LaunchedEffect(playedThrough, isReady) {
+        if (playedThrough && isReady) finish()
+    }
+
     // ⚠️ ต้องเริ่มนับหลัง withFrameNanos (= จอเราถูกวาดจริง) ไม่ใช่ตอน compose
     //    เพราะ cold start ระบบค้างที่ splash ของ Android ได้หลายวินาที
     //    (วัดบน emulator: `Displayed ... +4s926ms`) นับเร็วไปคลิปไม่ได้ออกอากาศเลย
     LaunchedEffect(videoDrawing) {
         withFrameNanos { }
-        delay(if (videoDrawing) STUCK_MS else NO_VIDEO_MS)
-        finish()
+        if (!videoDrawing) {
+            // ยังไม่มีเฟรมวิดีโอเลย — ให้โอกาสถึงเวลานี้ ถ้ายังไม่มาถือว่าเครื่องเล่นไม่ได้
+            delay(NO_VIDEO_MS)
+            if (!videoDrawing) playedThrough = true
+        } else {
+            delay(HARD_CAP_MS)
+            finish()
+        }
     }
 
     Box(
@@ -103,8 +141,68 @@ fun IntroSplashScreen(onFinished: () -> Unit) {
 
         IntroVideo(
             onFirstFrame = { videoDrawing = true },
-            onEnded = finish,
-            onFailed = finish
+            onPlayedThrough = { playedThrough = true },
+            shouldReplay = { !readyNow },
+            onFailed = { playedThrough = true }
+        )
+
+        LoadingStrip(
+            statusText = statusText,
+            isReady = isReady,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
+    }
+}
+
+/**
+ * แถบสถานะการโหลดใต้จอ — บอกว่าตอนนี้กำลังทำอะไร ไม่ใช่แค่หมุนเล่น
+ *
+ * ผู้ใช้ต้องแยกออกว่า "แอพกำลังทำงาน" กับ "แอพค้าง" — สปินเนอร์เปล่า ๆ แยกไม่ได้
+ * พอโหลดเสร็จเปลี่ยนเป็นข้อความพร้อมใช้งาน ให้รู้ว่าที่เหลือคือรอคลิปจบเฉย ๆ
+ */
+@Composable
+private fun LoadingStrip(
+    statusText: String,
+    isReady: Boolean,
+    modifier: Modifier = Modifier
+) {
+    // ใช้ตัวของ Material เลย — indeterminate ตอนโหลด / เต็มแท่งสีเขียวตอนพร้อม
+    // (เขียนแถบวิ่งเองต้องคำนวณ offset จากความกว้าง parent ซึ่งพังง่ายบนจอกว้างต่างกัน)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 48.dp, vertical = 56.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        if (isReady) {
+            // Material3 รุ่นในโปรเจกต์นี้ยังเป็น API เก่า — progress เป็น Float ตรง ๆ
+            // ไม่ใช่แลมบ์ดา และยังไม่มี gapSize/drawStopIndicator
+            LinearProgressIndicator(
+                progress = 1f,
+                modifier = Modifier
+                    .fillMaxWidth(0.62f)
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(50)),
+                color = Color(0xFF4ADE80),
+                trackColor = Color.White.copy(alpha = 0.14f)
+            )
+        } else {
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth(0.62f)
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(50)),
+                color = Color(0xFF7FD4E8),
+                trackColor = Color.White.copy(alpha = 0.14f)
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = statusText,
+            color = Color.White.copy(alpha = if (isReady) 0.66f else 0.80f),
+            fontSize = 12.sp,
+            textAlign = TextAlign.Center,
+            maxLines = 1
         )
     }
 }
@@ -118,7 +216,8 @@ fun IntroSplashScreen(onFinished: () -> Unit) {
 @Composable
 private fun IntroVideo(
     onFirstFrame: () -> Unit,
-    onEnded: () -> Unit,
+    onPlayedThrough: () -> Unit,
+    shouldReplay: () -> Boolean,
     onFailed: () -> Unit
 ) {
     val holder = remember { arrayOfNulls<MediaPlayer>(1) }
@@ -161,7 +260,15 @@ private fun IntroVideo(
                                 }
                                 false
                             }
-                            mp.setOnCompletionListener { onEnded() }
+                            // จบรอบหนึ่ง — ถ้ายังโหลดไม่เสร็จให้วนซ้ำ ดีกว่าค้างเฟรมสุดท้ายนิ่ง ๆ
+                            // (ไม่ใช้ isLooping=true เพราะแบบนั้น OnCompletion จะไม่ยิงเลย
+                            //  แล้วเราจะไม่รู้ว่าคลิปเล่นครบรอบแล้วหรือยัง)
+                            mp.setOnCompletionListener { p ->
+                                onPlayedThrough()
+                                if (shouldReplay()) {
+                                    runCatching { p.seekTo(0); p.start() }
+                                }
+                            }
                             mp.setOnErrorListener { _, what, extra ->
                                 Log.w("IntroSplash", "เล่นคลิปเปิดแอพไม่ได้ what=$what extra=$extra")
                                 onFailed()

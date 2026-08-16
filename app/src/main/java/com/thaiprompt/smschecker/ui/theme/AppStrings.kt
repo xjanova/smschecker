@@ -378,6 +378,12 @@ data class AppStrings(
     val aeroSegApproved: String = "อนุมัติ"
     val aeroSegAll: String = "ทั้งหมด"
     val aeroDashboardTitle: String = "แดชบอร์ด"
+    // 🎬 (2026-08-16) ข้อความใต้คลิปเปิดแอพ — คลิปทำหน้าที่เป็นหน้าโหลดไปด้วย
+    //    ต้องบอกว่า "กำลังทำอะไรอยู่" ไม่ใช่แค่แถบวิ่งเปล่า ๆ ผู้ใช้จะได้แยกออก
+    //    ระหว่าง "แอพกำลังทำงาน" กับ "แอพค้าง"
+    val splashCheckingLicense: String = "กำลังตรวจสอบสิทธิ์ใช้งาน"
+    val splashSyncing: String = "กำลังดึงข้อมูลล่าสุดจากเซิร์ฟเวอร์"
+    val splashReady: String = "พร้อมใช้งาน"
 }
 
 val ThaiStrings = AppStrings(

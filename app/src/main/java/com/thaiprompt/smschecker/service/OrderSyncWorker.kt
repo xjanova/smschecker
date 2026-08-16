@@ -14,6 +14,8 @@ import com.thaiprompt.smschecker.data.repository.OrphanTransactionRepository
 import com.thaiprompt.smschecker.security.SecureStorage
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
 
@@ -259,6 +261,19 @@ class OrderSyncWorker @AssistedInject constructor(
         private const val TAG = "OrderSyncWorker"
         private const val WORK_NAME_PERIODIC = "order_sync_periodic"
         private const val WORK_NAME_ONE_TIME = "order_sync_one_time"
+
+        /**
+         * รอบซิงค์ตอนเปิดแอพจบหรือยัง — หน้าเปิดแอพใช้ตัวนี้เป็นเงื่อนไข "โหลดเสร็จ"
+         *
+         * นับ "จบ" รวมทั้งสำเร็จ ล้มเหลว และถูกยกเลิก — เพราะแอพนี้เปิดจาก Room ได้อยู่แล้ว
+         * ถ้าเน็ตร้านล่มแล้วเราค้างหน้าโหลดไว้ = ร้านดูบิลไม่ได้ทั้งที่ข้อมูลเก่ายังอยู่ในเครื่อง
+         *
+         * รายการว่าง = ยังไม่เคยสั่งซิงค์ในรันนี้ → ถือว่าไม่ต้องรอ
+         */
+        fun oneTimeSyncSettled(context: Context): Flow<Boolean> =
+            WorkManager.getInstance(context)
+                .getWorkInfosForUniqueWorkFlow(WORK_NAME_ONE_TIME)
+                .map { infos -> infos.isEmpty() || infos.all { it.state.isFinished } }
 
         fun enqueuePeriodicSync(context: Context) {
             val constraints = Constraints.Builder()
