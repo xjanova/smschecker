@@ -135,29 +135,12 @@ fun SmsHistoryScreen(
                             .padding(vertical = 48.dp, horizontal = 24.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Textsms,
-                                contentDescription = null,
-                                modifier = Modifier.size(64.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-                            )
-                            Text(
-                                strings.noTransactionsYet,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                strings.smsAutoDisplay,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                textAlign = TextAlign.Center
-                            )
-                        }
+                        com.thaiprompt.smschecker.ui.components.AeroEmptyState(
+                            art = com.thaiprompt.smschecker.R.drawable.art_empty_sms,
+                            title = strings.noTransactionsYet,
+                            subtitle = strings.smsAutoDisplay,
+                            verticalPadding = 0.dp
+                        )
                     }
                 }
             }

@@ -174,27 +174,11 @@ private fun SmsMatcherContent(
             // === Empty State ===
             if (!state.isLoading && state.transactions.isEmpty()) {
                 item(key = "empty") {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 48.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Default.Inbox,
-                                contentDescription = null,
-                                modifier = Modifier.size(64.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                strings.noTransactionsYet,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            )
-                        }
-                    }
+                    com.thaiprompt.smschecker.ui.components.AeroEmptyState(
+                        art = com.thaiprompt.smschecker.R.drawable.art_empty_sms,
+                        title = strings.noTransactionsYet,
+                        artSize = 116.dp
+                    )
                 }
             }
 
