@@ -13,6 +13,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -81,6 +82,26 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        /**
+         * 🎬 คลิปเปิดแอพ "ครั้งเดียวต่อการเปิดแอพจริง" ไม่ใช่ครั้งเดียวต่อ Activity
+         *
+         * ตัวแปร static อยู่ยาวเท่าอายุ **โปรเซส** → ใช้แยกได้ตรง ๆ ว่า
+         *   - โปรเซสยังอยู่ (แอพทำงานเบื้องหลังอยู่) → เปิดมาเข้าแอพเลย ไม่ต้องดูคลิปซ้ำ
+         *   - โปรเซสตายไปแล้ว (ปัดออกจาก recents / ระบบเก็บแรม) → เปิดใหม่จริง ค่อยเล่นคลิป
+         *
+         * ⚠️ ห้ามใช้ `rememberSaveable` ตัวเดียวตัดสิน — มันรอดแค่ตอนหมุนจอ/เปลี่ยนธีม
+         *    Activity ถูกทำลายแล้วสร้างใหม่ทั้งที่โปรเซสยังอยู่ (กดย้อนกลับบน Android < 12,
+         *    ระบบเก็บ Activity คืนแรม) จะได้ savedInstanceState = null → เด้งกลับเป็น true
+         *    = ร้านเห็นคลิป 10 วิ + รอซิงค์ใหม่ทุกครั้งที่กดเข้าแอพ ซึ่งคืออาการที่เจ้าของเจอ
+         */
+        @Volatile private var introShownThisProcess = false
+
+        /** นาฬิกาที่ไม่ขยับตามการตั้งเวลาเครื่อง — ใช้กันซิงค์รัวตอนสลับเข้าออกแอพถี่ ๆ */
+        @Volatile private var lastStartupSyncAt = 0L
+        private const val STARTUP_SYNC_MIN_GAP_MS = 20_000L
+    }
+
     @Inject lateinit var secureStorage: SecureStorage
 
     private val requiredPermissions = buildList {
@@ -109,15 +130,16 @@ class MainActivity : ComponentActivity() {
         ServiceWatchdogWorker.enqueuePeriodic(applicationContext)
         RealtimeSyncService.start(applicationContext)
 
-        // 🔄 (2026-08-16) ดึงข้อมูลสดทุกครั้งที่เปิดแอพ — ให้คลิปเปิดแอพทำหน้าที่เป็นหน้าโหลดไปด้วย
-        //    ของเดิมยิงซิงค์เฉพาะตอน FCM token เปลี่ยน (SmsCheckerApp) ที่เหลือรอ worker รอบ 15 นาที
-        //    → ร้านเปิดแอพมาเจอบิลเก่าค้างจนกว่ารอบถัดไปจะมา ทั้งที่นั่งรอคลิปอยู่แล้ว 10 วิ
-        OrderSyncWorker.enqueueOneTimeSync(applicationContext)
+        // 🎬 ตัดสินใจ "รอบนี้เล่นคลิปไหม" ครั้งเดียวตอน onCreate แล้วปักธงทันที
+        //    ปักตั้งแต่ตอนตัดสินใจ (ไม่ใช่ตอนคลิปจบ) เพราะถ้าผู้ใช้กดออกกลางคลิปแล้วเข้าใหม่
+        //    ทั้งที่โปรเซสยังอยู่ ก็ไม่ควรโดนคลิปซ้ำอีกรอบ
+        val playIntroThisLaunch = !introShownThisProcess
+        introShownThisProcess = true
 
         setContent {
-            // 🎬 คลิปเปิดแอพ — rememberSaveable เพื่อไม่ให้เล่นซ้ำตอนหมุนจอ/เปลี่ยนธีม
-            //    (เห็นครั้งเดียวต่อการเปิดแอพหนึ่งครั้ง)
-            var showIntro by rememberSaveable { mutableStateOf(true) }
+            // rememberSaveable เพิ่มอีกชั้นกันเล่นซ้ำตอนหมุนจอ/เปลี่ยนธีม
+            // ค่าเริ่มต้นมาจาก playIntroThisLaunch (ผูกกับอายุโปรเซส) ไม่ใช่ค่าคงที่ true
+            var showIntro by rememberSaveable { mutableStateOf(playIntroThisLaunch) }
 
             val themeMode = remember { mutableStateOf(ThemeMode.fromKey(secureStorage.getThemeMode())) }
             val languageMode = remember { mutableStateOf(LanguageMode.fromKey(secureStorage.getLanguage())) }
@@ -167,8 +189,10 @@ class MainActivity : ComponentActivity() {
             //    งานซิงค์ตั้งเงื่อนไข "ต้องมีเน็ต" ไว้ ถ้าออฟไลน์มันจะค้างสถานะรอคิวตลอดกาล
             //    ไม่ใช่ล้มเหลว → ถ้าไม่ตั้งเพดานจะกลายเป็นขังคนออฟไลน์ไว้จนครบ HARD_CAP
             //    ตั้ง 8 วิ (สั้นกว่าคลิป 10 วิ) = ออฟไลน์ก็ยังจบพร้อมคลิปพอดี ไม่รู้สึกว่านานกว่า
+            //    เปิดแอพแบบอุ่น (ไม่มีคลิป) ไม่ต้องนับเลย ไม่มีใครรอผลอยู่
             var syncGraceOver by remember { mutableStateOf(false) }
-            LaunchedEffect(Unit) {
+            LaunchedEffect(showIntro) {
+                if (!showIntro) return@LaunchedEffect
                 kotlinx.coroutines.delay(8_000)
                 syncGraceOver = true
             }
@@ -208,6 +232,11 @@ class MainActivity : ComponentActivity() {
                         }
                         LicenseStatus.ACTIVE, LicenseStatus.TRIAL -> {
                             MainApp(
+                                // ⬅️ กดย้อนกลับที่หน้าแรก = ย่อลงพื้นหลัง ไม่ใช่ทำลาย Activity
+                                //    แอพนี้เฝ้า SMS อยู่เบื้องหลังตลอดอยู่แล้ว (foreground service)
+                                //    การทำลายจอทิ้งไม่ได้ประหยัดอะไร แต่ทำให้กดเข้ามาใหม่ต้องสร้างใหม่หมด
+                                //    Android 12+ ทำแบบนี้ให้เองอยู่แล้ว — ใส่เองเพื่อให้ 8/9/10/11 เหมือนกัน
+                                onMinimize = { moveTaskToBack(true) },
                                 onThemeChanged = { mode ->
                                     secureStorage.setThemeMode(mode.key)
                                     themeMode.value = mode
@@ -239,6 +268,30 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * 🔄 ดึงข้อมูลสด "ทุกครั้งที่หน้าจอกลับมาอยู่ข้างหน้า" ไม่ใช่แค่ตอนสร้าง Activity
+     *
+     * ของเดิมยิงใน `onCreate` — พอเราหยุดสร้าง Activity ใหม่ทุกครั้งที่กดเข้าแอพ (ซึ่งคือจุดประสงค์)
+     * `onCreate` จะไม่ถูกเรียกอีกเลยตราบใดที่โปรเซสยังอยู่ → ร้านที่เปิดแอพค้างไว้ทั้งวัน
+     * จะไม่มีอะไรมาปลุกซิงค์เลย นอกจาก worker รอบ 15 นาที **ย้ายมา onStart จึงจำเป็น ไม่ใช่ของแถม**
+     *
+     * ⚠️ ต้องมีเพดานถี่ — `enqueueOneTimeSync` ใช้ `ExistingWorkPolicy.REPLACE` แปลว่า
+     *    การยิงรอบใหม่ **ยกเลิกงานที่กำลังวิ่งอยู่ทิ้ง** ถ้าผู้ใช้สลับเข้าออกแอพรัว ๆ
+     *    (เปิดดูบิล → สลับไปแชท → กลับมา) จะยกเลิกซ้ำจนไม่มีรอบไหนวิ่งจบสักที = ข้อมูลไม่อัพเดท
+     */
+    override fun onStart() {
+        super.onStart()
+
+        // เทียบด้วย `== 0L` แยกกรณี "ยังไม่เคยยิงในโปรเซสนี้" ออกมาก่อน — elapsedRealtime()
+        // นับจากตอนบูตเครื่อง ถ้าเพิ่งบูตมาไม่ถึง 20 วิ ส่วนต่างจาก 0 จะไม่ถึงเพดาน
+        // แล้วรอบเปิดแอพครั้งแรกจะโดนข้ามทิ้งทั้งที่ยังไม่เคยซิงค์เลย
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (lastStartupSyncAt == 0L || now - lastStartupSyncAt >= STARTUP_SYNC_MIN_GAP_MS) {
+            lastStartupSyncAt = now
+            OrderSyncWorker.enqueueOneTimeSync(applicationContext)
         }
     }
 
@@ -321,6 +374,7 @@ sealed class Screen(val route: String) {
 
 @Composable
 fun MainApp(
+    onMinimize: () -> Unit = {},
     onThemeChanged: (ThemeMode) -> Unit = {},
     onLanguageChanged: (LanguageMode) -> Unit = {}
 ) {
@@ -328,6 +382,18 @@ fun MainApp(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val strings = LocalAppStrings.current
+
+    // ⬅️ ย้อนกลับจากหน้าแรก (ไม่มีอะไรให้ pop แล้ว) → ย่อลงพื้นหลัง เก็บจอไว้ทั้งดุ้น
+    //    กลับเข้ามาอีกทีจึงได้แท็บเดิม ตำแหน่งเลื่อนเดิม ไม่ต้องโหลดใหม่
+    //
+    // ⚠️ ตัดสินจาก `previousBackStackEntry == null` ไม่ใช่ `currentRoute == Dashboard`
+    //    แท็บล่างใช้ `popUpTo(Dashboard) { saveState = true }` → ยืนอยู่แท็บอื่นก็ยังมี
+    //    Dashboard ค้างใน stack ให้ pop ได้ ถ้าเช็คแค่ route เราจะไปแย่งจังหวะ pop ของ NavHost
+    //    แล้วปุ่มย้อนกลับจะ "ย่อแอพ" ตั้งแต่ยังกลับหน้าแรกไม่ได้
+    //
+    //    อ่าน navBackStackEntry (เป็น State) ก่อนในบรรทัดบน ตัวนี้จึงคำนวณใหม่ทุกครั้งที่ย้ายหน้า
+    val atRootDestination = navBackStackEntry != null && navController.previousBackStackEntry == null
+    BackHandler(enabled = atRootDestination) { onMinimize() }
 
     val bottomScreens = listOf(Screen.Dashboard, Screen.Orders, Screen.Transactions, Screen.SmsHistory, Screen.Settings)
 
