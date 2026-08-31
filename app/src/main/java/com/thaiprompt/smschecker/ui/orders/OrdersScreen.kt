@@ -94,11 +94,7 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
     LaunchedEffect(state.actionResult) {
         state.actionResult?.let { result ->
             val label = result.orderNumber?.let { "#$it" } ?: ""
-            val msg = if (result.success) {
-                "${result.message} $label"
-            } else {
-                "Error: ${result.message} $label"
-            }
+            val msg = "${result.message} $label"
             snackbarHostState.showSnackbar(
                 message = msg,
                 duration = SnackbarDuration.Short
@@ -108,7 +104,7 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
     }
 
     // Error handling - show error state if there's an error
-    if (state.error != null) {
+    if (state.hasLoadError) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -127,20 +123,20 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    "เกิดข้อผิดพลาด",
+                    strings.ordersErrorTitle,
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    state.error ?: "Unknown error",
+                    strings.ordersErrorBody,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(24.dp))
                 GlossButton(
-                    text = "ลองอีกครั้ง",
+                    text = strings.ordersErrorRetry,
                     onClick = { viewModel.refresh() },
                     style = GlossStyle.Green,
                     leadingIcon = Icons.Default.Refresh

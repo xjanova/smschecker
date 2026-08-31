@@ -316,6 +316,11 @@ data class AppStrings(
     val voidConsumedTitle: String = "ลูกค้าใช้บริการไปแล้ว"
     val voidConsumedBody: String = "บิลนี้ลูกค้าเปิดไพ่หรือได้รับคำทำนายไปแล้ว ถ้ายกเลิกการอนุมัติจะถือว่าบิลไม่ได้ชำระทั้งที่ให้บริการไปแล้ว"
     val voidConsumedConfirm: String = "ยืนยันยกเลิกอยู่ดี"
+    // จอ error ของแท็บออเดอร์ — ข้อความรวม ไม่โชว์ข้อความ exception ดิบให้ผู้ใช้
+    // (trap: "Raw exception display" — รายละเอียดจริงอยู่ใน Logcat)
+    val ordersErrorTitle: String = "เกิดข้อผิดพลาด"
+    val ordersErrorBody: String = "โหลดรายการบิลไม่สำเร็จ — ตรวจสอบอินเทอร์เน็ตแล้วลองอีกครั้ง"
+    val ordersErrorRetry: String = "ลองอีกครั้ง"
     // TTS voice health (เคส Samsung ไม่มีเสียงไทย)
     val ttsVoiceWarningTitle: String = "เสียงพูดอาจไม่ทำงานบนเครื่องนี้"
     val ttsGoogleMissingDesc: String = "ไม่พบ Google Text-to-Speech ในเครื่อง (Samsung มักไม่มีเสียงภาษาไทย) — ติดตั้งฟรีจาก Play Store แล้วแอพจะใช้เสียงไทยได้ทันที"

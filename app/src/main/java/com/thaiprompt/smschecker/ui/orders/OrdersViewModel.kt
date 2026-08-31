@@ -12,8 +12,10 @@ import com.thaiprompt.smschecker.data.repository.SlipImageLoader
 import com.thaiprompt.smschecker.data.repository.TransactionRepository
 import com.thaiprompt.smschecker.data.repository.isBillConsumed
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -29,7 +31,10 @@ data class OrdersState(
     val pendingCount: Int = 0,
     val offlineQueueCount: Int = 0,
     val servers: List<ServerConfig> = emptyList(),
-    val error: String? = null,
+    // true = โหลดรายการบิลไม่สำเร็จ → จอ error + ปุ่ม "ลองอีกครั้ง"
+    // ข้อความ exception ดิบไม่ถูกส่งเข้า state — ไปอยู่ใน Logcat อย่างเดียว
+    // (trap: "Raw exception display" + error ไม่ควรเผยโครงสร้างระบบให้ผู้ใช้เห็น)
+    val hasLoadError: Boolean = false,
     val actionResult: ActionResult? = null,
     val searchQuery: String = "",
     val isLoadingMore: Boolean = false,
@@ -83,9 +88,11 @@ class OrdersViewModel @Inject constructor(
             refresh()
             // Start auto-refresh every 30 seconds
             startAutoRefresh()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("OrdersViewModel", "Error initializing OrdersViewModel", e)
-            _state.update { it.copy(isLoading = false, error = "Failed to initialize: ${e.message}") }
+            _state.update { it.copy(isLoading = false, hasLoadError = true) }
         }
     }
 
@@ -105,7 +112,7 @@ class OrdersViewModel @Inject constructor(
                     Log.d("OrdersViewModel", "Auto-refreshing orders...")
                     orderRepository.fetchOrders()
                     loadOrders(showLoading = false)
-                } catch (e: kotlinx.coroutines.CancellationException) {
+                } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     Log.w("OrdersViewModel", "Auto-refresh failed: ${e.message}")
@@ -130,6 +137,9 @@ class OrdersViewModel @Inject constructor(
      *   ทุก 90 วิ ขณะแอดมินกำลังดูรายการ (UX trap: "Loading state flash")
      */
     private fun loadOrders(showLoading: Boolean = true) {
+        // cancel() แค่ "ขอให้หยุด" — job เก่าจะเด้ง CancellationException ที่ suspend point ถัดไป
+        // ซึ่งอาจเกิด *หลัง* job ใหม่เซ็ต state สำเร็จไปแล้ว ทุกจุดที่เขียน state ด้านล่างจึงต้อง
+        // กันไม่ให้ job ที่ถูกยกเลิกเขียนทับของใหม่ (ดู ensureActive() + catch CancellationException)
         ordersJob?.cancel()
         ordersJob = viewModelScope.launch {
             if (showLoading) _state.update { it.copy(isLoading = true, hasMorePages = true) }
@@ -152,19 +162,28 @@ class OrdersViewModel @Inject constructor(
                     endTime = s.dateTo,
                     search = search.takeIf { it.isNotEmpty() }
                 )
+                // ถ้า job นี้ถูก cancel ไปแล้วระหว่างรอ DB (มี loadOrders() รอบใหม่มาแทน)
+                // ต้องไม่เขียนผลเก่าทับผลของ job ใหม่ที่สดกว่า
+                ensureActive()
                 _state.update {
                     it.copy(
                         orders = orders,
                         isLoading = false,
-                        error = null,
+                        hasLoadError = false,
                         hasMorePages = orders.size >= PAGE_SIZE && orders.size < totalCount,
                         totalCount = totalCount,
                         searchQuery = search
                     )
                 }
+            } catch (e: CancellationException) {
+                // job เก่าถูกยกเลิกเพราะมีรอบใหม่มาแทน — ไม่ใช่ error ของผู้ใช้ ต้องปล่อยผ่านเสมอ
+                // (เดิม catch (e: Exception) กินเคสนี้ด้วย แล้วเซ็ต error ทับ state ที่ job ใหม่
+                //  โหลดสำเร็จไปแล้ว → เปิดแท็บออเดอร์ขึ้น "StandaloneCoroutine was cancelled"
+                //  ทั้งที่ข้อมูลมาครบ เพราะ init → loadOrders() ชน refresh() → loadOrders(false))
+                throw e
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error loading orders", e)
-                _state.update { it.copy(isLoading = false, error = e.message) }
+                _state.update { it.copy(isLoading = false, hasLoadError = true) }
             }
         }
     }
@@ -195,6 +214,8 @@ class OrdersViewModel @Inject constructor(
                         hasMorePages = moreOrders.size >= PAGE_SIZE && combined.size < it.totalCount
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error loading more orders", e)
                 _state.update { it.copy(isLoadingMore = false) }
@@ -227,6 +248,8 @@ class OrdersViewModel @Inject constructor(
                 orderRepository.getPendingReviewCount().collect { count ->
                     _state.update { it.copy(pendingCount = count) }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error loading pending count", e)
             }
@@ -236,6 +259,8 @@ class OrdersViewModel @Inject constructor(
                 orderRepository.getOfflineQueueCount().collect { count ->
                     _state.update { it.copy(offlineQueueCount = count) }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error loading offline queue count", e)
             }
@@ -249,6 +274,8 @@ class OrdersViewModel @Inject constructor(
                 transactionRepository.getAllServerConfigs().collect { servers ->
                     _state.update { it.copy(servers = servers) }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error loading servers", e)
             }
@@ -262,12 +289,16 @@ class OrdersViewModel @Inject constructor(
                 // ดึงข้อมูลล่าสุดจากเซิร์ฟเวอร์
                 try {
                     orderRepository.fetchOrders()
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Log.w("OrdersViewModel", "Server fetch failed", e)
                 }
                 // ทำความสะอาดบิลหมดอายุ (ย้ายไปถังขยะ)
                 try {
                     orderRepository.cleanupExpiredOrders()
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Log.w("OrdersViewModel", "Cleanup failed", e)
                 }
@@ -305,12 +336,14 @@ class OrdersViewModel @Inject constructor(
                 _state.update { it.copy(actionResult = outcome.toResult("อนุมัติแล้ว", order.orderNumber)) }
                 // Refresh list so UI shows new status (suspending DAO is not a Flow → ต้อง reload เอง)
                 loadOrders(showLoading = false)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error approving order ${order.id}", e)
                 _state.update { it.copy(
                     actionResult = ActionResult(
                         success = false,
-                        message = e.message ?: "Approve failed",
+                        message = "อนุมัติไม่สำเร็จ — ลองอีกครั้ง",
                         orderNumber = order.orderNumber
                     )
                 ) }
@@ -332,12 +365,14 @@ class OrdersViewModel @Inject constructor(
                 val outcome = orderRepository.approveOrder(order, force = true)
                 _state.update { it.copy(actionResult = outcome.toResult("🚀 Force Approve สำเร็จ", order.orderNumber)) }
                 loadOrders(showLoading = false)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error force approving order ${order.id}", e)
                 _state.update { it.copy(
                     actionResult = ActionResult(
                         success = false,
-                        message = e.message ?: "Force Approve failed",
+                        message = "Force อนุมัติไม่สำเร็จ — ลองอีกครั้ง",
                         orderNumber = order.orderNumber
                     )
                 ) }
@@ -351,12 +386,14 @@ class OrdersViewModel @Inject constructor(
                 val outcome = orderRepository.rejectOrder(order)
                 _state.update { it.copy(actionResult = outcome.toResult("ปฏิเสธแล้ว", order.orderNumber)) }
                 loadOrders(showLoading = false)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error rejecting order ${order.id}", e)
                 _state.update { it.copy(
                     actionResult = ActionResult(
                         success = false,
-                        message = e.message ?: "Reject failed",
+                        message = "ปฏิเสธไม่สำเร็จ — ลองอีกครั้ง",
                         orderNumber = order.orderNumber
                     )
                 ) }
@@ -396,13 +433,15 @@ class OrdersViewModel @Inject constructor(
                     )
                 }
                 loadOrders(showLoading = false)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("OrdersViewModel", "Error voiding approval for order ${order.id}", e)
                 _state.update { it.copy(
                     voidingOrderId = null,
                     actionResult = ActionResult(
                         success = false,
-                        message = e.message ?: "ยกเลิกการอนุมัติไม่สำเร็จ",
+                        message = "ยกเลิกการอนุมัติไม่สำเร็จ — ลองอีกครั้ง",
                         orderNumber = order.orderNumber
                     )
                 ) }
@@ -422,6 +461,10 @@ class OrdersViewModel @Inject constructor(
     suspend fun loadSlipImage(order: OrderApproval, maxSizePx: Int): Bitmap? =
         try {
             slipImageLoader.load(order, maxSizePx)
+        } catch (e: CancellationException) {
+            // ปิดจอ / เลื่อนพ้นการ์ดระหว่างโหลดรูป — ปล่อยให้ cancellation ไหลต่อ
+            // ไม่ใช่เคส "โหลดสลิปไม่ได้" จึงไม่ควรคืน null ให้ UI ขึ้น slipLoadFailed
+            throw e
         } catch (e: Exception) {
             Log.w("OrdersViewModel", "loadSlipImage failed for ${order.orderNumber}: ${e.message}")
             null
