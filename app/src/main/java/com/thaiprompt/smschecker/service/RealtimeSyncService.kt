@@ -121,6 +121,9 @@ class RealtimeSyncService : Service() {
     @Inject
     lateinit var orphanTransactionDao: com.thaiprompt.smschecker.data.db.OrphanTransactionDao
 
+    @Inject
+    lateinit var transactionRepository: com.thaiprompt.smschecker.data.repository.TransactionRepository
+
     // AtomicReference so scope recreation is race-free across threads.
     private val scopeRef = AtomicReference(CoroutineScope(Dispatchers.IO + SupervisorJob()))
     private val serviceScope: CoroutineScope get() = scopeRef.get()
@@ -589,6 +592,8 @@ class RealtimeSyncService : Service() {
                 if (approved) {
                     // Mark orphan as matched
                     orphanRepository.markAsMatched(orphan.id, orderId, order.serverId)
+                    // 🌐 ยอดเงิน (orphan) นี้เป็นของเว็บของบิลที่เพิ่งอนุมัติ
+                    transactionRepository.recordOrderAttribution(orphan.transactionId, order)
                     showOrphanMatchNotification(orphan.amount, order.orderNumber)
                 }
             }

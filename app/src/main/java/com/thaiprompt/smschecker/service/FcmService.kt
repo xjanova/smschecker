@@ -15,6 +15,7 @@ import com.thaiprompt.smschecker.data.db.ServerConfigDao
 import com.thaiprompt.smschecker.data.model.ApprovalStatus
 import com.thaiprompt.smschecker.data.model.MatchConfidence
 import com.thaiprompt.smschecker.data.model.OrderApproval
+import com.thaiprompt.smschecker.domain.attribution.SiteNames
 import com.thaiprompt.smschecker.ui.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -250,18 +251,24 @@ class FcmService : FirebaseMessagingService() {
         }
 
         // หาเซิร์ฟที่ตรงกับ server_url จาก FCM (ถ้ามี)
-        val server = if (serverUrl != null) {
+        val matchedByUrl = if (serverUrl != null) {
             // Normalize URL เพื่อเปรียบเทียบ (ตัด trailing slash, lowercase)
             val normalizedFcmUrl = serverUrl.trimEnd('/').lowercase()
+            val fcmHost = SiteNames.hostOf(serverUrl)
             servers.firstOrNull { it.baseUrl.trimEnd('/').lowercase() == normalizedFcmUrl }
                 ?: servers.firstOrNull { normalizedFcmUrl.contains(it.baseUrl.trimEnd('/').lowercase()) }
-                ?: servers.firstOrNull() // fallback ถ้าหาไม่เจอ
+                // 🌐 เทียบ host แบบ IDN (จันทรา.online ⇄ xn--82c4af5bzdj.online, มี/ไม่มี www.)
+                ?: fcmHost?.let { h -> servers.firstOrNull { SiteNames.hostOf(it.baseUrl) == h } }
         } else {
-            servers.firstOrNull()
+            null
         }
+        // 🌐 (2026-09-15) เดาเซิร์ฟ "ตัวแรก" ได้เฉพาะตอนผูกเซิร์ฟเดียว — ถ้าผูกหลายเว็บแล้วเดาผิด
+        //   บิลจะไปติดเว็บผิด (กดอนุมัติแล้ววิ่งไปเซิร์ฟผิด) → ข้าม insert ทันที ปล่อยให้
+        //   OrderSyncWorker (enqueue ต่อจากนี้) ดึงบิลจากเซิร์ฟที่ถูกต้องเอง
+        val server = matchedByUrl ?: servers.singleOrNull()
 
         if (server == null) {
-            Log.w(TAG, "insertFortuneOrderFromFcm: Could not find matching server (serverUrl=$serverUrl)")
+            Log.w(TAG, "insertFortuneOrderFromFcm: Could not find matching server (serverUrl=$serverUrl, activeServers=${servers.size}) — waiting for sync")
             return
         }
 
@@ -283,7 +290,7 @@ class FcmService : FirebaseMessagingService() {
             productName = "ดูดวง",
             customerName = customerName ?: "ลูกค้าดูดวง",
             amount = amount,
-            serverName = server.name,
+            serverName = server.displayName(),
             // 🏬 (2026-08-16) เพจ/สาขาจาก FCM data — chip ขึ้นทันที ไม่ต้องรอ sync รอบแรก
             branchName = branchName,
             branchIsDefault = branchIsDefault,

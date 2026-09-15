@@ -449,13 +449,19 @@ class TtsManager @Inject constructor(
         }
     }
 
+    /**
+     * @param siteName 🌐 (2026-09-15) เว็บที่ยอดเงินเข้านี้เป็นของมัน → "…จาก <เว็บ>" (null = ไม่รู้ = ประโยคเดิม)
+     * @param siteConflict ยอดนี้ตรงกับบิลหลายเว็บ → ต่อท้ายคำเตือนสั้นๆ ให้แอดมินตรวจ
+     */
     fun speakTransaction(
         bankName: String,
         amount: String,
         isCredit: Boolean,
         orderNumber: String? = null,
         productName: String? = null,
-        customerName: String? = null
+        customerName: String? = null,
+        siteName: String? = null,
+        siteConflict: Boolean = false
     ) {
         if (!isTtsEnabled()) return
 
@@ -478,7 +484,9 @@ class TtsManager @Inject constructor(
             speakType = speakType,
             speakOrder = speakOrder,
             speakProduct = speakProduct,
-            speakCustomer = speakCustomer
+            speakCustomer = speakCustomer,
+            siteName = siteName,
+            siteConflict = siteConflict
         )
 
         if (message.isNotBlank()) {
@@ -502,9 +510,14 @@ class TtsManager @Inject constructor(
         speakType: Boolean = true,
         speakOrder: Boolean = true,
         speakProduct: Boolean = true,
-        speakCustomer: Boolean = true
+        speakCustomer: Boolean = true,
+        siteName: String? = null,
+        siteConflict: Boolean = false
     ): String {
         val langKey = getEffectiveLangKey()
+        // 🌐 เว็บของยอดนี้ — เฉพาะเงินเข้า; conflict ชนะชื่อเว็บ (ไม่อ่านชื่อเว็บใดเว็บหนึ่งตอนที่ยังชนกันอยู่)
+        val site = siteName?.trim()?.takeIf { isCredit && !siteConflict && it.isNotEmpty() }
+        val conflict = isCredit && siteConflict
 
         return buildString {
             if (langKey == "en") {
@@ -518,6 +531,14 @@ class TtsManager @Inject constructor(
                 if (speakAmount) {
                     if (isNotEmpty()) append(", ")
                     append("amount $amount baht")
+                }
+                if (site != null) {
+                    if (isNotEmpty()) append(", ")
+                    append("for $site")
+                }
+                if (conflict) {
+                    if (isNotEmpty()) append(". ")
+                    append("Matches several sites, please check")
                 }
                 var inDetail = false
                 if (speakOrder && orderNumber != null) {
@@ -544,6 +565,14 @@ class TtsManager @Inject constructor(
                 if (speakAmount) {
                     if (isNotEmpty()) append(" ")
                     append("จำนวน $amount บาท")
+                }
+                if (site != null) {
+                    if (isNotEmpty()) append(" ")
+                    append("จาก $site")
+                }
+                if (conflict) {
+                    if (isNotEmpty()) append(" ")
+                    append("ยอดนี้ตรงกับหลายเว็บ กรุณาตรวจสอบ")
                 }
                 if (speakOrder && orderNumber != null) {
                     if (isNotEmpty()) append(" ")

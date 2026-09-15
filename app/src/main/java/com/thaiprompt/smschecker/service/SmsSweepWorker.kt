@@ -117,10 +117,15 @@ class SmsSweepWorker @AssistedInject constructor(
                     //   หมายเหตุ: sweep ไม่ทำ order matching → อ่านแค่ ประเภท+ธนาคาร+ยอด (ไม่มีรายละเอียดบิล) — ดีกว่าเงียบ
                     if (tx.timestamp >= startTime - ANNOUNCE_RECENCY_MS) {
                         try {
+                            // 🌐 /notify อาจบอกแล้วว่ายอดนี้เป็นของเว็บไหน (หรือชนหลายเว็บ) — อ่านแถวล่าสุด
+                            val latest = try { transactionRepository.getTransaction(insertedId) } catch (_: Exception) { null }
+                            val isCredit = tx.type == com.thaiprompt.smschecker.data.model.TransactionType.CREDIT
                             ttsManager.speakTransaction(
                                 bankName = tx.bank,
                                 amount = tx.amount,
-                                isCredit = tx.type == com.thaiprompt.smschecker.data.model.TransactionType.CREDIT
+                                isCredit = isCredit,
+                                siteName = if (isCredit) latest?.attributedSiteName() else null,
+                                siteConflict = isCredit && latest?.matchConflict == true
                             )
                         } catch (e: Exception) {
                             Log.w(TAG, "Sweep TTS announce failed", e)

@@ -14,11 +14,14 @@ import com.thaiprompt.smschecker.SmsCheckerApp
 import com.thaiprompt.smschecker.data.db.SmsSenderRuleDao
 import com.thaiprompt.smschecker.data.license.LicenseManager
 import com.thaiprompt.smschecker.data.model.ApprovalStatus
+import com.thaiprompt.smschecker.data.model.BankTransaction
 import com.thaiprompt.smschecker.data.model.TransactionSource
 import com.thaiprompt.smschecker.data.model.TransactionType
 import com.thaiprompt.smschecker.data.repository.OrderRepository
 import com.thaiprompt.smschecker.data.repository.OrphanTransactionRepository
 import com.thaiprompt.smschecker.data.repository.TransactionRepository
+import com.thaiprompt.smschecker.domain.attribution.AttributionEvent
+import com.thaiprompt.smschecker.domain.attribution.SiteAttribution
 import com.thaiprompt.smschecker.domain.parser.BankSmsParser
 import com.thaiprompt.smschecker.security.SecureStorage
 import com.thaiprompt.smschecker.ui.MainActivity
@@ -165,97 +168,18 @@ class SmsProcessingService : Service() {
 
                 // Try to match with orders using MATCH-ONLY MODE
                 // Query servers with SMS amount instead of fetching all orders
-                var matchedOrderNumber: String? = null
-                var matchedProductName: String? = null
-                var matchedCustomerName: String? = null
-                var isServerApproved = false  // ← TTS จะอ่านเฉพาะเมื่อ server approve จริงเท่านั้น
+                var creditMatch = CreditMatch()  // ← TTS อ่านรายละเอียดบิลเฉพาะเมื่อ server approve จริงเท่านั้น
                 if (transaction.type == TransactionType.CREDIT) {
                     try {
                         val amountDouble = transaction.amount.toDoubleOrNull()
                         if (amountDouble != null) {
-                            Log.d(TAG, "🔍 MATCH-ONLY MODE: Querying servers for amount: $amountDouble")
-
-                            // Use match-only mode: query servers with amount (include bank and timestamp for history)
-                            val matchResult = orderRepository.matchOrderByAmount(
-                                amount = amountDouble,
-                                bank = transaction.bank,
-                                transactionTimestamp = timestamp
+                            creditMatch = matchCreditToOrders(
+                                savedTransaction = savedTransaction,
+                                amountDouble = amountDouble,
+                                timestamp = timestamp,
+                                source = TransactionSource.SMS,
+                                via = "SMS"
                             )
-
-                            if (matchResult != null) {
-                                val matchedOrder = matchResult.order
-                                sessionMatchedCount.incrementAndGet()
-                                matchedOrderNumber = matchedOrder.orderNumber
-                                matchedProductName = matchedOrder.productName
-                                matchedCustomerName = matchedOrder.customerName
-                                Log.d(TAG, "✅ Matched transaction with order: ${matchedOrder.orderNumber} on server ${matchResult.serverName}")
-                                updateNotification("กำลังทำงาน | ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.get()}")
-
-                                // Server's /match endpoint already auto-approves when auto_confirm=true
-                                // Only send approve if order is still pending (server didn't auto-approve)
-                                val isAlreadyApproved = matchedOrder.approvalStatus == com.thaiprompt.smschecker.data.model.ApprovalStatus.AUTO_APPROVED ||
-                                    matchedOrder.approvalStatus == com.thaiprompt.smschecker.data.model.ApprovalStatus.MANUALLY_APPROVED
-                                if (!isAlreadyApproved) {
-                                    try {
-                                        val approvalSuccess = orderRepository.approveOrder(matchedOrder.id)
-                                        if (approvalSuccess) {
-                                            Log.d(TAG, "✅ Successfully approved order: ${matchedOrder.orderNumber}")
-                                            isServerApproved = true
-                                        } else {
-                                            Log.w(TAG, "⚠️ Failed to approve order: ${matchedOrder.orderNumber}")
-                                        }
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "Error approving order: ${matchedOrder.orderNumber}", e)
-                                    }
-                                } else {
-                                    Log.d(TAG, "✅ Order already approved by server: ${matchedOrder.orderNumber}")
-                                    isServerApproved = true
-                                }
-                            } else {
-                                // ไม่พบออเดอร์ที่ตรงกัน → เก็บเป็น Orphan Transaction
-                                // 🔧 (2026-05-21) เก็บ orphan **ทุกยอด** (รวมเลขกลม .00)
-                                //   เคสบั๊กเดิม: filter hasDecimal ทำให้ SMS เลขกลม (ลูกค้าโอน 39, 100, 500 บาท)
-                                //   ถูก skip → admin ไม่เห็นใน app → ไม่มีโอกาส manual match → ลูกค้าเดือดร้อน
-                                //   user spec (2026-05-21): "ยอดที่ลูกค้าโอน แบบไม่มีเศษสตางค์ ทำไมไม่เห็น"
-                                //   ผลที่ตามมา: amount=.00 จะ match UPA ไม่ได้ (ระบบใช้ทศนิยม) แต่
-                                //   admin เห็นใน Orphans tab + Force Approve ทีละบิลได้
-                                Log.d(TAG, "⏳ No matching order for amount $amountDouble, saving as orphan")
-                                var savedOrphanId: Long = -1
-                                try {
-                                    savedOrphanId = orphanRepository.saveAsOrphan(
-                                        transaction = savedTransaction,
-                                        source = com.thaiprompt.smschecker.data.model.TransactionSource.SMS
-                                    )
-                                    Log.i(TAG, "💾 Saved orphan transaction: ${savedTransaction.bank} ${savedTransaction.amount}")
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Failed to save orphan transaction", e)
-                                }
-
-                                // 🤖 (2026-05-21) Smart mode auto-match
-                                //   ถ้า device approval_mode=SMART + เจอ candidate confidence สูง
-                                //   → confirm ทันที (ไม่รอ admin กดที่ orphans tab)
-                                //   Criteria: 1 candidate เดียว + name_score>=70 + time_delta<=60min
-                                try {
-                                    val matchedBill = orderRepository.attemptSmartMatchForOrphan(
-                                        amount = amountDouble,
-                                        senderName = savedTransaction.senderOrReceiver,
-                                        smsTimestamp = savedTransaction.timestamp
-                                    )
-                                    if (matchedBill != null) {
-                                        Log.w(TAG, "🤖 SMART AUTO: SMS matched to $matchedBill (no admin click needed)")
-                                        // 🛡️ (2026-06-04) mark orphan ว่า resolved ทันที กัน reconciler (RealtimeSyncService/
-                                        //   OrderSyncWorker checkOrphansForNewOrders) มาจับ orphan เดิมแล้ว approve/dispatch ซ้ำ
-                                        //   (บิลดูดวงโดน dispatch 2 รอบ = เสียงาน). orphan ที่ confirm แล้วต้องออกจาก PENDING
-                                        if (savedOrphanId > 0) {
-                                            try { orphanRepository.markAsManuallyResolved(savedOrphanId, "smart-auto:$matchedBill") }
-                                            catch (e: Exception) { Log.w(TAG, "mark orphan resolved failed", e) }
-                                        }
-                                        updateNotification("กำลังทำงาน | ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.incrementAndGet()} 🤖")
-                                    }
-                                } catch (e: Exception) {
-                                    Log.w(TAG, "Smart auto-match failed (non-fatal)", e)
-                                }
-                            }
                         }
                     } catch (e: Exception) {
                         Log.w(TAG, "Order matching failed", e)
@@ -264,9 +188,11 @@ class SmsProcessingService : Service() {
 
                 // Sync to servers
                 val synced = repository.syncTransaction(savedTransaction)
+                // 🌐 อ่านแถวล่าสุด — /orders/match + /notify อาจบันทึกว่ายอดนี้เป็นของเว็บไหน/ชนหลายเว็บ
+                val finalTransaction = latestOf(savedTransaction)
                 if (synced) {
                     Log.d(TAG, "Transaction synced successfully")
-                    showTransactionNotification(savedTransaction)
+                    showTransactionNotification(finalTransaction)
                 } else {
                     Log.w(TAG, "Transaction saved locally but sync failed")
                 }
@@ -278,18 +204,7 @@ class SmsProcessingService : Service() {
                 //     ทั้งที่ approveOrder() ได้ queue PendingAction.APPROVE ไว้ retry แล้ว บิลจะเขียวในที่สุด
                 //   แก้: พูดยอดเสมอ; ส่วนรายละเอียดบิล (เลขบิล/สินค้า/เจ้าของ) อ่านเฉพาะเมื่อ server ยืนยันแล้ว (เขียว)
                 //     เพื่อกันการอ่าน "ชื่อเจ้าของผิดบิล" ก่อนยืนยัน (กรณียอดซ้ำหลายบิล)
-                try {
-                    ttsManager.speakTransaction(
-                        bankName = transaction.bank,
-                        amount = transaction.amount,
-                        isCredit = transaction.type == TransactionType.CREDIT,
-                        orderNumber = if (isServerApproved) matchedOrderNumber else null,
-                        productName = if (isServerApproved) matchedProductName else null,
-                        customerName = if (isServerApproved) matchedCustomerName else null
-                    )
-                } catch (e: Exception) {
-                    Log.w(TAG, "TTS announcement failed", e)
-                }
+                speakTransaction(finalTransaction, creditMatch)
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing SMS", e)
@@ -342,87 +257,18 @@ class SmsProcessingService : Service() {
 
                 // Try to match with orders using MATCH-ONLY MODE
                 // Query servers with notification amount instead of fetching all orders
-                var matchedOrderNumber: String? = null
-                var matchedProductName: String? = null
-                var matchedCustomerName: String? = null
-                var isServerApproved2 = false  // ← TTS จะอ่านเฉพาะเมื่อ server approve จริงเท่านั้น
+                var creditMatch = CreditMatch()  // ← TTS อ่านรายละเอียดบิลเฉพาะเมื่อ server approve จริงเท่านั้น
                 if (notifTransaction.type == TransactionType.CREDIT) {
                     try {
                         val amountDouble = notifTransaction.amount.toDoubleOrNull()
                         if (amountDouble != null) {
-                            Log.d(TAG, "🔍 MATCH-ONLY MODE: Querying servers for notification amount: $amountDouble")
-
-                            // Use match-only mode: query servers with amount (include bank and timestamp for history)
-                            val matchResult = orderRepository.matchOrderByAmount(
-                                amount = amountDouble,
-                                bank = notifTransaction.bank,
-                                transactionTimestamp = timestamp
+                            creditMatch = matchCreditToOrders(
+                                savedTransaction = savedTransaction,
+                                amountDouble = amountDouble,
+                                timestamp = timestamp,
+                                source = TransactionSource.NOTIFICATION,
+                                via = "notification"
                             )
-
-                            if (matchResult != null) {
-                                val matchedOrder = matchResult.order
-                                sessionMatchedCount.incrementAndGet()
-                                matchedOrderNumber = matchedOrder.orderNumber
-                                matchedProductName = matchedOrder.productName
-                                matchedCustomerName = matchedOrder.customerName
-                                Log.d(TAG, "✅ Matched notification with order: ${matchedOrder.orderNumber} on server ${matchResult.serverName}")
-                                updateNotification("กำลังทำงาน | ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.get()}")
-
-                                // Server's /match endpoint already auto-approves when auto_confirm=true
-                                // Only send approve if order is still pending
-                                val isAlreadyApproved2 = matchedOrder.approvalStatus == com.thaiprompt.smschecker.data.model.ApprovalStatus.AUTO_APPROVED ||
-                                    matchedOrder.approvalStatus == com.thaiprompt.smschecker.data.model.ApprovalStatus.MANUALLY_APPROVED
-                                if (!isAlreadyApproved2) {
-                                    try {
-                                        val approvalSuccess = orderRepository.approveOrder(matchedOrder.id)
-                                        if (approvalSuccess) {
-                                            Log.d(TAG, "✅ Successfully approved order from notification: ${matchedOrder.orderNumber}")
-                                            isServerApproved2 = true
-                                        } else {
-                                            Log.w(TAG, "⚠️ Failed to approve order from notification: ${matchedOrder.orderNumber}")
-                                        }
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "Error approving order from notification: ${matchedOrder.orderNumber}", e)
-                                    }
-                                } else {
-                                    Log.d(TAG, "✅ Order already approved by server from notification: ${matchedOrder.orderNumber}")
-                                    isServerApproved2 = true
-                                }
-                            } else {
-                                // ไม่พบออเดอร์ที่ตรงกัน → เก็บเป็น Orphan Transaction
-                                // 🔧 (2026-05-21) เก็บ orphan ทุกยอด — ดูเหตุผลใน SMS path ด้านบน
-                                Log.d(TAG, "⏳ No matching order for notification amount $amountDouble, saving as orphan")
-                                var savedOrphanId: Long = -1
-                                try {
-                                    savedOrphanId = orphanRepository.saveAsOrphan(
-                                        transaction = savedTransaction,
-                                        source = com.thaiprompt.smschecker.data.model.TransactionSource.NOTIFICATION
-                                    )
-                                    Log.i(TAG, "💾 Saved orphan transaction from notification: ${savedTransaction.bank} ${savedTransaction.amount}")
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Failed to save orphan transaction from notification", e)
-                                }
-
-                                // 🤖 (2026-05-21) Smart mode auto-match (notification path)
-                                try {
-                                    val matchedBill = orderRepository.attemptSmartMatchForOrphan(
-                                        amount = amountDouble,
-                                        senderName = savedTransaction.senderOrReceiver,
-                                        smsTimestamp = savedTransaction.timestamp
-                                    )
-                                    if (matchedBill != null) {
-                                        Log.w(TAG, "🤖 SMART AUTO (notif): SMS matched to $matchedBill")
-                                        // 🛡️ (2026-06-04) mark orphan resolved ทันที — กัน reconciler จับซ้ำ (ดู SMS path ด้านบน)
-                                        if (savedOrphanId > 0) {
-                                            try { orphanRepository.markAsManuallyResolved(savedOrphanId, "smart-auto:$matchedBill") }
-                                            catch (e: Exception) { Log.w(TAG, "mark orphan resolved failed (notif)", e) }
-                                        }
-                                        updateNotification("กำลังทำงาน | ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.incrementAndGet()} 🤖")
-                                    }
-                                } catch (e: Exception) {
-                                    Log.w(TAG, "Smart auto-match (notification) failed", e)
-                                }
-                            }
                         }
                     } catch (e: Exception) {
                         Log.w(TAG, "Order matching failed for notification", e)
@@ -431,30 +277,200 @@ class SmsProcessingService : Service() {
 
                 // Sync to servers
                 val synced = repository.syncTransaction(savedTransaction)
+                val finalTransaction = latestOf(savedTransaction)
                 if (synced) {
                     Log.d(TAG, "Notification transaction synced successfully")
-                    showTransactionNotification(savedTransaction)
+                    showTransactionNotification(finalTransaction)
                 } else {
                     Log.w(TAG, "Notification transaction saved locally but sync failed")
                 }
 
                 // TTS announcement — ดูเหตุผลใน processSms() path ด้านบน (พูดยอดเสมอ, รายละเอียดบิลเมื่อเขียว)
-                try {
-                    ttsManager.speakTransaction(
-                        bankName = notifTransaction.bank,
-                        amount = notifTransaction.amount,
-                        isCredit = notifTransaction.type == TransactionType.CREDIT,
-                        orderNumber = if (isServerApproved2) matchedOrderNumber else null,
-                        productName = if (isServerApproved2) matchedProductName else null,
-                        customerName = if (isServerApproved2) matchedCustomerName else null
-                    )
-                } catch (e: Exception) {
-                    Log.w(TAG, "TTS announcement failed for notification", e)
-                }
+                speakTransaction(finalTransaction, creditMatch)
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing notification", e)
             }
+        }
+    }
+
+    /** ผลจับคู่เงินเข้า — รายละเอียดบิลใช้ประกอบเสียงประกาศ (อ่านเฉพาะเมื่อ server ยืนยันแล้ว) */
+    private data class CreditMatch(
+        val orderNumber: String? = null,
+        val productName: String? = null,
+        val customerName: String? = null,
+        val isServerApproved: Boolean = false
+    )
+
+    private fun ApprovalStatus?.isApproved(): Boolean =
+        this == ApprovalStatus.AUTO_APPROVED || this == ApprovalStatus.MANUALLY_APPROVED
+
+    /**
+     * จับคู่ยอดเงินเข้ากับบิลบน "ทุกเซิร์ฟ" — ใช้ร่วมกันทั้งทาง SMS และแจ้งเตือนแอปธนาคาร
+     * (เดิมเป็นโค้ดซ้ำสองชุด แยกไว้ที่เดียวเพื่อให้กติกา multi-site เหมือนกันทั้งสองทาง)
+     *
+     * 🌐 (2026-09-15) Multi-site (CONTRACT §E) — ตัดสินจากคำตอบครบทุกเซิร์ฟ:
+     *   ≥2 เว็บตรง → ห้ามอนุมัติที่ไหนเลย + ธงชนบนยอดเงิน + แจ้งเตือนชื่อเว็บ
+     *                ไม่เก็บเป็น orphan — กัน reconciler มา auto-approve ใบใดใบหนึ่งทีหลัง (แอดมินต้องเลือกเอง)
+     *   1 เว็บตรง  → อนุมัติที่เว็บนั้น (ทางเดิม) + บันทึกว่ายอดนี้เป็นของเว็บนั้น
+     *   0 เว็บ     → orphan (ทางเดิม); ถ้าเซิร์ฟตอบ external_site → จำเป็น hint และไม่ smart-auto
+     */
+    private suspend fun matchCreditToOrders(
+        savedTransaction: BankTransaction,
+        amountDouble: Double,
+        timestamp: Long,
+        source: TransactionSource,
+        via: String
+    ): CreditMatch {
+        Log.d(TAG, "🔍 MATCH-ONLY MODE: Querying servers for $via amount: $amountDouble")
+
+        // Use match-only mode: query servers with amount (include bank and timestamp for history)
+        val decision = orderRepository.matchOrderByAmount(
+            amount = amountDouble,
+            bank = savedTransaction.bank,
+            transactionTimestamp = timestamp
+        )
+
+        // ⚠️ ยอดเดียวตรงกับบิลหลายเว็บ — ห้ามส่ง approve ไปที่ไหนเลย
+        if (decision.isConflict) {
+            val sites = decision.matches.map { it.siteName }
+            // เซิร์ฟบางตัว auto-confirm เองตอน /orders/match (auto_confirm_matched) — บอกแอดมินว่าเว็บไหนอนุมัติไปแล้ว
+            val alreadyApprovedAt = decision.matches
+                .filter { it.match?.order?.approvalStatus.isApproved() }
+                .map { it.siteName }
+            Log.w(TAG, "⚠️ MULTI-SITE CONFLICT ($via): amount=$amountDouble matched $sites — NOT approving anywhere (already approved server-side at: $alreadyApprovedAt)")
+            repository.recordAttribution(
+                savedTransaction.id,
+                AttributionEvent.Conflict(sites, alreadyApprovedAt)
+            )
+            return CreditMatch()
+        }
+
+        val matchResult = decision.winner?.match
+        if (matchResult != null) {
+            val matchedOrder = matchResult.order
+            sessionMatchedCount.incrementAndGet()
+            Log.d(TAG, "✅ Matched $via with order: ${matchedOrder.orderNumber} on server ${matchResult.serverName} (site '${matchResult.siteName}')")
+            updateNotification("กำลังทำงาน | ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.get()}")
+
+            // 🌐 ยอดนี้เป็นของเว็บนี้ (บันทึกแม้ approve รอบนี้พลาด — approveOrder queue retry ไว้แล้ว)
+            repository.recordAttribution(
+                savedTransaction.id,
+                AttributionEvent.Matched(matchResult.serverId, matchResult.siteName, SiteAttribution.SOURCE_MATCH)
+            )
+
+            // Server's /match endpoint already auto-approves when auto_confirm=true
+            // Only send approve if order is still pending (server didn't auto-approve)
+            var isServerApproved = false
+            if (!matchedOrder.approvalStatus.isApproved()) {
+                try {
+                    val approvalSuccess = orderRepository.approveOrder(matchedOrder.id)
+                    if (approvalSuccess) {
+                        Log.d(TAG, "✅ Successfully approved order ($via): ${matchedOrder.orderNumber}")
+                        isServerApproved = true
+                    } else {
+                        Log.w(TAG, "⚠️ Failed to approve order ($via): ${matchedOrder.orderNumber}")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error approving order ($via): ${matchedOrder.orderNumber}", e)
+                }
+            } else {
+                Log.d(TAG, "✅ Order already approved by server ($via): ${matchedOrder.orderNumber}")
+                isServerApproved = true
+            }
+            return CreditMatch(
+                orderNumber = matchedOrder.orderNumber,
+                productName = matchedOrder.productName,
+                customerName = matchedOrder.customerName,
+                isServerApproved = isServerApproved
+            )
+        }
+
+        // ไม่พบออเดอร์ที่ตรงกัน → เก็บเป็น Orphan Transaction
+        // 🔧 (2026-05-21) เก็บ orphan **ทุกยอด** (รวมเลขกลม .00)
+        //   เคสบั๊กเดิม: filter hasDecimal ทำให้ SMS เลขกลม (ลูกค้าโอน 39, 100, 500 บาท)
+        //   ถูก skip → admin ไม่เห็นใน app → ไม่มีโอกาส manual match → ลูกค้าเดือดร้อน
+        //   user spec (2026-05-21): "ยอดที่ลูกค้าโอน แบบไม่มีเศษสตางค์ ทำไมไม่เห็น"
+        //   ผลที่ตามมา: amount=.00 จะ match UPA ไม่ได้ (ระบบใช้ทศนิยม) แต่
+        //   admin เห็นใน Orphans tab + Force Approve ทีละบิลได้
+        Log.d(TAG, "⏳ No matching order for $via amount $amountDouble, saving as orphan")
+
+        // 🌐 CONTRACT §C3: เซิร์ฟบอกว่ายอดนี้เป็นของเว็บอื่น → จำเป็น hint (ไม่ใช่ match ไม่อนุมัติ)
+        val externalSite = decision.externalSite
+        if (externalSite != null) {
+            repository.recordExternalSiteHint(savedTransaction.id, externalSite, decision.externalSiteFromServerId)
+        }
+
+        var savedOrphanId: Long = -1
+        try {
+            savedOrphanId = orphanRepository.saveAsOrphan(
+                transaction = savedTransaction,
+                source = source
+            )
+            Log.i(TAG, "💾 Saved orphan transaction ($via): ${savedTransaction.bank} ${savedTransaction.amount}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save orphan transaction ($via)", e)
+        }
+
+        if (externalSite != null) {
+            // 🛡️ เซิร์ฟบอกแล้วว่าเงินนี้เป็นของ '$externalSite' — ห้าม smart-auto ไปยืนยันบิลของเว็บอื่น
+            //   (fail-open ไปหาแอดมิน ไม่ใช่ auto-credit)
+            Log.i(TAG, "🌐 external_site='$externalSite' ($via) — skip smart auto-match, leave for admin")
+            return CreditMatch()
+        }
+
+        // 🤖 (2026-05-21) Smart mode auto-match
+        //   ถ้า device approval_mode=SMART + เจอ candidate confidence สูง
+        //   → confirm ทันที (ไม่รอ admin กดที่ orphans tab)
+        //   Criteria: 1 candidate เดียว + name_score>=70 + time_delta<=60min
+        try {
+            val smartMatch = orderRepository.attemptSmartMatchForOrphan(
+                amount = amountDouble,
+                senderName = savedTransaction.senderOrReceiver,
+                smsTimestamp = savedTransaction.timestamp
+            )
+            if (smartMatch != null) {
+                val matchedBill = smartMatch.billReference
+                Log.w(TAG, "🤖 SMART AUTO ($via): SMS matched to $matchedBill (no admin click needed)")
+                // 🛡️ (2026-06-04) mark orphan ว่า resolved ทันที กัน reconciler (RealtimeSyncService/
+                //   OrderSyncWorker checkOrphansForNewOrders) มาจับ orphan เดิมแล้ว approve/dispatch ซ้ำ
+                //   (บิลดูดวงโดน dispatch 2 รอบ = เสียงาน). orphan ที่ confirm แล้วต้องออกจาก PENDING
+                if (savedOrphanId > 0) {
+                    try { orphanRepository.markAsManuallyResolved(savedOrphanId, "smart-auto:$matchedBill") }
+                    catch (e: Exception) { Log.w(TAG, "mark orphan resolved failed ($via)", e) }
+                }
+                repository.recordServerAttribution(savedTransaction.id, smartMatch.serverId)
+                updateNotification("กำลังทำงาน | ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.incrementAndGet()} 🤖")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Smart auto-match ($via) failed (non-fatal)", e)
+        }
+        return CreditMatch()
+    }
+
+    /** แถวล่าสุดจาก DB (มีข้อมูลเว็บที่ /orders/match + /notify เพิ่งบันทึก) — อ่านไม่ได้ใช้ตัวเดิม */
+    private suspend fun latestOf(transaction: BankTransaction): BankTransaction =
+        try { repository.getTransaction(transaction.id) ?: transaction } catch (e: Exception) { transaction }
+
+    /**
+     * ประกาศเสียง — พูดยอดเสมอ, รายละเอียดบิลเฉพาะเมื่อ server ยืนยันแล้ว
+     * 🌐 เงินเข้าที่รู้เว็บ → "…จาก <เว็บ>"; ชนหลายเว็บ → เตือนสั้นๆ; ไม่รู้เว็บ = ประโยคเดิม
+     */
+    private fun speakTransaction(transaction: BankTransaction, credit: CreditMatch) {
+        try {
+            val isCredit = transaction.type == TransactionType.CREDIT
+            ttsManager.speakTransaction(
+                bankName = transaction.bank,
+                amount = transaction.amount,
+                isCredit = isCredit,
+                orderNumber = if (credit.isServerApproved) credit.orderNumber else null,
+                productName = if (credit.isServerApproved) credit.productName else null,
+                customerName = if (credit.isServerApproved) credit.customerName else null,
+                siteName = if (isCredit) transaction.attributedSiteName() else null,
+                siteConflict = isCredit && transaction.matchConflict
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "TTS announcement failed (${transaction.sourceType})", e)
         }
     }
 
@@ -479,10 +495,12 @@ class SmsProcessingService : Service() {
             "💸 เงินออก - ${transaction.bank}"
         }
 
+        // 🌐 บอกเว็บของยอดนี้ในแจ้งเตือนด้วย (ไม่รู้เว็บ = ข้อความเดิม)
+        val siteText = if (transaction.matchConflict) "ตรงกับหลายเว็บ — กรุณาตรวจสอบ" else transaction.attributedSiteName()
         val notification = NotificationCompat.Builder(this, SmsCheckerApp.NOTIFICATION_CHANNEL_TRANSACTION)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
-            .setContentText(transaction.getFormattedAmount())
+            .setContentText(listOfNotNull(transaction.getFormattedAmount(), siteText).joinToString(" · "))
             .setSubText("ตรวจจับ ${sessionDetectedCount.get()} | แมท ${sessionMatchedCount.get()}")
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

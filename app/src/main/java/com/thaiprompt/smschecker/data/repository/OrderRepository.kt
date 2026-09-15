@@ -7,6 +7,9 @@ import com.thaiprompt.smschecker.data.db.MatchHistoryDao
 import com.thaiprompt.smschecker.data.db.OrderApprovalDao
 import com.thaiprompt.smschecker.data.db.ServerConfigDao
 import com.thaiprompt.smschecker.data.model.*
+import com.thaiprompt.smschecker.domain.attribution.SiteMatchDecision
+import com.thaiprompt.smschecker.domain.attribution.SiteMatchReply
+import com.thaiprompt.smschecker.domain.attribution.SiteNames
 import com.thaiprompt.smschecker.security.CryptoManager
 import com.thaiprompt.smschecker.security.SecureStorage
 import com.thaiprompt.smschecker.util.ParallelSyncHelper
@@ -521,13 +524,13 @@ class OrderRepository @Inject constructor(
      *   - time_delta <= 60 นาที (SMS มาภายใน 1 ชม. หลังบิล)
      *   - (amount >= base_price ตรวจฝั่ง backend แล้ว — built-in)
      *
-     * @return bill_reference ที่ match (null = ไม่ match auto, ต้อง admin กด)
+     * @return bill_reference + serverId ที่ match (null = ไม่ match auto, ต้อง admin กด)
      */
     suspend fun attemptSmartMatchForOrphan(
         amount: Double,
         senderName: String?,
         smsTimestamp: Long
-    ): String? {
+    ): SmartOrphanMatch? {
         // เช็คว่ามี server อยู่ใน smart mode ไหม
         val servers = serverConfigDao.getActiveConfigs()
         val smartServers = servers.filter { it.approvalMode == "smart" }
@@ -578,7 +581,7 @@ class OrderRepository @Inject constructor(
             smsNotificationId = null,
             autoSmart = true
         )
-        return if (ok) cand.bill_reference else null
+        return if (ok) SmartOrphanMatch(cand.bill_reference, serverId) else null
     }
 
     /**
@@ -1613,11 +1616,22 @@ class OrderRepository @Inject constructor(
             val client = apiClientFactory.getClient(server.baseUrl)
             val response = client.getDeviceSettings(apiKey, deviceId)
             if (response.isSuccessful) {
-                val serverMode = response.body()?.data?.approval_mode ?: "auto"
+                val settings = response.body()?.data
+                val serverMode = settings?.approval_mode ?: "auto"
                 val localMode = server.approvalMode
                 if (serverMode != localMode) {
                     Log.i(TAG, "syncApprovalMode: ${server.name} changed from $localMode → $serverMode")
                     serverConfigDao.updateApprovalMode(serverId, serverMode)
+                }
+
+                // 🌐 (2026-09-15) ชื่อเว็บที่เซิร์ฟบอกเอง → ServerConfig.siteName (ใช้แสดงแทนชื่อในเครื่อง)
+                //   device_name ไม่ใช้ — เป็นชื่อ "เครื่องนี้" ไม่ใช่ชื่อเว็บ
+                //   เซิร์ฟไม่ส่งมา = คงค่าเดิมไว้ (ไม่ล้างทิ้ง)
+                val remoteSiteName = SiteNames.clean(settings?.server_name)
+                    ?: SiteNames.clean(settings?.website_name)
+                if (remoteSiteName != null && remoteSiteName != server.siteName) {
+                    Log.i(TAG, "syncSiteName: ${server.name} → '$remoteSiteName' (was '${server.siteName}')")
+                    serverConfigDao.updateSiteName(serverId, remoteSiteName)
                 }
             }
         } catch (e: Exception) {
@@ -1633,16 +1647,24 @@ class OrderRepository @Inject constructor(
      * Match order by SMS amount - queries all active servers in PARALLEL.
      * Called when SMS is received instead of fetching all orders.
      *
+     * 🌐 (2026-09-15) Deterministic multi-server matching (CONTRACT §E)
+     *   เดิม: coroutine ตัวสุดท้ายที่เขียน matchedResult ชนะ — ถ้าสองเซิร์ฟตรงพร้อมกัน แอพสุ่มอนุมัติเว็บเดียว
+     *   ตอนนี้: รอคำตอบ "ครบทุกเซิร์ฟ" ก่อน แล้วค่อยตัดสินด้วย SiteMatchDecision
+     *     0 ตรง  → winner=null (ทาง orphan เดิม) + external_site เป็น hint
+     *     1 ตรง  → winner = เซิร์ฟนั้น (ทางเดิม)
+     *     ≥2 ตรง → isConflict — ผู้เรียกต้องไม่อนุมัติที่ไหนเลย
+     *
      * @param amount The exact SMS amount to match (e.g., "500.37")
      * @param bank Optional bank name for logging
      * @param transactionTimestamp Timestamp of the SMS transaction
-     * @return MatchResult containing the matched order, server ID, and query statistics
+     * @return decision over every server's reply (never null — empty when nothing could be queried)
      */
     suspend fun matchOrderByAmount(
         amount: Double,
         bank: String = "Unknown",
         transactionTimestamp: Long = System.currentTimeMillis()
-    ): MatchResult? {
+    ): SiteMatchDecision<MatchResult> {
+        val noResult = SiteMatchDecision<MatchResult>(matches = emptyList())
         val startTime = System.currentTimeMillis()
         val queriesCounter = AtomicInteger(0)
 
@@ -1650,13 +1672,13 @@ class OrderRepository @Inject constructor(
             serverConfigDao.getActiveConfigs()
         } catch (e: Exception) {
             Log.e("OrderRepository", "Failed to get active servers", e)
-            return null
+            return noResult
         }
-        val deviceId = secureStorage.getDeviceId() ?: return null
+        val deviceId = secureStorage.getDeviceId() ?: return noResult
 
         if (activeServers.isEmpty()) {
             Log.d("OrderRepository", "No active servers to query")
-            return null
+            return noResult
         }
 
         val amountStr = "%.2f".format(amount)
@@ -1668,58 +1690,68 @@ class OrderRepository @Inject constructor(
             if (apiKey != null) server.id to server.name else null
         }
 
-        var matchedResult: MatchResult? = null
-
+        // แต่ละ coroutine "คืนค่า" คำตอบของตัวเอง (ไม่เขียนตัวแปรร่วม) — results เรียงตาม serverList เสมอ
         val results = ParallelSyncHelper.executeParallel(
             servers = serverList,
             maxConcurrency = 5,
             timeoutMs = 15_000L
         ) { serverId ->
             queriesCounter.incrementAndGet()
-            val result = matchOrderFromServer(serverId, deviceId, amountStr)
-            if (result != null) {
-                matchedResult = result
-            }
+            matchOrderFromServer(serverId, deviceId, amountStr)
         }
+
+        val decision = SiteMatchDecision.decide(results.results.mapNotNull { it.data })
 
         val matchDuration = System.currentTimeMillis() - startTime
         val totalQueries = queriesCounter.get()
 
-        if (matchedResult != null) {
-            Log.i("OrderRepository", "✅ Order matched! server=${matchedResult!!.serverId}, order=${matchedResult!!.order.remoteApprovalId}, queries=$totalQueries, duration=${matchDuration}ms")
-
-            // Save match history
-            try {
-                val history = MatchHistory(
-                    amount = amount,
-                    amountString = amountStr,
-                    bank = bank,
-                    transactionTimestamp = transactionTimestamp,
-                    serverId = matchedResult!!.serverId,
-                    serverName = matchedResult!!.serverName,
-                    orderNumber = matchedResult!!.order.orderNumber,
-                    remoteOrderId = matchedResult!!.order.remoteApprovalId,
-                    serverQueriesCount = totalQueries,
-                    totalServersQueried = serverList.size,
-                    matchDurationMs = matchDuration,
-                    matchResult = com.thaiprompt.smschecker.data.model.MatchResult.SUCCESS
-                )
-                matchHistoryDao.insert(history)
-                Log.d("OrderRepository", "💾 Saved match history: $totalQueries queries, ${matchDuration}ms")
-            } catch (e: Exception) {
-                Log.e("OrderRepository", "Failed to save match history", e)
+        val winner = decision.winner?.match
+        when {
+            decision.isConflict -> {
+                val detail = decision.matches.joinToString { r ->
+                    "${r.siteName}(server=${r.serverId}, order=${r.match?.order?.orderNumber ?: r.match?.order?.remoteApprovalId}, status=${r.match?.order?.approvalStatus})"
+                }
+                Log.w("OrderRepository", "⚠️ MULTI-SITE CONFLICT: amount $amountStr matched ${decision.matches.size} servers [$detail] — no approval will be sent (queries=$totalQueries, duration=${matchDuration}ms)")
             }
-        } else {
-            Log.d("OrderRepository", "⏳ No matching order found on any server for amount $amountStr (queries=$totalQueries, duration=${matchDuration}ms)")
+            winner != null -> {
+                Log.i("OrderRepository", "✅ Order matched! server=${winner.serverId}, order=${winner.order.remoteApprovalId}, queries=$totalQueries, duration=${matchDuration}ms")
+
+                // Save match history
+                try {
+                    val history = MatchHistory(
+                        amount = amount,
+                        amountString = amountStr,
+                        bank = bank,
+                        transactionTimestamp = transactionTimestamp,
+                        serverId = winner.serverId,
+                        serverName = winner.siteName,
+                        orderNumber = winner.order.orderNumber,
+                        remoteOrderId = winner.order.remoteApprovalId,
+                        serverQueriesCount = totalQueries,
+                        totalServersQueried = serverList.size,
+                        matchDurationMs = matchDuration,
+                        matchResult = com.thaiprompt.smschecker.data.model.MatchResult.SUCCESS
+                    )
+                    matchHistoryDao.insert(history)
+                    Log.d("OrderRepository", "💾 Saved match history: $totalQueries queries, ${matchDuration}ms")
+                } catch (e: Exception) {
+                    Log.e("OrderRepository", "Failed to save match history", e)
+                }
+            }
+            else -> {
+                val hint = decision.externalSite?.let { " (external_site hint='$it' from server=${decision.externalSiteFromServerId})" } ?: ""
+                Log.d("OrderRepository", "⏳ No matching order found on any server for amount $amountStr (queries=$totalQueries, duration=${matchDuration}ms)$hint")
+            }
         }
 
-        return matchedResult
+        return decision
     }
 
     /**
      * Query a single server for matching order by amount.
+     * คืน null เมื่อถามไม่สำเร็จ (HTTP error / network) — นับเป็น "ไม่ตรง"
      */
-    private suspend fun matchOrderFromServer(serverId: Long, deviceId: String, amount: String): MatchResult? {
+    private suspend fun matchOrderFromServer(serverId: Long, deviceId: String, amount: String): SiteMatchReply<MatchResult>? {
         val server = serverConfigDao.getById(serverId) ?: return null
         val apiKey = secureStorage.getApiKey(serverId) ?: return null
 
@@ -1748,13 +1780,31 @@ class OrderRepository @Inject constructor(
                     // Update sync status
                     serverConfigDao.updateSyncStatus(serverId, System.currentTimeMillis(), "success")
 
-                    MatchResult(
+                    // ชื่อเว็บ: server_name → website_name (จากเซิร์ฟ) → ชื่อเซิร์ฟในเครื่อง
+                    val siteName = SiteNames.resolve(
+                        data.order.server_name,
+                        data.order.order_details_json?.get("website_name")?.toString(),
+                        server.displayName()
+                    ) ?: server.name
+
+                    SiteMatchReply(
                         serverId = serverId,
-                        serverName = server.name,
-                        order = localOrder
+                        siteName = siteName,
+                        match = MatchResult(
+                            serverId = serverId,
+                            serverName = server.name,
+                            order = localOrder,
+                            siteName = siteName
+                        )
                     )
                 } else {
-                    null
+                    // ไม่ตรง — แต่เซิร์ฟอาจบอกว่ายอดนี้เป็นของเว็บอื่น (CONTRACT §C3 external_site)
+                    SiteMatchReply(
+                        serverId = serverId,
+                        siteName = server.displayName(),
+                        match = null,
+                        externalSite = SiteNames.clean(data?.externalSiteName())
+                    )
                 }
             } else {
                 Log.w("OrderRepository", "Match request failed for ${server.name}: ${response.code()}")
@@ -1772,11 +1822,19 @@ class OrderRepository @Inject constructor(
 
     /**
      * Result of matching order by amount.
+     * [serverName] = ชื่อเซิร์ฟในเครื่อง (log), [siteName] = ชื่อเว็บที่ใช้แสดง/บันทึกกับยอดเงิน
      */
     data class MatchResult(
         val serverId: Long,
         val serverName: String,
-        val order: OrderApproval
+        val order: OrderApproval,
+        val siteName: String = serverName
+    )
+
+    /** smart-auto ยืนยันบิลให้ orphan สำเร็จ — [serverId] ไว้บันทึกว่ายอดนี้เป็นของเว็บไหน */
+    data class SmartOrphanMatch(
+        val billReference: String,
+        val serverId: Long
     )
 }
 

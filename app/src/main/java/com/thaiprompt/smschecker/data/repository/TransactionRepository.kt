@@ -8,13 +8,20 @@ import com.thaiprompt.smschecker.data.db.ServerConfigDao
 import com.thaiprompt.smschecker.data.db.SyncLogDao
 import com.thaiprompt.smschecker.data.db.TransactionDao
 import com.thaiprompt.smschecker.data.model.*
+import com.thaiprompt.smschecker.domain.attribution.AttributionEvent
+import com.thaiprompt.smschecker.domain.attribution.SiteAttribution
+import com.thaiprompt.smschecker.domain.attribution.SiteAttributionMerger
+import com.thaiprompt.smschecker.domain.attribution.SiteNames
 import com.thaiprompt.smschecker.security.CryptoManager
 import com.thaiprompt.smschecker.security.SecureStorage
+import com.thaiprompt.smschecker.service.SiteConflictNotifier
 import com.thaiprompt.smschecker.util.ParallelSyncHelper
 import com.thaiprompt.smschecker.util.RetryHelper
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -27,8 +34,15 @@ class TransactionRepository @Inject constructor(
     private val apiClientFactory: ApiClientFactory,
     private val cryptoManager: CryptoManager,
     private val secureStorage: SecureStorage,
-    private val gson: Gson
+    private val gson: Gson,
+    private val conflictNotifier: SiteConflictNotifier
 ) {
+    /** คำตอบ /notify ของเซิร์ฟ 1 ตัว ในมุม "ยอดนี้เป็นของเว็บไหน" */
+    private data class NotifyAttribution(
+        val matched: Boolean,
+        val siteName: String,
+        val externalSite: String?
+    )
     companion object {
         private const val TAG = "TransactionRepository"
         // cross-source (SMS ↔ notification ของแอปธนาคาร) dedup window — กว้างกว่า same-source (60s)
@@ -106,6 +120,136 @@ class TransactionRepository @Inject constructor(
         return transactionDao.insert(transaction)
     }
 
+    suspend fun getTransaction(id: Long): BankTransaction? = transactionDao.getById(id)
+
+    // =====================================================================
+    // 🌐 (2026-09-15) Multi-site attribution — CONTRACT §E
+    // =====================================================================
+
+    /** serialize read-merge-write ของ attribution — /orders/match, /notify, reconciler อาจมาพร้อมกัน */
+    private val attributionMutex = Mutex()
+
+    /**
+     * รวมหลักฐานใหม่เข้ากับสถานะ "ยอดนี้เป็นของเว็บไหน" ของ transaction (กติกาใน SiteAttributionMerger)
+     * ถ้าผลคือ conflict ใหม่ (หรือรายชื่อเว็บที่ชนเปลี่ยน) → เด้งแจ้งเตือนทันที
+     * ไม่ throw — การบันทึกเว็บพลาดต้องไม่ทำให้การประมวลผลเงินเข้าล้ม
+     */
+    suspend fun recordAttribution(transactionId: Long, event: AttributionEvent): SiteAttribution? {
+        if (transactionId <= 0) return null
+        return try {
+            attributionMutex.withLock {
+                val tx = transactionDao.getById(transactionId) ?: return@withLock null
+                val before = SiteAttribution.of(tx)
+                // เครื่องที่ผูกเซิร์ฟเดียว: "match ที่เซิร์ฟตัวเอง" ไม่มีอะไรต้องแยกเว็บ → ไม่บันทึก
+                //   เพื่อให้แถว/เสียงประกาศ/แจ้งเตือนของผู้ใช้เซิร์ฟเดียวเหมือนเดิมทุกอย่าง
+                //   (hint/conflict ยังบันทึกเสมอ — เป็นเรื่องหลายเว็บโดยธรรมชาติ)
+                if (event is AttributionEvent.Matched && !isMultiSiteDevice()) return@withLock before
+                val after = SiteAttributionMerger.merge(before, event)
+                if (after != before) {
+                    transactionDao.updateAttribution(
+                        id = transactionId,
+                        serverId = after.serverId,
+                        siteName = after.siteName,
+                        conflict = after.conflict,
+                        conflictSites = after.conflictSitesColumn(),
+                        source = after.source
+                    )
+                    if (after.conflict) {
+                        Log.w(TAG, "⚠️ MULTI-SITE CONFLICT tx=$transactionId ${tx.bank} ${tx.amount} sites=${after.conflictSites} (event=$event)")
+                    } else {
+                        Log.i(TAG, "🌐 tx=$transactionId attributed to '${after.siteName}' (server=${after.serverId}, via=${after.source})")
+                    }
+                    if (before.source == SiteAttribution.SOURCE_HINT && !after.conflict && after.serverId != before.serverId) {
+                        Log.w(TAG, "🌐 tx=$transactionId hint said '${before.siteName}' but server ${after.serverId} ('${after.siteName}') matched it")
+                    }
+                }
+                if (after.conflict && after.conflictSites != before.conflictSites) {
+                    conflictNotifier.notifyConflict(
+                        transaction = tx,
+                        sites = after.conflictSites,
+                        alreadyApprovedAt = (event as? AttributionEvent.Conflict)?.alreadyApprovedAt ?: emptyList()
+                    )
+                }
+                after
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "recordAttribution failed tx=$transactionId event=$event", e)
+            null
+        }
+    }
+
+    /** ผูกเซิร์ฟที่เปิดใช้งานมากกว่า 1 ตัว (อ่านไม่ได้ = ถือว่าใช่ — บันทึกไว้ก่อนปลอดภัยกว่า) */
+    private suspend fun isMultiSiteDevice(): Boolean =
+        try { serverConfigDao.getActiveConfigs().size > 1 } catch (_: Exception) { true }
+
+    /**
+     * บันทึกว่ายอดนี้เป็นของเว็บของบิล [order] (reconciler/smart-auto อนุมัติบิลให้ยอดนี้แล้ว)
+     * ชื่อเว็บ: server_name → website_name → ชื่อเซิร์ฟในเครื่อง
+     */
+    suspend fun recordOrderAttribution(
+        transactionId: Long,
+        order: OrderApproval,
+        source: String = SiteAttribution.SOURCE_MATCH
+    ): SiteAttribution? {
+        val server = try { serverConfigDao.getById(order.serverId) } catch (_: Exception) { null }
+        val name = SiteNames.resolve(order.serverName, order.websiteName, server?.displayName())
+            ?: return null
+        return recordAttribution(transactionId, AttributionEvent.Matched(order.serverId, name, source))
+    }
+
+    /** บันทึกว่ายอดนี้เป็นของเซิร์ฟ [serverId] (เช่น smart-auto ยืนยันบิลของเซิร์ฟนั้น) — ชื่อ = ชื่อเซิร์ฟที่ใช้แสดง */
+    suspend fun recordServerAttribution(
+        transactionId: Long,
+        serverId: Long,
+        source: String = SiteAttribution.SOURCE_MATCH
+    ): SiteAttribution? {
+        val server = try { serverConfigDao.getById(serverId) } catch (_: Exception) { null } ?: return null
+        return recordAttribution(transactionId, AttributionEvent.Matched(serverId, server.displayName(), source))
+    }
+
+    /**
+     * external_site (CONTRACT §C3) — เซิร์ฟ [fromServerId] บอกว่ายอดนี้เป็นของเว็บ [site]
+     * ผูกกับเซิร์ฟในเครื่องที่ชื่อ/โดเมนตรงกัน (ถ้ามี) — เป็นแค่ hint ไม่ใช้อนุมัติ
+     */
+    suspend fun recordExternalSiteHint(
+        transactionId: Long,
+        site: String,
+        fromServerId: Long?
+    ): SiteAttribution? {
+        val name = SiteNames.clean(site) ?: return null
+        val servers = try { serverConfigDao.getActiveConfigs() } catch (_: Exception) { emptyList() }
+        val serverId = SiteNames.serverIdForSite(name, servers)?.takeIf { it != fromServerId }
+        return recordAttribution(transactionId, AttributionEvent.Hint(serverId, name, fromServerId))
+    }
+
+    /**
+     * นำคำตอบ /notify ของทุกเซิร์ฟมารวม — เรียงตามลำดับเซิร์ฟ (deterministic):
+     * matched=true ก่อน (ถ้าตอบ matched สองเซิร์ฟ = conflict), แล้วค่อย external_site hint
+     */
+    private suspend fun applyNotifyAttributions(
+        transaction: BankTransaction,
+        servers: List<ServerConfig>,
+        replies: Map<Long, NotifyAttribution>
+    ) {
+        if (transaction.type != TransactionType.CREDIT || replies.isEmpty()) return
+        val ordered = servers.mapNotNull { s -> replies[s.id]?.let { s to it } }
+        for ((server, reply) in ordered) {
+            if (reply.matched) {
+                recordAttribution(
+                    transaction.id,
+                    AttributionEvent.Matched(server.id, reply.siteName, SiteAttribution.SOURCE_NOTIFY)
+                )
+            }
+        }
+        for ((server, reply) in ordered) {
+            val site = reply.externalSite ?: continue
+            if (reply.matched) continue
+            recordExternalSiteHint(transaction.id, site, server.id)
+        }
+    }
+
     /**
      * Sync a transaction to all active servers in PARALLEL.
      * Returns true if at least one server confirmed the transaction.
@@ -142,6 +286,9 @@ class TransactionRepository @Inject constructor(
         // Prepare server list for parallel execution
         val serverList = serversToSync.map { it.id to it.name }
 
+        // 🌐 คำตอบ /notify แต่ละเซิร์ฟ (matched / external_site) — thread-safe, รวมหลังทุกตัวเสร็จ
+        val notifyReplies = ConcurrentHashMap<Long, NotifyAttribution>()
+
         // Execute sync to all remaining servers in parallel
         val results = ParallelSyncHelper.executeParallelBoolean(
             servers = serverList,
@@ -149,8 +296,10 @@ class TransactionRepository @Inject constructor(
             timeoutMs = 10_000L  // 10s per server (reduced for real-time)
         ) { serverId ->
             val server = serverConfigDao.getById(serverId) ?: return@executeParallelBoolean false
-            syncToServer(transaction, server, deviceId)
+            syncToServer(transaction, server, deviceId, notifyReplies)
         }
+
+        applyNotifyAttributions(transaction, serversToSync, notifyReplies)
 
         // Update status for each server
         for (result in results.results) {
@@ -219,7 +368,8 @@ class TransactionRepository @Inject constructor(
     private suspend fun syncToServer(
         transaction: BankTransaction,
         server: ServerConfig,
-        deviceId: String
+        deviceId: String,
+        notifyReplies: MutableMap<Long, NotifyAttribution>? = null
     ): Boolean {
         val apiKey = secureStorage.getApiKey(server.id) ?: return false
         val secretKey = secureStorage.getSecretKey(server.id) ?: return false
@@ -277,6 +427,9 @@ class TransactionRepository @Inject constructor(
                 val matched = responseData?.get("matched") as? Boolean ?: false
                 val fortuneReading = responseData?.get("fortune_reading") as? Boolean ?: false
                 val anyMatched = matched || fortuneReading
+                // 🌐 CONTRACT §C3: เซิร์ฟบอกว่ายอดนี้เป็นของเว็บอื่น (hint — ไม่ใช่ match)
+                val externalSite = SiteNames.clean(responseData?.get("external_site") as? String)
+                var matchedSiteName: String? = null
                 if (anyMatched) {
                     Log.i(TAG, "syncToServer: Server matched payment! matched=$matched fortuneReading=$fortuneReading")
                     try {
@@ -289,6 +442,11 @@ class TransactionRepository @Inject constructor(
                             val orderJson = gson.toJson(orderMap)
                             val remoteOrder = gson.fromJson(orderJson, RemoteOrderApproval::class.java)
                             if (remoteOrder != null) {
+                                matchedSiteName = SiteNames.resolve(
+                                    remoteOrder.server_name,
+                                    remoteOrder.order_details_json?.get("website_name")?.toString(),
+                                    null
+                                )
                                 val localOrder = remoteOrder.toLocalEntity(server.id)
                                 val existing = orderApprovalDao.getByRemoteId(remoteOrder.id, server.id)
                                 if (existing != null) {
@@ -305,6 +463,16 @@ class TransactionRepository @Inject constructor(
                     } catch (e: Exception) {
                         Log.w(TAG, "syncToServer: Failed to process matched order from response", e)
                     }
+                }
+                if (anyMatched || externalSite != null) {
+                    notifyReplies?.put(
+                        server.id,
+                        NotifyAttribution(
+                            matched = anyMatched,
+                            siteName = matchedSiteName ?: server.displayName(),
+                            externalSite = externalSite
+                        )
+                    )
                 }
                 true
             } else {

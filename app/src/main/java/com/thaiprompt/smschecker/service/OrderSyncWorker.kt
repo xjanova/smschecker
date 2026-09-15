@@ -26,7 +26,8 @@ class OrderSyncWorker @AssistedInject constructor(
     private val orderRepository: OrderRepository,
     private val orphanRepository: OrphanTransactionRepository,
     private val misclassificationRepository: MisclassificationReportRepository,
-    private val secureStorage: SecureStorage
+    private val secureStorage: SecureStorage,
+    private val transactionRepository: com.thaiprompt.smschecker.data.repository.TransactionRepository
 ) : CoroutineWorker(appContext, workerParams) {
 
     // Track FCM sync result for debug report
@@ -153,6 +154,8 @@ class OrderSyncWorker @AssistedInject constructor(
                 if (approved) {
                     // Mark orphan as matched
                     orphanRepository.markAsMatched(orphan.id, orderId, order.serverId)
+                    // 🌐 ยอดเงิน (orphan) นี้เป็นของเว็บของบิลที่เพิ่งอนุมัติ
+                    transactionRepository.recordOrderAttribution(orphan.transactionId, order)
                 }
             }
         } catch (e: Exception) {
