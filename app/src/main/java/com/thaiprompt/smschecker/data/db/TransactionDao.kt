@@ -226,4 +226,27 @@ interface TransactionDao {
 
     @Query("UPDATE bank_transactions SET bank = :bank, type = :type, amount = :amount WHERE id = :id")
     suspend fun updateTransaction(id: Long, bank: String, type: TransactionType, amount: String)
+
+    /**
+     * 🌐 (2026-09-15) บันทึกว่ายอดนี้เป็นของเว็บไหน (multi-site attribution)
+     * เขียนเฉพาะคอลัมน์ attribution — ไม่แตะสถานะ sync/ข้อมูล SMS
+     * เรียกผ่าน TransactionRepository.recordAttribution() เท่านั้น (มี mutex กัน read-merge-write ชนกัน)
+     */
+    @Query("""
+        UPDATE bank_transactions
+        SET matchedServerId = :serverId,
+            matchedSiteName = :siteName,
+            matchConflict = :conflict,
+            conflictSites = :conflictSites,
+            attributionSource = :source
+        WHERE id = :id
+    """)
+    suspend fun updateAttribution(
+        id: Long,
+        serverId: Long?,
+        siteName: String?,
+        conflict: Boolean,
+        conflictSites: String?,
+        source: String?
+    )
 }

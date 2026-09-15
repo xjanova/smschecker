@@ -21,8 +21,28 @@ data class BankTransaction(
     val syncedServerId: Long? = null, // Server ID that confirmed sync
     val syncResponse: String? = null,
     val sourceType: TransactionSource = TransactionSource.SMS,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    // 🌐 (2026-09-15) Multi-site attribution (CONTRACT §E) — ยอดนี้เป็นของ "เว็บไหน"
+    //   เครื่องเดียวอ่าน SMS บัญชีเดียว แต่ผูกหลายเซิร์ฟ (Thaiprompt + จันทรา.online)
+    //   matchedServerId  = เซิร์ฟที่ยอดนี้เป็นของมัน (ต่างจาก syncedServerId = เซิร์ฟแรกที่ /notify ผ่าน)
+    //   matchedSiteName  = ชื่อที่แสดง (server_name/website_name จากเซิร์ฟ → ชื่อที่ตั้งในเครื่อง)
+    //   matchConflict    = ยอดตรงกับบิลมากกว่า 1 เว็บ → แอพไม่อนุมัติที่ไหนเลย รอแอดมินตรวจ
+    //   conflictSites    = ชื่อเว็บที่ชนกัน คั่นด้วย '\n' (ใช้ conflictSiteList() อ่าน)
+    //   attributionSource = match | notify | hint | conflict (SiteAttribution.SOURCE_*)
+    val matchedServerId: Long? = null,
+    val matchedSiteName: String? = null,
+    val matchConflict: Boolean = false,
+    val conflictSites: String? = null,
+    val attributionSource: String? = null
 ) {
+    /** ชื่อเว็บที่ชนกัน (ว่าง = ไม่มี conflict) */
+    fun conflictSiteList(): List<String> =
+        conflictSites?.split('\n')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+
+    /** ชื่อเว็บที่ยอดนี้เป็นของมัน — null เมื่อยังไม่รู้ หรือเมื่อชนกันหลายเว็บ */
+    fun attributedSiteName(): String? =
+        if (matchConflict) null else matchedSiteName?.takeIf { it.isNotBlank() }
+
     fun getAmountAsBigDecimal(): BigDecimal = try {
         BigDecimal(amount)
     } catch (e: Exception) {

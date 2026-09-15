@@ -278,7 +278,13 @@ data class DeviceSettingsResponse(
 )
 
 data class DeviceSettings(
-    val approval_mode: String = "auto"
+    val approval_mode: String = "auto",
+    // 🌐 (2026-09-15) ชื่อเว็บที่เซิร์ฟบอกเอง (CONTRACT §D/§E) — optional, เซิร์ฟเก่าไม่ส่งมา
+    //   server_name/website_name = ชื่อเว็บ → เก็บเป็น ServerConfig.siteName
+    //   device_name = ชื่อ "เครื่องนี้" ในมุมมองของเซิร์ฟ (ไม่ใช่ชื่อเว็บ — ไม่เอามาแสดงเป็นชื่อเว็บ)
+    val server_name: String? = null,
+    val website_name: String? = null,
+    val device_name: String? = null
 )
 
 data class DashboardStatsResponse(
@@ -346,8 +352,15 @@ data class MatchOrderResponse(
 data class MatchOrderData(
     val matched: Boolean = false,
     val order: RemoteOrderApproval? = null,
-    val message: String? = null
-)
+    val message: String? = null,
+    // 🌐 (2026-09-15) CONTRACT §C3 — เซิร์ฟบอกว่า "ยอดนี้เป็นของเว็บอื่น" (เช่น 'จันทรา.online')
+    //   เป็นแค่ hint ว่าเงินนี้เป็นของเว็บไหน — ไม่นับเป็น match และห้ามอนุมัติจากค่านี้
+    //   ประกาศเป็น Any? ไม่ใช่ String? — ถ้าเซิร์ฟส่งผิดรูป (object/array) Gson จะไม่ทำให้ทั้ง response
+    //   parse พัง (ซึ่งจะทำให้ match จริงของเซิร์ฟนั้นหายเงียบ) — อ่านผ่าน externalSiteName()
+    val external_site: Any? = null
+) {
+    fun externalSiteName(): String? = external_site as? String
+}
 
 /**
  * Debug report body for sending diagnostic data to server.

@@ -25,7 +25,7 @@ import com.thaiprompt.smschecker.data.model.SyncLog
         MatchHistory::class,
         MisclassificationReport::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -305,6 +305,21 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE order_approvals ADD COLUMN branchName TEXT")
                 db.execSQL("ALTER TABLE order_approvals ADD COLUMN branchCode TEXT")
                 db.execSQL("ALTER TABLE order_approvals ADD COLUMN branchIsDefault INTEGER")
+            }
+        }
+
+        // 🌐 (2026-09-15) Multi-site attribution (CONTRACT §E) — ยอดเงินเข้าเป็นของเว็บไหน
+        //   bank_transactions: เว็บที่ยอดนี้เป็นของมัน + ธง "ตรงกับหลายเว็บ" (แอพไม่อนุมัติที่ไหนเลย)
+        //   server_configs.siteName: ชื่อเว็บที่เซิร์ฟบอกเองจาก GET device-settings
+        //   ทุกคอลัมน์ nullable / DEFAULT 0 → แถวเก่าไม่เปลี่ยนความหมาย (ยังไม่รู้เว็บ = ไม่มีชิป)
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE bank_transactions ADD COLUMN matchedServerId INTEGER")
+                db.execSQL("ALTER TABLE bank_transactions ADD COLUMN matchedSiteName TEXT")
+                db.execSQL("ALTER TABLE bank_transactions ADD COLUMN matchConflict INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE bank_transactions ADD COLUMN conflictSites TEXT")
+                db.execSQL("ALTER TABLE bank_transactions ADD COLUMN attributionSource TEXT")
+                db.execSQL("ALTER TABLE server_configs ADD COLUMN siteName TEXT")
             }
         }
 

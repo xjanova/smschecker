@@ -42,4 +42,8 @@ interface ServerConfigDao {
 
     @Query("UPDATE server_configs SET approvalMode = :mode, updatedAt = :now WHERE id = :serverId")
     suspend fun updateApprovalMode(serverId: Long, mode: String, now: Long = System.currentTimeMillis())
+
+    /** 🌐 (2026-09-15) ชื่อเว็บที่เซิร์ฟบอกเอง (device-settings server_name/website_name) */
+    @Query("UPDATE server_configs SET siteName = :siteName, updatedAt = :now WHERE id = :serverId")
+    suspend fun updateSiteName(serverId: Long, siteName: String?, now: Long = System.currentTimeMillis())
 }
