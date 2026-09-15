@@ -389,6 +389,10 @@ data class AppStrings(
     val splashCheckingLicense: String = "กำลังตรวจสอบสิทธิ์ใช้งาน"
     val splashSyncing: String = "กำลังดึงข้อมูลล่าสุดจากเซิร์ฟเวอร์"
     val splashReady: String = "พร้อมใช้งาน"
+    // 🌐 (2026-09-15) ชิปบอกว่ายอดเงินเข้าเป็นของเว็บไหน (multi-site attribution)
+    val siteChipDescription: String = "เว็บของยอดนี้"
+    val siteConflictLabel: String = "ยอดนี้ตรงกับหลายเว็บ"
+    val siteConflictCheck: String = "กรุณาตรวจสอบ"
 }
 
 val ThaiStrings = AppStrings(

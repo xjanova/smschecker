@@ -275,7 +275,7 @@ class DashboardViewModel @Inject constructor(
                     try {
                         val healthList = servers.map { server ->
                             ServerHealth(
-                                serverName = server.name,
+                                serverName = server.displayName(),
                                 isReachable = server.lastSyncStatus == "success",
                                 lastSyncAt = server.lastSyncAt,
                                 neverSynced = server.lastSyncStatus == null,

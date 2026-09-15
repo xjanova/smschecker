@@ -27,6 +27,7 @@ import com.thaiprompt.smschecker.data.model.TransactionSource
 import com.thaiprompt.smschecker.data.model.TransactionType
 import com.thaiprompt.smschecker.ui.components.BankLogoCircle
 import com.thaiprompt.smschecker.ui.components.GlassCard
+import com.thaiprompt.smschecker.ui.components.SiteAttributionChip
 import com.thaiprompt.smschecker.ui.theme.AppColors
 import com.thaiprompt.smschecker.ui.theme.AppStrings
 import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
@@ -346,6 +347,9 @@ private fun TransactionCard(
                         )
                     }
                 }
+
+                // 🌐 ยอดนี้เป็นของเว็บไหน / ชนหลายเว็บ (ไม่รู้ = ไม่แสดง)
+                SiteAttributionChip(transaction = transaction, modifier = Modifier.padding(top = 4.dp))
             }
 
             Spacer(modifier = Modifier.width(8.dp))

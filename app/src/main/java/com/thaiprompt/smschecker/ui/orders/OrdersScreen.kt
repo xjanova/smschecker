@@ -317,7 +317,7 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
                                     }
                                     items(state.servers) { server ->
                                         AeroPillChip(
-                                            text = server.name,
+                                            text = server.displayName(),
                                             selected = state.serverFilter == server.id,
                                             onClick = { viewModel.setServerFilter(server.id) }
                                         )

@@ -31,6 +31,7 @@ import com.thaiprompt.smschecker.ui.components.ChromeSegmented
 import com.thaiprompt.smschecker.ui.components.GlossButton
 import com.thaiprompt.smschecker.ui.components.GlossStyle
 import com.thaiprompt.smschecker.ui.components.HeaderTone
+import com.thaiprompt.smschecker.ui.components.SiteAttributionChip
 import com.thaiprompt.smschecker.ui.components.StatusBarTone
 import com.thaiprompt.smschecker.ui.components.aeroHeaderBleed
 import com.thaiprompt.smschecker.ui.theme.AeroPalette
@@ -293,6 +294,8 @@ private fun AeroTxnRow(
                 color = AeroPalette.InkFaint,
                 maxLines = 1
             )
+            // 🌐 ยอดนี้เป็นของเว็บไหน / ชนหลายเว็บ (ไม่รู้ = ไม่แสดง)
+            SiteAttributionChip(transaction = transaction, modifier = Modifier.padding(top = 4.dp))
         }
         Column(horizontalAlignment = Alignment.End) {
             Row(

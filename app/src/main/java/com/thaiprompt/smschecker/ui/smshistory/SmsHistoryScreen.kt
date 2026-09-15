@@ -28,6 +28,7 @@ import com.thaiprompt.smschecker.ui.components.ChipStyle
 import com.thaiprompt.smschecker.ui.components.ChromeSegmented
 import com.thaiprompt.smschecker.ui.components.HeaderTone
 import com.thaiprompt.smschecker.ui.components.MisclassificationReportDialog
+import com.thaiprompt.smschecker.ui.components.SiteAttributionChip
 import com.thaiprompt.smschecker.ui.components.StatusBarTone
 import com.thaiprompt.smschecker.ui.components.aeroHeaderBleed
 import com.thaiprompt.smschecker.ui.theme.AeroPalette
@@ -208,6 +209,8 @@ private fun TransactionItem(
                         AeroChip(strings.debitOnly, style = ChipStyle.Red, leadingIcon = Icons.Default.ArrowDownward)
                     }
                 }
+                // 🌐 ยอดนี้เป็นของเว็บไหน / ชนหลายเว็บ (ไม่รู้ = ไม่แสดง)
+                SiteAttributionChip(transaction = transaction, modifier = Modifier.padding(top = 8.dp))
                 if (transaction.rawMessage.isNotBlank()) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
