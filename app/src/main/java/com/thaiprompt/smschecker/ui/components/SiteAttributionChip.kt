@@ -72,6 +72,28 @@ fun SiteAttributionChip(
     )
 }
 
+/**
+ * 🌐 (2026-09-21) ชิปเว็บหน้าตาเดียวกับแถวรายการเงิน สำหรับการ์ดบิล
+ *  site   = ServerConfig.displayName() — ชื่อเดียวกับที่แถวรายการเงินใช้ (คนเห็นตรงกันทั้งแอพ)
+ *  detail = โดเมนของเซิร์ฟที่ลงทะเบียนเครื่องไว้ (null = ไม่แสดง เช่นซ้ำกับชื่ออยู่แล้ว)
+ */
+@Composable
+fun SiteNameChip(
+    site: String,
+    detail: String? = null,
+    modifier: Modifier = Modifier
+) {
+    SiteChip(
+        text = if (detail.isNullOrBlank()) site else "$site · $detail",
+        icon = Icons.Default.Language,
+        brand = SiteTeal,
+        maxLines = 1,
+        corner = 50.dp,
+        contentDescription = LocalAppStrings.current.siteChipDescription,
+        modifier = modifier
+    )
+}
+
 @Composable
 private fun SiteChip(
     text: String,

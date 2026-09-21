@@ -50,6 +50,7 @@ import com.thaiprompt.smschecker.data.model.ApprovalMethod
 import com.thaiprompt.smschecker.data.model.ApprovalStatus
 import com.thaiprompt.smschecker.data.model.MatchConfidence
 import com.thaiprompt.smschecker.data.model.OrderApproval
+import com.thaiprompt.smschecker.data.model.ServerConfig
 import com.thaiprompt.smschecker.data.model.approvalMethod
 import com.thaiprompt.smschecker.data.repository.SlipImageLoader
 import com.thaiprompt.smschecker.ui.components.AeroChip
@@ -66,11 +67,13 @@ import com.thaiprompt.smschecker.ui.components.GlossIconButton
 import com.thaiprompt.smschecker.ui.components.GlossStyle
 import com.thaiprompt.smschecker.ui.components.GlossyOrb
 import com.thaiprompt.smschecker.ui.components.HeaderTone
+import com.thaiprompt.smschecker.ui.components.SiteNameChip
 import com.thaiprompt.smschecker.ui.components.StatusBarTone
 import com.thaiprompt.smschecker.ui.components.aeroHeaderBleed
 import com.thaiprompt.smschecker.ui.theme.AeroPalette
 import com.thaiprompt.smschecker.ui.theme.AppColors
 import com.thaiprompt.smschecker.ui.theme.LocalAppStrings
+import com.thaiprompt.smschecker.util.ServerLabel
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -87,6 +90,8 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
     var showSearch by remember { mutableStateOf(false) }
     val strings = LocalAppStrings.current
     val snackbarHostState = remember { SnackbarHostState() }
+    // 🌐 เซิร์ฟเวอร์ที่ลงทะเบียนเครื่องไว้ → ป้าย "มาจากเว็บไหน" บนการ์ดบิล (จับคู่ด้วย serverId)
+    val serversById = remember(state.servers) { state.servers.associateBy { it.id } }
 
     StatusBarTone(HeaderTone.Navy)
 
@@ -367,6 +372,7 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
             ) { order ->
                 OrderCard(
                     order = order,
+                    server = serversById[order.serverId],
                     onApprove = { viewModel.approveOrder(order) },
                     onForceApprove = { viewModel.forceApproveOrder(order) },
                     onReject = { viewModel.rejectOrder(order) },
@@ -471,6 +477,7 @@ fun OrdersScreen(viewModel: OrdersViewModel = hiltViewModel()) {
 @Composable
 fun OrderCard(
     order: OrderApproval,
+    server: ServerConfig? = null,
     onApprove: () -> Unit,
     onForceApprove: () -> Unit,
     onReject: () -> Unit,
@@ -637,11 +644,10 @@ fun OrderCard(
                             color = AeroPalette.InkFaint,
                             maxLines = 1
                         )
+                        // ชื่อเว็บย้ายไปแถว ServerSourceRow ด้านล่าง — ของเดิมต่อท้ายชื่อลูกค้า
+                        // ในบรรทัดเดียว (maxLines 1) ชื่อลูกค้ายาวเมื่อไหร่ ชื่อเว็บถูกตัดหายทุกครั้ง
                         Text(
-                            listOfNotNull(
-                                order.customerName?.takeIf { it.isNotBlank() },
-                                order.websiteName ?: order.serverName
-                            ).joinToString(" · ").ifBlank { strings.unknown },
+                            order.customerName?.takeIf { it.isNotBlank() } ?: strings.unknown,
                             fontSize = 15.sp,
                             lineHeight = 19.sp,
                             fontWeight = FontWeight.SemiBold,
@@ -664,6 +670,14 @@ fun OrderCard(
                         }
                     }
                 }
+
+                // 🌐 (2026-09-21) มาจากเว็บ/เซิร์ฟเวอร์ไหน — เครื่องเดียวลงทะเบียนหลายเว็บ
+                //    (Thaiprompt + จันทรา.online ใช้บัญชีธนาคารเดียวกัน) ต้องรู้ทันทีว่าบิลนี้ของใคร
+                ServerSourceRow(
+                    order = order,
+                    server = server,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
 
                 // product line (+ Pay-Later privilege badge) — business info preserved
                 if (order.productName != null) {
@@ -948,6 +962,24 @@ fun OrderCard(
             }
         }
     }
+}
+
+/**
+ * 🌐 แถว "มาจากเว็บไหน" — ชื่อเว็บ + โดเมนของเซิร์ฟเวอร์ที่ลงทะเบียนเครื่องไว้
+ *
+ * อ่านจาก ServerConfig ในเครื่อง (ผูกด้วย serverId) เป็นหลัก เพราะคือเว็บที่ "ลงทะเบียนไว้จริง"
+ * ชื่อใช้ displayName() ตัวเดียวกับชิปบนแถวรายการเงิน (SiteAttributionChip) → เห็นชื่อตรงกันทั้งแอพ
+ * ชื่อที่มากับบิล (website_name / server_name) ใช้แค่ตอนยังโหลดรายการเซิร์ฟเวอร์ไม่เสร็จ
+ */
+@Composable
+private fun ServerSourceRow(order: OrderApproval, server: ServerConfig?, modifier: Modifier = Modifier) {
+    val name = server?.displayName()?.trim()?.takeIf { it.isNotEmpty() }
+        ?: order.websiteName?.trim()?.takeIf { it.isNotEmpty() }
+        ?: order.serverName?.trim()?.takeIf { it.isNotEmpty() }
+    val host = ServerLabel.host(server?.baseUrl)
+    val site = name ?: host ?: return
+    val domain = host?.takeIf { name != null && !ServerLabel.sameSite(name, it) }
+    SiteNameChip(site = site, detail = domain, modifier = modifier)
 }
 
 /**
